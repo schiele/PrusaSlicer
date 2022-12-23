@@ -2298,7 +2298,7 @@ void PrintConfigDef::init_fff_params()
 
     def = this->add("filament_pressure_advance", coFloats);
     def->label = L("Pressure advance");
-    def->tooltip = L("Pressure advance value (Linear advance factor for Marlin)."
+    def->tooltip = L("Default pressure advance value (Linear advance factor for Marlin)."
            " If enabled, the gcode will emit a pressure advance value for this filament."
            "\nWith reprap and sprinter, 'M572 Dx Sx' is used."
            "\nWith klipper, 'SET_PRESSURE_ADVANCE ADVANCE=x EXTRUDER=x' is used."
@@ -2309,6 +2309,163 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvancedE | comSuSi;
     def->is_vector_extruder = true;
     def->set_default_value(enable_default_option(new ConfigOptionFloats({0.02})));
+    def->aliases = {"filament_default_pa"};
+
+    def = this->add("filament_bridge_pa", coFloatsOrPercents);
+    def->label = L("bridge");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for bridge sections. Can be a % over default pa");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "filament_pressure_advance";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_bridge_internal_pa", coFloatsOrPercents);
+    def->label = L("internal bridge");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for internal bridge sections. Can be a % over default pa");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "filament_pressure_advance";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_brim_pa", coFloatsOrPercents);
+    def->label = L("brim");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for brim. Can be a % over support pa");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "filament_support_material_pa";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_external_perimeter_pa", coFloatsOrPercents);
+    def->label = L("external perimeter");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for external perimeter. Can be a % over support pa");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "filament_support_material_pa";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_first_layer_pa", coFloatsOrPercents);
+    def->label = L("first layer");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for first layer sections. If %, it's a % over the current feature");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "depends";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_first_layer_pa_over_raft", coFloatsOrPercents);
+    def->label = L("over raft");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for first layer sections over raft . If %, it's a % over the current feature");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "depends";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_gap_fill_pa", coFloatsOrPercents);
+    def->label = L("gap fill");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for gap fill sections. Can be a % over perimeter pa");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "filament_perimeter_pa";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_infill_pa", coFloatsOrPercents);
+    def->label = L("infill");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for infill sections. Can be a % over solid infill pa");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "filament_solid_infill_pa";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_ironing_pa", coFloatsOrPercents);
+    def->label = L("ironing");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for ironing sections. Can be a % over top solid infill pa");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "filament_top_solid_infill_pa";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_overhangs_pa", coFloatsOrPercents);
+    def->label = L("overhangs");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for overhang sections. Can be a % over bridge pa");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "filament_bridge_pa";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_perimeter_pa", coFloatsOrPercents);
+    def->label = L("perimeters");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for perimeter sections. Can be a % over default pa");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "filament_pressure_advance";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_solid_infill_pa", coFloatsOrPercents);
+    def->label = L("solid infill");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for solid infill sections. Can be a % over default pa");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "filament_pressure_advance";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_support_material_pa", coFloatsOrPercents);
+    def->label = L("support");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for support sections. Can be a % over default pa");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "filament_pressure_advance";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_support_material_interface_pa", coFloatsOrPercents);
+    def->label = L("support interface");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for support interface sections. Can be a % over support pa");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "filament_support_material_pa";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_thin_walls_pa", coFloatsOrPercents);
+    def->label = L("thin walls");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for thin wall sections. Can be a % over external perimeter pa");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "filament_external_perimeter_pa";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_top_solid_infill_pa", coFloatsOrPercents);
+    def->label = L("top solid infill");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for top solid infill sections. Can be a % over solid infill pa");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "filament_solid_infill_pa";
+    def->is_vector_extruder = true;
+    def->set_default_value(new ConfigOptionFloatsOrPercents{ FloatOrPercent{100,true} });
+
+    def = this->add("filament_travel_pa", coFloatsOrPercents);
+    def->label = L("travel");
+    def->category = OptionCategory::filament;
+    def->tooltip = L("Pressure advance for travel sections, may help retraction and unretraction."
+            " Can be a % over default pa."
+            "\nSet -1 to let the previous pa continue in the travel.");
+    def->mode = comExpert | comSuSi;
+    def->ratio_over = "filament_pressure_advance";
+    def->is_vector_extruder = true;
+    def->can_be_disabled = true;
+    def->set_default_value(disable_default_option(new ConfigOptionFloatsOrPercents({FloatOrPercent{0, false}})));
 
     def = this->add("filament_ramming_parameters", coStrings);
     def->label = L("Ramming parameters");

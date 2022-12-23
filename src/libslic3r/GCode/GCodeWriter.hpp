@@ -31,6 +31,7 @@ public:
     const PrintRegionConfig* config_region = nullptr;
     
     GCodeWriter() {}
+    void                reset();
     Tool*               tool()             { return m_tool; }
     const Tool*         tool()     const   { return m_tool; }
 
@@ -57,7 +58,8 @@ public:
     std::string postamble() const;
     std::string set_temperature(int16_t temperature, bool wait = false, int tool = -1);
     std::string set_bed_temperature(uint32_t temperature, bool wait = false);
-    std::string set_pressure_advance(double pa) const;
+    void set_pressure_advance(double pa);
+    std::string write_pressure_advance(double pa);
     std::string set_chamber_temperature(uint32_t temperature, bool wait = false);
     void        set_acceleration(uint32_t acceleration);
     void        set_travel_acceleration(uint32_t acceleration);
@@ -142,6 +144,8 @@ private:
     std::string     m_extrusion_axis = "E";
     bool            m_single_extruder_multi_material = false;
     Tool*           m_tool = nullptr;
+    double          m_last_pressure_advance = 0;
+    double          m_current_pressure_advance = 0;
     uint32_t        m_last_acceleration = uint32_t(0);
     uint32_t        m_last_travel_acceleration = uint32_t(0);
     uint32_t        m_current_acceleration = 0;
@@ -173,6 +177,8 @@ private:
     GCodeFormatter  m_formatter {0,0};
     
     std::string _retract(double length, std::optional<double> restart_extra, std::optional<double> restart_extra_toolchange, const std::string_view comment = {});
+    // write the pressure advance if needed on gcode string
+    void _write_pressure_advance(std::string &gcode);
 
 };
 

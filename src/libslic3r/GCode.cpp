@@ -1303,6 +1303,9 @@ void GCodeGenerator::_do_export(Print& print_mod, GCodeOutputStream &file, Thumb
     this->m_throw_if_canceled =
         [&print]() { print.throw_if_canceled(); };
 
+    // reset gcode writer to clear any leftover from previous run.
+    m_writer.reset();
+
     const bool export_to_binary_gcode = print.full_print_config().option("binary_gcode")->get_bool();
     // if exporting gcode in binary format: 
     // we generate here the data to be passed to the post-processor, who is responsible to export them to file 
@@ -6732,7 +6735,7 @@ std::pair<double, double> GCodeGenerator::_compute_acceleration(const ExtrusionP
     if (acceleration > 0) {
         switch (extrusion_role_to_gcode_extrusion_role(path.role())){
             case GCodeExtrusionRole::Perimeter:
-            perimeter:
+            accel_perimeter:
                 if (m_config.perimeter_acceleration.value > 0) {
                     double perimeter_acceleration = m_config.get_computed_value("perimeter_acceleration");
                     if (perimeter_acceleration > 0)
@@ -6740,7 +6743,7 @@ std::pair<double, double> GCodeGenerator::_compute_acceleration(const ExtrusionP
                 }
                 break;
             case GCodeExtrusionRole::ExternalPerimeter:
-            externalPerimeter:
+            accel_externalPerimeter:
                 if (m_config.external_perimeter_acceleration.value > 0) {
                     double external_perimeter_acceleration = m_config.get_computed_value("external_perimeter_acceleration");
                     if (external_perimeter_acceleration > 0) {
@@ -6748,9 +6751,9 @@ std::pair<double, double> GCodeGenerator::_compute_acceleration(const ExtrusionP
                         break;
                     }
                 }
-                goto perimeter;
+                goto accel_perimeter;
             case GCodeExtrusionRole::SolidInfill:
-            solidInfill:
+            accel_solidInfill:
                 if (m_config.solid_infill_acceleration.value > 0) {
                     double solid_infill_acceleration = m_config.get_computed_value("solid_infill_acceleration");
                     if (solid_infill_acceleration > 0)
@@ -6766,9 +6769,9 @@ std::pair<double, double> GCodeGenerator::_compute_acceleration(const ExtrusionP
                         break;
                     }
                 }
-                goto solidInfill;
+                goto accel_solidInfill;
             case GCodeExtrusionRole::TopSolidInfill:
-            topSolidInfill:
+            accel_topSolidInfill:
                 if (m_config.top_solid_infill_acceleration.value > 0) {
                     double top_solid_infill_acceleration = m_config.get_computed_value("top_solid_infill_acceleration");
                     if (top_solid_infill_acceleration > 0) {
@@ -6776,7 +6779,7 @@ std::pair<double, double> GCodeGenerator::_compute_acceleration(const ExtrusionP
                         break;
                     }
                 }
-                goto solidInfill;
+                goto accel_solidInfill;
             case GCodeExtrusionRole::Ironing:
                 if (m_config.ironing_acceleration.value > 0) {
                     double ironing_acceleration = m_config.get_computed_value("ironing_acceleration");
@@ -6785,10 +6788,10 @@ std::pair<double, double> GCodeGenerator::_compute_acceleration(const ExtrusionP
                         break;
                     }
                 }
-                goto topSolidInfill;
+                goto accel_topSolidInfill;
             case GCodeExtrusionRole::SupportMaterial:
             case GCodeExtrusionRole::WipeTower:
-            supportMaterial:
+            accel_supportMaterial:
                 if (m_config.support_material_acceleration.value > 0) {
                     double support_material_acceleration = m_config.get_computed_value("support_material_acceleration");
                     if (support_material_acceleration > 0)
@@ -6803,7 +6806,7 @@ std::pair<double, double> GCodeGenerator::_compute_acceleration(const ExtrusionP
                         break;
                     }
                 }
-                goto supportMaterial;
+                goto accel_supportMaterial;
             case GCodeExtrusionRole::Skirt:
                 //skirtBrim:
                 if (m_config.brim_acceleration.value > 0) {
@@ -6813,9 +6816,9 @@ std::pair<double, double> GCodeGenerator::_compute_acceleration(const ExtrusionP
                         break;
                     }
                 }
-                goto supportMaterial;
+                goto accel_supportMaterial;
             case GCodeExtrusionRole::BridgeInfill:
-            bridgeInfill:
+            accel_bridgeInfill:
                 if (m_config.bridge_acceleration.value > 0) {
                     double bridge_acceleration = m_config.get_computed_value("bridge_acceleration");
                     if (bridge_acceleration > 0)
@@ -6830,7 +6833,7 @@ std::pair<double, double> GCodeGenerator::_compute_acceleration(const ExtrusionP
                         break;
                     }
                 }
-                goto bridgeInfill;
+                goto accel_bridgeInfill;
             case GCodeExtrusionRole::OverhangPerimeter:
                 if (m_config.overhangs_acceleration.value > 0) {
                     double overhangs_acceleration = m_config.get_computed_value("overhangs_acceleration");
@@ -6839,7 +6842,7 @@ std::pair<double, double> GCodeGenerator::_compute_acceleration(const ExtrusionP
                         break;
                     }
                 }
-                goto bridgeInfill;
+                goto accel_bridgeInfill;
             case GCodeExtrusionRole::GapFill:
                 if (m_config.gap_fill_acceleration.value > 0) {
                     double gap_fill_acceleration = m_config.get_computed_value("gap_fill_acceleration");
@@ -6848,7 +6851,7 @@ std::pair<double, double> GCodeGenerator::_compute_acceleration(const ExtrusionP
                         break;
                     }
                 }
-                goto perimeter;
+                goto accel_perimeter;
                 break;
             case GCodeExtrusionRole::ThinWall:
                 if (m_config.thin_walls_acceleration.value > 0) {
@@ -6858,7 +6861,7 @@ std::pair<double, double> GCodeGenerator::_compute_acceleration(const ExtrusionP
                         break;
                     }
                 }
-                goto externalPerimeter;
+                goto accel_externalPerimeter;
             case GCodeExtrusionRole::None:
                 assert(false);
             case GCodeExtrusionRole::Milling:
@@ -7068,6 +7071,75 @@ std::string GCodeGenerator::_travel_before_extrude(const ExtrusionPath &path, co
     return gcode;
 }
 
+std::pair<double, double> GCodeGenerator::_compute_pressure_advance(const ExtrusionPath &path) {
+
+    double pa = 0;
+    double travel_pa = -1;
+    if (m_config.filament_pressure_advance.is_enabled()) {
+        pa = m_config.filament_pressure_advance.get_at(m_writer.tool()->id());
+        if (m_config.filament_travel_pa.is_enabled(m_writer.tool()->id())) {
+            travel_pa = m_config.filament_travel_pa.get_abs_value(m_writer.tool()->id(), pa);
+        }
+        switch (extrusion_role_to_gcode_extrusion_role(path.role())) {
+        case GCodeExtrusionRole::Perimeter:
+            pa = m_config.get_computed_value("filament_perimeter_pa", m_writer.tool()->id());
+            break;
+        case GCodeExtrusionRole::ExternalPerimeter:
+            pa = m_config.get_computed_value("filament_external_perimeter_pa", m_writer.tool()->id());
+            break;
+        case GCodeExtrusionRole::SolidInfill:
+            pa = m_config.get_computed_value("filament_solid_infill_pa", m_writer.tool()->id());
+            break;
+        case GCodeExtrusionRole::InternalInfill:
+            pa = m_config.get_computed_value("filament_infill_pa", m_writer.tool()->id());
+            break;
+        case GCodeExtrusionRole::TopSolidInfill:
+            pa = m_config.get_computed_value("filament_top_solid_infill_pa", m_writer.tool()->id());
+            break;
+        case GCodeExtrusionRole::Ironing:
+            pa = m_config.get_computed_value("filament_ironing_pa", m_writer.tool()->id());
+            break;
+        case GCodeExtrusionRole::SupportMaterial:
+        case GCodeExtrusionRole::WipeTower:
+            pa = m_config.get_computed_value("filament_support_material_pa", m_writer.tool()->id());
+            break;
+        case GCodeExtrusionRole::SupportMaterialInterface:
+            pa = m_config.get_computed_value("filament_support_material_interface_pa", m_writer.tool()->id());
+            break;
+        case GCodeExtrusionRole::Skirt:
+            pa = m_config.get_computed_value("filament_brim_pa", m_writer.tool()->id());
+            break;
+        case GCodeExtrusionRole::BridgeInfill:
+            pa = m_config.get_computed_value("filament_bridge_pa", m_writer.tool()->id());
+            break;
+        case GCodeExtrusionRole::InternalBridgeInfill:
+            pa = m_config.get_computed_value("filament_bridge_internal_pa", m_writer.tool()->id());
+            break;
+        case GCodeExtrusionRole::OverhangPerimeter:
+            pa = m_config.get_computed_value("filament_overhangs_pa", m_writer.tool()->id());
+            break;
+        case GCodeExtrusionRole::GapFill:
+            pa = m_config.get_computed_value("filament_gap_fill_pa", m_writer.tool()->id());
+            break;
+        case GCodeExtrusionRole::ThinWall:
+            pa = m_config.get_computed_value("filament_thin_walls_pa", m_writer.tool()->id());
+            break;
+        default:
+            break;
+        }
+
+        if (this->on_first_layer() && m_config.filament_first_layer_pa.get_at(m_writer.tool()->id()).value > 0) {
+            pa = std::min(pa, m_config.filament_first_layer_pa.get_abs_value(m_writer.tool()->id(), pa));
+        } else if (this->object_layer_over_raft() && m_config.filament_first_layer_pa_over_raft.get_at(m_writer.tool()->id()).value > 0) {
+            pa = m_config.filament_first_layer_pa_over_raft.get_abs_value(m_writer.tool()->id(), pa);
+        }
+        if (pa < 0) {
+            pa = 0;
+        }
+    }
+    return { pa, travel_pa };
+}
+
 std::string GCodeGenerator::_before_extrude(const ExtrusionPath &path, const std::string_view description_in, double speed_mm_s) {
     std::string gcode;
     gcode.reserve(512);
@@ -7076,6 +7148,13 @@ std::string GCodeGenerator::_before_extrude(const ExtrusionPath &path, const std
     // compute speed here to be able to know it for travel_deceleration_use_target
     std::string speed_comment = "";
     speed_mm_s = _compute_speed_mm_per_sec(path, speed_mm_s, m_overhang_fan_override, m_config.gcode_comments ? &speed_comment : nullptr);
+
+    auto[/*double*/pa, /*double*/travel_pa] = _compute_pressure_advance(path);
+    if (travel_pa >= 0) {
+        m_writer.set_pressure_advance(travel_pa);
+    } else {
+        m_writer.set_pressure_advance(pa);
+    }
 
     gcode += this->_travel_before_extrude(path, description_in, speed_mm_s);
 
@@ -7100,6 +7179,9 @@ std::string GCodeGenerator::_before_extrude(const ExtrusionPath &path, const std
         //gcode += "; m_wipe.reset_path(); after m_delayed_layer_change\n";
     }
     gcode += m_writer.unretract();
+
+    //set pa after unretraction (do nothing if it isn't changed)
+    m_writer.set_pressure_advance(pa);
 
     if (!m_pending_pre_extrusion_gcode.empty()) {
         // There is G-Code that is due to be inserted before an extrusion starts. Insert it.
@@ -8203,16 +8285,14 @@ std::string GCodeGenerator::set_extruder(uint16_t extruder_id, double print_z, b
             check_add_eol(gcode);
         }
 
-        if (m_config.filament_pressure_advance.is_enabled(extruder_id)) {
-            gcode += m_writer.set_pressure_advance(m_config.filament_pressure_advance.get_at(extruder_id));
-        }
-
         if (!no_toolchange) {
             gcode += toolchange(extruder_id, print_z);
-        }else m_writer.toolchange(extruder_id);
+        } else {
+            m_writer.toolchange(extruder_id);
+        }
         return gcode;
     }
-    
+
     // get current extruder id
     uint16_t old_extruder_id = uint16_t(m_writer.tool() != nullptr ? m_writer.tool()->id() : -1);
 
@@ -8242,7 +8322,6 @@ std::string GCodeGenerator::set_extruder(uint16_t extruder_id, double print_z, b
     // standby point and set it to the standby temperature.
     if (m_ooze_prevention.enable && m_writer.tool() != nullptr)
         gcode += m_ooze_prevention.pre_toolchange(*this);
-    
 
     if (!no_toolchange) {
         gcode += toolchange(extruder_id, print_z);
@@ -8293,13 +8372,9 @@ std::string GCodeGenerator::set_extruder(uint16_t extruder_id, double print_z, b
     if (m_ooze_prevention.enable)
         gcode += m_ooze_prevention.post_toolchange(*this);
 
-    if (m_config.filament_pressure_advance.is_enabled(extruder_id)) {
-        gcode += m_writer.set_pressure_advance(m_config.filament_pressure_advance.get_at(extruder_id));
-    }
-
     // The position is now known after the tool change.
     this->unset_last_pos();
-    
+
     return gcode;
 }
 
