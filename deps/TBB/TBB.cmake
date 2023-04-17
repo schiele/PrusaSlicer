@@ -15,6 +15,7 @@ orcaslicer_add_cmake_project(
         -DTBB_TEST=OFF
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON
         -DCMAKE_DEBUG_POSTFIX=_debug
+        $<$<PLATFORM_ID:Linux>:-DTBB_STRICT=OFF>
 )
 
 if (MSVC)
