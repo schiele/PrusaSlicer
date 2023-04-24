@@ -254,19 +254,23 @@ if(FLATPAK)
     find_package(CURL)
 endif()
 
+set(DEP_BLOCKED)
+
+cmake_policy(SET CMP0057 NEW)
+
 set(ZLIB_PKG "")
-if (NOT ZLIB_FOUND) 
+if (NOT "ZLIB" IN_LIST DEP_BLOCKED AND NOT ZLIB_FOUND)
     include(ZLIB/ZLIB.cmake)
     set(ZLIB_PKG dep_ZLIB)
 endif ()
 set(PNG_PKG "")
-if (NOT PNG_FOUND) 
+if (NOT "PNG" IN_LIST DEP_BLOCKED AND NOT PNG_FOUND)
     include(PNG/PNG.cmake)
     set(PNG_PKG dep_PNG)
 endif ()
 set(EXPAT_PKG "")
 find_package(EXPAT)
-if (NOT EXPAT_FOUND) 
+if (NOT "EXPAT" IN_LIST DEP_BLOCKED AND NOT EXPAT_FOUND)
     include(EXPAT/EXPAT.cmake)
     set(EXPAT_PKG dep_EXPAT)
 endif ()
@@ -275,24 +279,56 @@ set(DEP_Boost_COMPONENTS system iostreams filesystem thread log locale regex dat
 include(Boost/Boost.cmake)
 
 # The order of includes respects the dependencies between libraries
-include(Cereal/Cereal.cmake)
+set(Cereal_PKG "")
+if (NOT "Cereal" IN_LIST DEP_BLOCKED)
+    include(Cereal/Cereal.cmake)
+    set(Cereal_PKG dep_Cereal)
+endif ()
 include(Qhull/Qhull.cmake)
-include(GLEW/GLEW.cmake)
+set(GLEW_PKG "")
+if (NOT "GLEW" IN_LIST DEP_BLOCKED)
+    include(GLEW/GLEW.cmake)
+    set(GLEW_PKG dep_GLEW)
+endif ()
 
 include(GLFW/GLFW.cmake)
-include(OpenCSG/OpenCSG.cmake)
+set(OpenCSG_PKG "")
+if (NOT "OpenCSG" IN_LIST DEP_BLOCKED)
+    include(OpenCSG/OpenCSG.cmake)
+    set(OpenCSG_PKG dep_OpenCSG)
+endif ()
 
 include(TBB/TBB.cmake)
 
 include(Blosc/Blosc.cmake)
-include(OpenEXR/OpenEXR.cmake)
+set(OpenEXR_PKG "")
+if (NOT "OpenEXR" IN_LIST DEP_BLOCKED)
+    include(OpenEXR/OpenEXR.cmake)
+    set(OpenEXR_PKG dep_OpenEXR)
+endif ()
 include(OpenVDB/OpenVDB.cmake)
 
-include(GMP/GMP.cmake)
-include(MPFR/MPFR.cmake)
-include(CGAL/CGAL.cmake)
+set(GMP_PKG "")
+if (NOT "GMP" IN_LIST DEP_BLOCKED)
+    include(GMP/GMP.cmake)
+    set(GMP_PKG dep_GMP)
+endif ()
+set(MPFR_PKG "")
+if (NOT "MPFR" IN_LIST DEP_BLOCKED)
+    include(MPFR/MPFR.cmake)
+    set(MPFR_PKG dep_MPFR)
+endif ()
+set(CGAL_PKG "")
+if (NOT "CGAL" IN_LIST DEP_BLOCKED)
+    include(CGAL/CGAL.cmake)
+    set(CGAL_PKG dep_CGAL)
+endif ()
 
-include(NLopt/NLopt.cmake)
+set(NLopt_PKG "")
+if (NOT "NLopt" IN_LIST DEP_BLOCKED)
+    include(NLopt/NLopt.cmake)
+    set(NLopt_PKG dep_NLopt)
+endif ()
 include(libnoise/libnoise.cmake)
 
 
@@ -301,7 +337,7 @@ include(libnoise/libnoise.cmake)
 # a grep across the repo shows it is used for other things
 # TODO: update openssl and everything that uses <openssl/md5.h> 
 set(OPENSSL_PKG "")
-if(NOT OPENSSL_FOUND)
+if (NOT "OpenSSL" IN_LIST DEP_BLOCKED AND NOT OPENSSL_FOUND)
     include(OpenSSL/OpenSSL.cmake)
     set(OPENSSL_PKG dep_OpenSSL)
 endif()
@@ -310,19 +346,19 @@ endif()
 # so, just don't even bother 
 # ...i think this is how it works? change if wrong
 set(CURL_PKG "")
-if (NOT OPENSSL_FOUND OR NOT CURL_FOUND)
+if (NOT "CURL" IN_LIST DEP_BLOCKED AND (NOT OPENSSL_FOUND OR NOT CURL_FOUND))
     include(CURL/CURL.cmake)
     set(CURL_PKG dep_CURL)
 endif ()
 
 set(JPEG_PKG "")
-if (NOT JPEG_FOUND)
+if (NOT "JPEG" IN_LIST DEP_BLOCKED AND NOT JPEG_FOUND)
     include(JPEG/JPEG.cmake)
     set(JPEG_PKG dep_JPEG)
 endif()
 
 set(TIFF_PKG "")
-if (NOT TIFF_FOUND)
+if (NOT "TIFF" IN_LIST DEP_BLOCKED AND NOT TIFF_FOUND)
     include(TIFF/TIFF.cmake)
     set(TIFF_PKG "dep_TIFF")
 endif()
@@ -363,12 +399,12 @@ set(_dep_list
     ${OPENSSL_PKG}
     ${CURL_PKG}
     ${WXWIDGETS_PKG}
-    dep_Cereal
-    dep_NLopt
+    ${Cereal_PKG}
+    ${NLopt_PKG}
     dep_OpenVDB
-    dep_OpenCSG
+    ${OpenCSG_PKG}
     dep_OpenCV
-    dep_CGAL
+    ${CGAL_PKG}
     dep_GLFW
     dep_OCCT
     ${FREETYPE_PKG}
