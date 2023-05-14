@@ -19,7 +19,7 @@ add_cmake_project(wxWidgets
     URL_HASH SHA256=94b7d972373503e380e5a8b0ca63b1ccb956da4006402298dd89a0c5c7041b1e
     CMAKE_ARGS
         "-DCMAKE_DEBUG_POSTFIX:STRING="
-        -DwxBUILD_PRECOMP=ON
+        -DwxBUILD_PRECOMP=OFF
         ${_wx_toolkit}
         -DwxUSE_MEDIACTRL=OFF
         -DwxUSE_DETECT_SM=OFF
