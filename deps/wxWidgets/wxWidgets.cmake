@@ -28,7 +28,7 @@ orcaslicer_add_cmake_project(
     GIT_SHALLOW ON
     DEPENDS ${PNG_PKG} ${ZLIB_PKG} ${EXPAT_PKG} ${TIFF_PKG} ${JPEG_PKG}
     CMAKE_ARGS
-        -DwxBUILD_PRECOMP=ON
+        -DwxBUILD_PRECOMP=OFF
         ${_wx_toolkit}
         "-DCMAKE_DEBUG_POSTFIX:STRING="
         -DwxBUILD_DEBUG_LEVEL=0
