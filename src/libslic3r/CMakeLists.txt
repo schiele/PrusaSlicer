@@ -564,6 +564,9 @@ add_library(libslic3r_cgal STATIC
     Triangulation.hpp Triangulation.cpp
 )
 target_include_directories(libslic3r_cgal PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+if (NOT CGAL_Boost_USE_STATIC_LIBS)
+    target_include_directories(libslic3r_cgal PUBLIC ${CMAKE_PREFIX_PATH}/include)
+endif ()
 
 # Reset compile options of libslic3r_cgal. Despite it being linked privately, CGAL options
 # (-frounding-math) still propagate to dependent libs which is not desired.
