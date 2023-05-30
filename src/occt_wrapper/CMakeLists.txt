@@ -19,33 +19,15 @@ include(GenerateExportHeader)
 
 generate_export_header(OCCTWrapper)
 
-find_package(OpenCASCADE 7.6.2 REQUIRED)
+find_package(OpenCASCADE REQUIRED)
 
 set(OCCT_LIBS
-    TKXDESTEP
-    TKSTEP
-    TKSTEP209
-    TKSTEPAttr
-    TKSTEPBase
+    TKDESTEP
     TKXCAF
-    TKXSBase
-    TKVCAF
-    TKCAF
     TKLCAF
-    TKCDF
-    TKV3d
-    TKService
     TKMesh
-    TKBO
-    TKPrim
-    TKHLR
-    TKShHealing
     TKTopAlgo
-    TKGeomAlgo
     TKBRep
-    TKGeomBase
-    TKG3d
-    TKG2d
     TKMath
     TKernel
 )
