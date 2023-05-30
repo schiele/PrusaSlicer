@@ -19,7 +19,11 @@ include(GenerateExportHeader)
 
 generate_export_header(OCCTWrapper)
 
-find_package(OpenCASCADE 7.6.1 REQUIRED)
+if (FORCE_OpenCASCADE_VERSION)
+    find_package(OpenCASCADE ${FORCE_OpenCASCADE_VERSION} REQUIRED)
+else ()
+    find_package(OpenCASCADE 7.6.1 REQUIRED)
+endif ()
 
 set(OCCT_LIBS
     TKXDESTEP
