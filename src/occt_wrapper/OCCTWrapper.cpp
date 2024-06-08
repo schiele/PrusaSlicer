@@ -23,6 +23,7 @@
 #include "BRep_Tool.hxx"
 #include "admesh/stl.h"
 #include "libslic3r/Point.hpp"
+#include "TDocStd_Document.hxx"
 
 const double STEP_TRANS_CHORD_ERROR = 0.005;
 const double STEP_TRANS_ANGLE_RES = 1;
