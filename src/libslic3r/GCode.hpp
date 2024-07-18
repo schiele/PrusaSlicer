@@ -509,6 +509,8 @@ private:
     double                              m_last_layer_z{ 0.0 };
     double                              m_max_layer_z{ 0.0 };
     double                              m_last_width{ 0.0 };
+    // filament used since the beginning for each extruder, updated after the before_layer_gcode. in mm
+    std::vector<double>                 m_last_layer_used_filament;
     // to pass between before_xtrude and after_extrude.
     double                              m_overhang_fan_override{ -1.0 };
 #if ENABLE_GCODE_VIEWER_DATA_CHECKING

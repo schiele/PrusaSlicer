@@ -12012,7 +12012,7 @@ static std::map<t_custom_gcode_key, t_config_option_keys> s_CustomGcodeSpecificP
     {"milling_toolchange_end_gcode",   {"layer_num", "layer_z", "previous_layer_z", "max_layer_z", "previous_extruder", "next_extruder"}},
     {"start_gcode",             {"start_gcode_bed_temperature"}},
     {"end_gcode",               {"layer_num", "layer_z", "max_layer_z", "filament_extruder_id", "previous_extruder", "next_extruder"}},
-    {"before_layer_gcode",      {"layer_num", "layer_z", "previous_layer_z", "max_layer_z", "gcode_bed_temperature"}},
+    {"before_layer_gcode",      {"layer_num", "layer_z", "previous_layer_z", "max_layer_z", "gcode_bed_temperature", "layer_used_filament"}},
     {"layer_gcode",             {"layer_num", "layer_z", "previous_layer_z", "max_layer_z", "gcode_bed_temperature"}},
     {"feature_gcode",           {"layer_num", "layer_z", "max_layer_z", "previous_extrusion_role", "next_extrusion_role", /*deprecated*/"extrusion_role", "last_extrusion_role" /*deprecated*/}},
     {"toolchange_gcode",        {"layer_num", "layer_z", "max_layer_z", "previous_extruder", "next_extruder", "toolchange_z"}},
@@ -12098,6 +12098,11 @@ CustomGcodeSpecificConfigDef::CustomGcodeSpecificConfigDef()
     def = this->add("gcode_bed_temperature", coInt);
     def->label = L("Computed bed temperature");
     def->tooltip = L("It's the 'print_bed_temperature' if defined or the maximum of the 'bed_temperature'.");
+
+    def = this->add("layer_used_filament", coInt);
+    def->label = L("Computed used filaent for each extruder");
+    def->tooltip = L("It's an array of mm of extruded filament at this layer, the layer that ends now. The first extruder is at index 0, and this array has the same "
+                     "number of entries as the number of extruders as the printer.");
 }
 
 const CustomGcodeSpecificConfigDef custom_gcode_specific_config_def;

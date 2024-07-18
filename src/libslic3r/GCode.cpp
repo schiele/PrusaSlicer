@@ -3216,7 +3216,7 @@ LayerResult GCodeGenerator::process_layer(
     const std::vector<const PrintInstance*> *ordering,
     // If set to size_t(-1), then print all copies of all objects.
     // Otherwise print a single copy of a single object.
-    const size_t                     		 single_object_instance_idx)
+    const size_t                             single_object_instance_idx)
 {
     assert(!layers.empty());
     // Either printing all copies of all objects, or just a single copy of a single object.
@@ -3337,9 +3337,32 @@ LayerResult GCodeGenerator::process_layer(
 
     // Set new layer - this will change Z and force a retraction if retract_layer_change is enabled.
     if (! print.config().before_layer_gcode.value.empty()) {
+        if (m_last_layer_used_filament.empty()) {
+            m_last_layer_used_filament.resize(print.config().nozzle_diameter.size(), 0.);
+        }
+        std::vector<double> layer_used_filament(m_last_layer_used_filament.size(), 0.);
+        for (const Extruder &extruder : m_writer.extruders()) {
+            assert (extruder.id() < m_last_layer_used_filament.size());
+            assert (layer_used_filament.size() == m_last_layer_used_filament.size());
+            // get new used_filament
+            assert(!print.has_wipe_tower() ||
+                   (!print.wipe_tower_data().used_filament_until_layer.empty() &&
+                    extruder.id() < print.wipe_tower_data().used_filament_until_layer.back().second.size()));
+            const double used_filament = extruder.used_filament() +
+                (print.has_wipe_tower() ?
+                     print.wipe_tower_data().used_filament_until_layer.back().second[extruder.id()] :
+                     0.f);
+            // compute diff 
+            const double layer_filament = used_filament - m_last_layer_used_filament[extruder.id()];
+            // store results
+            layer_used_filament[extruder.id()] = ((layer_filament > 0.f) ? layer_filament : 0.f);
+            m_last_layer_used_filament[extruder.id()] = used_filament;
+        }
+
         DynamicConfig config;
         config.set_key_value("previous_layer_z", new ConfigOptionFloat(previous_layer_z));
         config.set_key_value("gcode_bed_temperature", new ConfigOptionInt(m_bed_temperature));
+        config.set_key_value("layer_used_filament", new ConfigOptionFloats(layer_used_filament));
         gcode += this->placeholder_parser_process("before_layer_gcode",
             print.config().before_layer_gcode.value, m_writer.tool()->id(), &config)
             + "\n";
