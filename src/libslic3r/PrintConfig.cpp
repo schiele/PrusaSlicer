@@ -5088,7 +5088,7 @@ void PrintConfigDef::init_fff_params()
     def->is_vector_extruder = true;
     def->set_default_value(new ConfigOptionBools{ false });
 
-    // why not reuse rretract_lift ? because it's a max? My current impl enforced the lift, so it's okay for me to remove it.
+    // why not reuse retract_lift ? because it's a max? My current impl enforced the lift, so it's okay for me to remove it.
     // def = this->add("travel_max_lift", coFloats);
     // def->label = L("Maximum ramping lift");
     // def->tooltip = L("Maximum lift height of the ramping lift. It may not be reached if the next position "
@@ -8697,7 +8697,9 @@ void _handle_legacy(std::unordered_map<t_config_option_key, std::pair<t_config_o
             value() = "cost";
         } else if ("near" == value() || "nearest" == value()) {
             value() = "cost";
-            //FIXME can we change the cost?
+            // we change the cost
+            dict["seam_angle_cost"] = {"seam_angle_cost", "50%"};
+            dict["seam_travel_cost"] = {"seam_travel_cost", "50%"};
         }
     }
     if (has(dict, "perimeter_loop_seam"s)) {
@@ -8707,10 +8709,13 @@ void _handle_legacy(std::unordered_map<t_config_option_key, std::pair<t_config_o
     }
     if (has(dict, "overhangs"s)) {
         opt_key() = "overhangs_width_speed";
-        if (value() == "1")
+        if (value() == "1") {
             value() = "50%";
-        else
+            dict["overhangs_width"] = {"overhangs_width", "50%"};
+        } else {
             value() = "!50%";
+            dict["overhangs_width"] = {"overhangs_width", "!50%"};
+        }
     }
     if (has(dict, "print_machine_envelope"s)) {
         opt_key() = "machine_limits_usage";
@@ -8756,16 +8761,24 @@ void _handle_legacy(std::unordered_map<t_config_option_key, std::pair<t_config_o
             } catch (boost::bad_lexical_cast &) { value = "100%"; }
         }
     });
-    if (has(dict, "thick_bridges"s)) {
-        opt_key() = "bridge_type"s;
-        if (value() == "1")
-            value() = "nozzle";
-        else
-            value() = "flow";
-    }
-    if (has(dict, "sla_archive_format"s)) {
-        opt_key() = "output_format"s;
-    }
+    //if (has(dict, "thick_bridges"s)) {
+    //    assert(dict.find("bridge_type") == dict.end());
+    //    assert(dict.find("bridge_overlap") == dict.end());
+    //    assert(dict.find("bridge_overlap_min") == dict.end());
+    //    opt_key() = "bridge_type"s;
+    //    if (value() == "1") {
+    //        value() = "nozzle";
+    //        dict["bridge_overlap_min"] = {"bridge_overlap_min", "80%"};
+    //        dict["bridge_overlap"] = {"bridge_overlap", "95%"};
+    //    } else {
+    //        value() = "flow";
+    //        dict["bridge_overlap_min"] = {"bridge_overlap_min", "60%"};
+    //        dict["bridge_overlap"] = {"bridge_overlap", "75%"};
+    //    }
+    //}
+    //if (has(dict, "sla_archive_format"s)) {
+    //    opt_key() = "output_format"s;
+    //}
 
     // In PrusaSlicer 2.3.0-alpha0 the "monotonic" infill was introduced, which was later renamed to "monotonous".
     for_ech_entry(dict, {"top_fill_pattern", "bottom_fill_pattern", "fill_pattern", "solid_fill_pattern", "bridge_fill_pattern", "support_material_interface_pattern"},
@@ -9093,6 +9106,8 @@ void PrintConfigDef::handle_legacy_composite(DynamicPrintConfig &config, std::ma
         config.set_key_value("overhangs_dynamic_speed", opt.clone());
     }
     if (useful_items.find("enable_dynamic_fan_speeds") != useful_items.end()) {
+        // note: there can be a enable_dynamic_fan_speeds and no overhang_fan_speed_X (if it's disabled)
+        // note: there can be a overhang_fan_speed_0 but no overhang_fan_speed_1/2/3
         ConfigOptionBools enable_dynamic_fan_speeds;
         enable_dynamic_fan_speeds.deserialize(useful_items["enable_dynamic_fan_speeds"]);
         auto *external_perimeter_fan_speed = config.option<ConfigOptionInts>("external_perimeter_fan_speed");
@@ -9107,11 +9122,39 @@ void PrintConfigDef::handle_legacy_composite(DynamicPrintConfig &config, std::ma
         ConfigOptionGraphs opt;
         opt.set_can_be_disabled();
         std::vector<GraphData> graph_data;
+        //ensure same size
+        assert(enable_dynamic_fan_speeds.size() >= values[0].size());
+        assert(values[0].size() >= values[1].size());
+        assert(values[1].size() >= values[2].size());
+        assert(values[2].size() >= values[3].size());
+        const size_t overhang_fan_speed_size = enable_dynamic_fan_speeds.size();
+        for (size_t extruder_id = 0; extruder_id < overhang_fan_speed_size; extruder_id++) {
+            double default_value = 0;
+            if (values[0].size() <= extruder_id) {
+                assert(!enable_dynamic_fan_speeds.get_at(extruder_id));
+                assert(values[0].size() == extruder_id);
+                values[0].set_at(default_value, extruder_id);
+            } else {
+                default_value = values[0].get_at(extruder_id);
+            }
+            if (values[1].size() <= extruder_id) {
+                assert(values[1].size() == extruder_id);
+                values[1].set_at(default_value, extruder_id);
+            } else {
+                default_value = values[1].get_at(extruder_id);
+            }
+            if (values[2].size() <= extruder_id) {
+                assert(values[2].size() == extruder_id);
+                values[2].set_at(default_value, extruder_id);
+            } else {
+                default_value = values[2].get_at(extruder_id);
+            }
+            if (values[3].size() <= extruder_id) {
+                assert(values[3].size() == extruder_id);
+                values[3].set_at(default_value, extruder_id);
+            }
+        }
         // while there is a value
-        assert(enable_dynamic_fan_speeds.size() == values[0].size());
-        assert(values[0].size() == values[1].size());
-        assert(values[0].size() == values[2].size());
-        assert(values[0].size() == values[3].size());
         for(int idx = 0 ;idx < enable_dynamic_fan_speeds.size(); ++idx) {
             // extract values
             Pointfs graph_curve;
@@ -9226,11 +9269,31 @@ std::map<std::string,std::string> PrintConfigDef::from_prusa(t_config_option_key
             output["brim_ears"] = "1";
         }
     }
-    if ("support_material_contact_distance" == 0) {
-        output["support_material_contact_distance_type"] = "none";
+    if ("thick_bridges" == opt_key) {
+        opt_key = "bridge_type";
+        if (value == "1") {
+            value = "nozzle";
+            output["bridge_overlap_min"] = "80%";
+            output["bridge_overlap"] = "95%";
+        } else {
+            value = "flow";
+            output["bridge_overlap_min"] = "60%";
+            output["bridge_overlap"] = "75%";
+        }
+    }
+    if ("support_material_contact_distance" == opt_key) {
+        if ("0" == value) {
+            output["support_material_contact_distance_type"] = "none";
+        } else {
+            output["support_material_contact_distance_type"] = "plane";
+        }
     }
     if (opt_key == "seam_position") {
         if ("cost" == value ) { // eqauls to "near" == value || "nearest" == value
+            output["seam_angle_cost"] = "50%";
+            output["seam_travel_cost"] = "50%";
+        } else if ("nearest" == value) {
+            value = "cost";
             output["seam_angle_cost"] = "50%";
             output["seam_travel_cost"] = "50%";
         }
@@ -9244,7 +9307,7 @@ std::map<std::string,std::string> PrintConfigDef::from_prusa(t_config_option_key
     if ("first_layer_height" == opt_key) {
         if (!value.empty() && value.back() == '%') {
             // A first_layer_height isn't a % of layer_height but from nozzle_diameter now!
-            // can't really convert right now, so put it at a safe value liek 50%.
+            // can't really convert right now, so put it at a safe value like 50%.
             value = "50%";
         }
     }
@@ -9269,9 +9332,15 @@ std::map<std::string,std::string> PrintConfigDef::from_prusa(t_config_option_key
         value = "rectilinear";
     }
     if ("fan_always_on" == opt_key) {
+        opt_key = "";
         //min_fan_speed is already converted to default_fan_speed, just has to deactivate it if not always_on
-        if (value != "1")
-            output["default_fan_speed"] = "0";
+        if (value != "1") {
+            if (all_conf.option("default_fan_speed")) {
+                output["default_fan_speed"] = std::string("!") + all_conf.option("default_fan_speed")->serialize();
+            } else {
+                output["default_fan_speed"] = "!0";
+            }
+        }
     }
     if ("bridge_angle" == opt_key && "0" == value) {
         value = "!0";
@@ -9335,7 +9404,9 @@ std::map<std::string,std::string> PrintConfigDef::from_prusa(t_config_option_key
          {"{temperature[initial_extruder]}", "{temperature[initial_extruder]+extruder_temperature_offset[initial_extruder]}"},
          {"[first_layer_temperature]", "{first_layer_temperature+extruder_temperature_offset}"},
          {"{first_layer_temperature}", "{first_layer_temperature+extruder_temperature_offset}"},
-         {"{first_layer_temperature[initial_extruder]}", "{first_layer_temperature[initial_extruder]+extruder_temperature_offset[initial_extruder]}"}};
+         {"{first_layer_temperature[initial_extruder]}", "{first_layer_temperature[initial_extruder]+extruder_temperature_offset[initial_extruder]}"},
+         {"!is_nil(", "is_enabled("},
+         {"is_nil(", "!is_enabled("}};
 
     static const std::set<t_config_option_key> custom_gcode_keys =
         {"template_custom_gcode", "toolchange_gcode", "before_layer_gcode",
@@ -9445,7 +9516,7 @@ void _deserialize_maybe_from_prusa(const std::map<t_config_option_key, std::stri
                     unknown_keys[key] = {key, opt_value/*should be old value, before handle_legacy*/}; 
                 } else {
                     config.set_deserialize(opt_key, opt_value, config_substitutions);
-                    if (config_substitutions.rule == ForwardCompatibilitySubstitutionRule::Enable && settings.at(key) != opt_value) {
+                    if (auto it = settings.find(key); config_substitutions.rule == ForwardCompatibilitySubstitutionRule::Enable && it != settings.end() && it->second != opt_value) {
                         const ConfigOptionDef *optdef = def->get(opt_key);
                         if (optdef != nullptr) {
                             ConfigSubstitution substitution(optdef, settings.at(key), ConfigOptionUniquePtr(config.option(opt_key)->clone()));
@@ -10069,16 +10140,13 @@ std::map<std::string, std::string> PrintConfigDef::to_prusa(t_config_option_key&
     }
     if ("default_fan_speed" == opt_key) {
         if (!value.empty() && value.front() == '!') {
-            value = "1";
-        }
-        if (value == "0") {
-            opt_key = "min_fan_speed";
-            value = std::to_string(all_conf.option("fan_printer_min_speed")->get_float());
             new_entries["fan_always_on"] = "0";
         } else {
-            opt_key = "min_fan_speed";
             new_entries["fan_always_on"] = "1";
         }
+        opt_key = "min_fan_speed";
+        value = std::to_string(std::max(all_conf.option("fan_printer_min_speed")->get_float(),
+                                        all_conf.option("default_fan_speed")->get_float()));
     }
     if ("bridge_fan_speed" == opt_key) {
         if (!value.empty() && value.front() == '!') {
