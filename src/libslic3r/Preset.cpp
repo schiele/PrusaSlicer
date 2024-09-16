@@ -137,14 +137,14 @@ VendorProfile VendorProfile::from_ini(const ptree &tree, const boost::filesystem
     std::vector<std::string> technologies;
     if (Slic3r::unescape_strings_cstyle(technologies_field, technologies) && !technologies.empty()) {
         for (const std::string &technology : technologies) {
-            if (technology == "FFF")
-                res.technologies.push_back(PrinterTechnology::ptFFF);
-            else if (technology == "SLA")
-                res.technologies.push_back(PrinterTechnology::ptSLA);
-            else if (technology == "SLS")
-                res.technologies.push_back(PrinterTechnology::ptSLS);
-            else
-                BOOST_LOG_TRIVIAL(error) << boost::format("Vendor bundle: `%1%`: Malformed technologies field: `%2%`") % id % technologies_field;
+            PrinterTechnology tech = parse_printer_technology(technology);
+            if (tech != ptUnknown) {
+                res.technologies.push_back(tech);
+            } else {
+                BOOST_LOG_TRIVIAL(error)
+                    << boost::format("Vendor bundle: `%1%`: Malformed technologies field: `%2%`") % id %
+                        technologies_field;
+            }
         }
     } else {
         //default to FFF if not present
