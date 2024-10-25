@@ -44,7 +44,7 @@ case "$*" in
 esac
 mkdir -p "$DIR/$DDIR"
 cd "$DIR/$DDIR"
-cmake .. $DEPFLAGS -DDEP_WX_GTK3=ON -DDEP_DOWNLOAD_DIR="$DIR/deps/download"
+cmake .. $DEPFLAGS -DDEP_WX_GTK3=ON -DDEP_DOWNLOAD_DIR="$DIR/deps/download" -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 make -j $(nproc)
 mkdir -p "$DIR/$BDIR"
 cd "$DIR/$BDIR"
@@ -53,6 +53,6 @@ cmake .. -DSLIC3R_STATIC=1 $BLDFLAGS \
 	-DCMAKE_PREFIX_PATH="$DIR/$DDIR/destdir/usr/local" \
 	-DCMAKE_INSTALL_PREFIX=~/tools/orcaslicer/$BDIR \
 	-DBBL_RELEASE_TO_PUBLIC=1 -DBBL_INTERNAL_TESTING=0 \
-	-DORCA_TOOLS=ON
+	-DORCA_TOOLS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 make -j $(nproc)
 make install$STRIP
