@@ -42,13 +42,14 @@ case "$*" in
 esac
 mkdir -p "$DIR/$DDIR"
 cd "$DIR/$DDIR"
-cmake .. $DEPFLAGS -DDEP_WX_GTK3=ON -DDEP_DOWNLOAD_DIR="$DIR/deps/download"
+cmake .. $DEPFLAGS -DDEP_WX_GTK3=ON -DDEP_DOWNLOAD_DIR="$DIR/deps/download" -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 make -j $(nproc)
 mkdir -p "$DIR/$BDIR"
 cd "$DIR/$BDIR"
 cmake .. -DSLIC3R_STATIC=1 $BLDFLAGS \
 	-DSLIC3R_GTK=3 -DSLIC3R_PCH=OFF \
 	-DCMAKE_PREFIX_PATH="$DIR/$DDIR/destdir/usr/local" \
-	-DCMAKE_INSTALL_PREFIX=~/tools/prusaslicer/$BDIR
+	-DCMAKE_INSTALL_PREFIX=~/tools/prusaslicer/$BDIR \
+	-DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 make -j $(nproc)
 make install$STRIP
