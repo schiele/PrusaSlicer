@@ -1565,6 +1565,7 @@ bool PrintObject::invalidate_state_by_config_options(
                 || opt_key == "first_layer_min_speed"
                 || opt_key == "first_layer_speed"
                 || opt_key == "first_layer_speed_over_raft"
+                || opt_key == "first_layer_strong_start"
                 || opt_key == "gap_fill_acceleration"
                 || opt_key == "gap_fill_flow_match_perimeter"
                 || opt_key == "gap_fill_speed"

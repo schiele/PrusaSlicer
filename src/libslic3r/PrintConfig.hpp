@@ -765,6 +765,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBool,                 first_layer_size_compensation_no_collapse))
     ((ConfigOptionFloatOrPercent,       first_layer_speed))
     ((ConfigOptionFloatOrPercent,       first_layer_speed_over_raft))
+    ((ConfigOptionPercent,              first_layer_strong_start))
     ((ConfigOptionFloat,                hole_size_compensation))
     ((ConfigOptionFloat,                hole_size_threshold))
     //((ConfigOptionBool,                 infill_only_where_needed))

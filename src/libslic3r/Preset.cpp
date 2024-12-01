@@ -721,6 +721,7 @@ static std::vector<std::string> s_Preset_print_options {
         "external_infill_margin", "bridged_infill_margin",
         "internal_bridge_expansion",
         "small_area_infill_flow_compensation_model",
+        "first_layer_strong_start",
         // compensation
         "first_layer_size_compensation",
         "first_layer_size_compensation_layers",

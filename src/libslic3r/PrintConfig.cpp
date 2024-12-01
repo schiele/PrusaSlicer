@@ -2605,6 +2605,19 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvancedE | comSuSi;
     def->set_default_value(new ConfigOptionBool(true));
 
+    def = this->add("first_layer_strong_start", coPercent);
+    def->label = L("First layer squished start point");
+    def->full_label = L("First layer squished start point");
+    def->sidetext = L("%");
+    def->category = OptionCategory::width;
+    def->tooltip = L("When on the first layer, to be sure the start of an extrusion attach to the build plate, the extrude will first extrude on place before to start moving."
+        " The amount extruded is deduced from the next extrusions (they will still extrude at 10%)."
+        " 100% is equivalent of the amount extruded for an extrusion of 'nozzle diameter' width over the distance of 'nozzle diameter'."
+    );
+    def->min = 0;
+    def->mode = comExpert | comSuSi;
+    def->set_default_value(new ConfigOptionPercent(0));
+
     def = this->add("fill_smooth_width", coFloatOrPercent);
     def->label = L("Width");
     def->full_label = L("Ironing width");
@@ -9455,6 +9468,7 @@ std::unordered_set<std::string> prusa_export_to_remove_keys = {
 "first_layer_min_speed",
 "first_layer_size_compensation_layers",
 "first_layer_size_compensation_no_collapse",
+"first_layer_strong_start",
 "gcode_ascii",
 "gcode_command_buffer",
 "gcode_min_length",

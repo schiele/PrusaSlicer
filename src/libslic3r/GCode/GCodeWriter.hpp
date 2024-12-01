@@ -99,6 +99,8 @@ public:
     double      will_lift(int layer_id) const;
     std::string lift(int layer_id);
     std::string unlift();
+    // extrude a bit of filament without moving, then deduce it from the next extrusion.
+    std::string pre_extrude(const double dE, const std::string_view comment = {});
 
     // this 'de' should be too small to print, but should be be accounted for.
     // for exemple, if the retraction miss this ammount, the unretraction mays be a little bit too far (by one unit)
@@ -130,6 +132,9 @@ public:
     static std::string get_default_pause_gcode(const GCodeConfig &config);
     static std::string get_default_color_change_gcode(const GCodeConfig &config);
 
+protected:
+    void _extrude_e(GCodeFormatter &w, double dE);
+
 private:
 	// Extruders are sorted by their ID, so that binary search is possible.
     std::vector<Extruder> m_extruders;
@@ -154,6 +159,7 @@ private:
     double          m_extra_lift = 0;
     // current lift, to remove from m_pos to have the current height.
     double          m_lifted = 0;
+    double          m_pre_extrude = 0;
     Vec3d           m_pos = Vec3d::Zero();
     // cached string representation of x & y & z m_pos
     std::string     m_pos_str_x;

@@ -5490,6 +5490,7 @@ std::string GCodeGenerator::extrude_path(const ExtrusionPath &path, const std::s
     return gcode;
 }
 
+// FIXME: not using the _extrude() function, hence opt-opt of many things like arcs
 std::string GCodeGenerator::extrude_path_3D(const ExtrusionPath3D &path, const std::string_view description, double speed) {
     //path.simplify(SCALED_RESOLUTION);
     ExtrusionPath3D simplifed_path = path;
@@ -6024,9 +6025,10 @@ double GCodeGenerator::_compute_e_per_mm(const ExtrusionPath &path) {
     return e_per_mm;
 }
 
-std::string GCodeGenerator::_extrude(const ExtrusionPath &path, const std::string_view description, double speed) {
+std::string GCodeGenerator::_extrude(ExtrusionPath &path, const std::string_view description, double speed) {
 
     std::string descr = description.empty() ? gcode_extrusion_role_to_string(extrusion_role_to_gcode_extrusion_role(path.role())) : std::string(description);
+    bool has_travel = !(last_pos_defined() && last_pos().coincides_with_epsilon(path.first_point()));
     std::string gcode = this->_before_extrude(path, descr, speed);
 
     std::function<void(std::string&, const Line&, double, const std::string&)> func = [this](std::string& gcode, const Line& line, double e_per_mm, const std::string& comment) {
@@ -6039,6 +6041,36 @@ std::string GCodeGenerator::_extrude(const ExtrusionPath &path, const std::strin
 
     // calculate extrusion length per distance unit
     double e_per_mm = _compute_e_per_mm(path);
+
+    // first layer: put point to anchor the start
+    if (this->m_layer->bottom_z() < EPSILON && config().first_layer_strong_start.value > 0) {
+        double nozzle_diameter = EXTRUDER_CONFIG_WITH_DEFAULT(nozzle_diameter, 0.4);
+        Flow flow = Flow::new_from_width(nozzle_diameter, nozzle_diameter, path.attributes().height, 1);
+        ExtrusionPath fake_path(ExtrusionAttributes{ExtrusionRole::ExternalPerimeter, flow});
+        double my_e_per_mm = _compute_e_per_mm(fake_path);
+        my_e_per_mm *= this->config().first_layer_flow_ratio.get_abs_value(1);
+        my_e_per_mm *= EXTRUDER_CONFIG_WITH_DEFAULT(filament_first_layer_flow_ratio, 100) * 0.01;
+        double e_value = my_e_per_mm * config().first_layer_strong_start.get_abs_value(nozzle_diameter);
+        // Dicretize the path to have aonly small segments (at the start), to absorb the alsck of extrusion.
+        // ensure a point at 5% more than the real place, to have some slack.
+        coordf_t distance_needed = scale_d(1.15 * e_value / e_per_mm);
+        if (distance_needed * 4 > path.polyline.length()) {
+            coordf_t new_dist = path.polyline.length() / 4;
+            e_value *= new_dist / distance_needed;
+            distance_needed = new_dist;
+        }
+        if (distance_needed > SCALED_EPSILON * 10) {
+            // Use a split to ensure a pont exists at this place.
+            ArcPolyline start, end;
+            path.polyline.split_at(distance_needed, start, end);
+            start.append(end);
+            path.polyline = start;
+            // apply
+            gcode += m_writer.pre_extrude(e_value, "pre-extrude point on first layer");
+        }
+    }
+
+    // extrude alongside the polyline
     ArcPolyline polyline = path.as_polyline();
     if (polyline.size() > 1) {
         std::string comment = m_config.gcode_comments ? descr : "";
