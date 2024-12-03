@@ -537,17 +537,6 @@ void PrintConfigDef::init_common_params()
     def->mode = comAdvancedE | comPrusa;
     def->set_default_value(new ConfigOptionFloat(200.0));
 
-    def = this->add("slice_closing_radius", coFloat);
-    def->label = L("Slice gap closing radius");
-    def->category = OptionCategory::slicing;
-    def->tooltip = L("Cracks smaller than 2x gap closing radius are being filled during the triangle mesh slicing. "
-        "The gap closing operation may reduce the final print resolution, therefore it is advisable to keep the value reasonably low.");
-    def->sidetext = L("mm");
-    def->min = 0;
-    def->precision = 8;
-    def->mode = comAdvancedE | comPrusa;
-    def->set_default_value(new ConfigOptionFloat(0.049));
-
     def = this->add("print_host", coString);
     def->label = L("Hostname, IP or URL");
     def->category = OptionCategory::general;
@@ -5444,6 +5433,46 @@ void PrintConfigDef::init_fff_params()
     def->mode = comSimpleAE | comPrusa;
     def->set_default_value(new ConfigOptionInt(1));
 
+    def = this->add("slice_closing_radius", coFloat);
+    def->label = L("Slice gap closing radius");
+    def->category = OptionCategory::slicing;
+    def->tooltip = L("Cracks smaller than 2x gap closing radius are being filled during the triangle mesh slicing. "
+        "The gap closing operation may reduce the final print resolution, therefore it is advisable to keep the value reasonably low.");
+    def->sidetext = L("mm");
+    def->min = 0;
+    def->precision = 8;
+    def->mode = comAdvancedE | comPrusa;
+    def->set_default_value(new ConfigOptionFloat(0.049));
+
+    def = this->add("slice_merge_dent", coFloatOrPercent);
+    def->label = L("Merge mmu with a dent");
+    def->full_label = L("Slice mmu merge: dent");
+    def->category = OptionCategory::slicing;
+    def->tooltip = L("When you have in an object multiple parts,"
+        " the last one in the list has the highest priority and will be used where it intersects other parts."
+        " This setting only works when the two parts are each assign to a different extruder."
+        " This setting allow the other parts to keep a little bit of their former surface by a certain amount."
+        "\nCan be a mm or a % of the exernal perimeter width");
+    def->sidetext = L("mm or %");
+    def->min = 0;
+    def->mode = comAdvancedE | comSuSi;
+    def->set_default_value(new ConfigOptionFloatOrPercent(0, false));
+
+    def = this->add("slice_merge_min_width", coFloatOrPercent);
+    def->label = L("Merge mmu with minimum width");
+    def->full_label = L("Slice mmu merge: min width");
+    def->category = OptionCategory::slicing;
+    def->tooltip = L("When you have in an object multiple parts,"
+        " the last one in the list has the highest priority and will be used where it intersects other parts."
+        " This setting only works when the two parts are each assign to a different extruder."
+        " This setting allow to collapse first thin areas of the part before removing it from the other parts,"
+        " as doing this can create holes without anything printed inside, as it's too thin."
+        "\nCan be a mm or a % of the exernal perimeter width");
+    def->sidetext = L("mm or %");
+    def->min = 0;
+    def->mode = comAdvancedE | comSuSi;
+    def->set_default_value(new ConfigOptionFloatOrPercent(120, true));
+
     def = this->add("slicing_mode", coEnum);
     def->label = L("Slicing Mode");
     def->category = OptionCategory::slicing;
@@ -9583,6 +9612,8 @@ std::unordered_set<std::string> prusa_export_to_remove_keys = {
 "seam_notch_outer",
 "seam_travel_cost",
 "seam_visibility",
+"slice_merge_dent",
+"slice_merge_min_width",
 "skirt_brim",
 "skirt_distance_from_brim",
 "skirt_extrusion_width",

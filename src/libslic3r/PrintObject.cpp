@@ -1366,6 +1366,8 @@ bool PrintObject::invalidate_state_by_config_options(
                 || opt_key == "raft_layer_height"
                 || opt_key == "perimeter_generator"
                 || opt_key == "slice_closing_radius"
+                || opt_key == "slice_merge_dent"
+                || opt_key == "slice_merge_min_width"
                 || opt_key == "slicing_mode"
                 || opt_key == "support_material_contact_distance_type"
                 || opt_key == "support_material_contact_distance"

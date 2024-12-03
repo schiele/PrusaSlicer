@@ -142,8 +142,11 @@ group:Filtering
 	setting:resolution
 	setting:resolution_internal
 	setting:model_precision
-	setting:slice_closing_radius
 	setting:bridge_precision
+group:Part merging
+	setting:slice_closing_radius
+	setting:slice_merge_min_width
+	setting:slice_merge_dent
 # gcode_resolution
 group:Modifying slices
 	line:Curve smoothing

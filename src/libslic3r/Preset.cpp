@@ -475,6 +475,8 @@ static std::vector<std::string> s_Preset_print_options {
         "perimeters_hole",
         "spiral_vase",
         "slice_closing_radius",
+        "slice_merge_dent",
+        "slice_merge_min_width",
         "slicing_mode",
         "top_solid_layers",
         "top_solid_min_thickness",

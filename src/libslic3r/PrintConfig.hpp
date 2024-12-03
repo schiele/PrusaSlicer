@@ -994,6 +994,8 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,                print_retract_length))
     ((ConfigOptionFloat,                print_retract_lift))
     ((ConfigOptionString,               region_gcode))
+    ((ConfigOptionFloatOrPercent,       slice_merge_dent))
+    ((ConfigOptionFloatOrPercent,       slice_merge_min_width))
     ((ConfigOptionGraph,                small_area_infill_flow_compensation_model))
     ((ConfigOptionFloatOrPercent,       small_perimeter_speed))
     ((ConfigOptionFloatOrPercent,       small_perimeter_min_length))
