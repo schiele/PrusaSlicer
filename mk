@@ -1,4 +1,6 @@
 #!/bin/bash
+#PAR=$(nproc)
+PAR=8
 set -eux
 cd $(dirname $0)
 DIR="$PWD"
@@ -45,7 +47,7 @@ esac
 mkdir -p "$DIR/$DDIR"
 cd "$DIR/$DDIR"
 cmake .. $DEPFLAGS -DDEP_WX_GTK3=ON -DDEP_DOWNLOAD_DIR="$DIR/deps/download" -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-make -j $(nproc)
+make -j $PAR
 mkdir -p "$DIR/$BDIR"
 cd "$DIR/$BDIR"
 cmake .. -DSLIC3R_STATIC=1 $BLDFLAGS \
@@ -54,5 +56,5 @@ cmake .. -DSLIC3R_STATIC=1 $BLDFLAGS \
 	-DCMAKE_INSTALL_PREFIX=~/tools/orcaslicer/$BDIR \
 	-DBBL_RELEASE_TO_PUBLIC=1 -DBBL_INTERNAL_TESTING=0 \
 	-DORCA_TOOLS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-make -j $(nproc)
+make -j $PAR
 make install$STRIP
