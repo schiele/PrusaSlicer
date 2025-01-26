@@ -135,6 +135,7 @@
 #include "Gizmos/GLGizmoSVG.hpp" // Drop SVG file
 #include "Gizmos/GLGizmoCut.hpp"
 #include "Widgets/CheckBox.hpp"
+#include "libslic3r/Format/HFP.hpp"
 
 #ifdef __APPLE__
 #include "Gizmos/GLGizmosManager.hpp"
@@ -3704,10 +3705,12 @@ unsigned int Plater::priv::update_background_process(bool force_validation, bool
         } else if (get_app_config()->get("auto_switch_preview") == "platter" || main_frame->selected_tab() < MainFrame::ETabType::LastPlater) {
             if (this->preview->can_display_gcode())
                 main_frame->select_tab(MainFrame::ETabType::PlaterGcode, true);
-            else if (this->preview->can_display_volume() && background_process.running()) // don't switch to plater3D if you modify a gcode settign and you don't have background processing
+            else if (this->preview->can_display_volume() &&
+                    // don't switch to plater3D if you modify a gcode setting and you don't have background processing
+                    background_process.running())
                 main_frame->select_tab(MainFrame::ETabType::PlaterPreview, true);
-            else
-                main_frame->select_tab(MainFrame::ETabType::Plater3D, true);
+            //else
+            //    main_frame->select_tab(MainFrame::ETabType::Plater3D, true);
         }
     }
     return return_state;
@@ -5685,8 +5688,72 @@ void Plater::add_model(bool imperial_units/* = false*/)
     }
 
     Plater::TakeSnapshot snapshot(this, snapshot_label);
-    if (! load_files(paths, true, false, true, imperial_units).empty())
+    if (!load_files(paths, true, false, true, imperial_units).empty())
         wxGetApp().mainframe->update_title();
+}
+
+void Plater::load_model_hueforge(const std::string &path) {
+    boost::filesystem::path hfp_path(path);
+
+    if (path.empty()) {
+        wxString input_file;
+        wxGetApp().import_model_hueforge(this, input_file);
+        if (input_file.empty()) {
+            return;
+        }
+        hfp_path = boost::filesystem::path(input_file.ToStdString());
+    }
+
+    if (hfp_path.extension() == ".hfp") {
+        HFP hueforge;
+
+         bool hfp_loaded = hueforge.load_hfp(hfp_path.string());
+
+        if (hfp_loaded) {
+            // is the stl already loaded?
+            bool model_found = false;
+            std::vector<size_t> objs_idx;
+            boost::filesystem::path stl_path(hueforge.get_stl_path());
+            for (size_t object_idx = 0; !model_found && object_idx < this->model().objects.size(); object_idx++) {
+                if (this->model().objects[object_idx]->name == stl_path.filename()) {
+                    objs_idx = {object_idx};
+                    model_found = true;
+                }
+            }
+            if (!model_found) {
+                // not loaded, create new project and load it.
+                if (!this->new_project(hfp_path.stem().string()))
+                    return;
+
+                objs_idx = this->load_files(std::vector<std::string>{hueforge.get_stl_path()},
+                                                                true, false, false, false);
+            }
+            DynamicPrintConfig new_print_config = *wxGetApp().get_tab(Preset::TYPE_FFF_PRINT)->get_config();
+
+            hueforge.update_config(new_print_config);
+            hueforge.set_custom_gcode_z(p->model);
+
+            // update everything
+            wxGetApp().get_tab(Preset::TYPE_FFF_PRINT)->load_config(new_print_config);
+            this->on_config_change(new_print_config);
+            this->changed_objects(objs_idx);
+            ObjectList *obj = wxGetApp().obj_list();
+            obj->update_after_undo_redo();
+            wxGetApp().get_tab(Preset::TYPE_FFF_PRINT)->reload_config();
+        } else {
+            {
+                MessageDialog(this, _L("Loading of a hpf file failed."),
+                              wxString(GCODEVIEWER_APP_NAME) + " - " + _L("Error while loading .hfp file"),
+                              wxOK | wxICON_WARNING | wxCENTRE)
+                    .ShowModal();
+            }
+        }
+    } else {
+        MessageDialog(this, _L("Unknown file format. Input file must have .hfp extension."),
+                      wxString(GCODEVIEWER_APP_NAME) + " - " + _L("Error while loading .hfp file"),
+                      wxOK | wxICON_WARNING | wxCENTRE)
+            .ShowModal();
+    }
 }
 
 void Plater::import_zip_archive()
@@ -6489,6 +6556,7 @@ bool Plater::load_files(const wxArrayString& filenames, bool delete_after_load/*
 {
     const std::regex pattern_drop(".*[.](stl|obj|amf|3mf|prusa|step|stp|zip)", std::regex::icase);
     const std::regex pattern_gcode_drop(".*[.](gcode|g|bgcode|bgc)", std::regex::icase);
+    const std::regex pattern_hfp(".*[.](hfp)", std::regex::icase);
 
     std::vector<fs::path> paths;
 
@@ -6516,7 +6584,7 @@ bool Plater::load_files(const wxArrayString& filenames, bool delete_after_load/*
     // editor section
     for (const auto& filename : filenames) {
         fs::path path(into_path(filename));
-        if (std::regex_match(path.string(), pattern_drop))
+        if (std::regex_match(path.string(), pattern_drop) || std::regex_match(path.string(), pattern_hfp))
             paths.push_back(std::move(path));
         else if (std::regex_match(path.string(), pattern_gcode_drop))
             start_new_gcodeviewer(&filename);
@@ -6589,7 +6657,6 @@ bool Plater::load_files(const wxArrayString& filenames, bool delete_after_load/*
             return true;
         } else if (boost::algorithm::iends_with(filename, ".zip")) {
             return preview_zip_archive(*it);
-            
         }
     }
 
@@ -6611,7 +6678,24 @@ bool Plater::load_files(const wxArrayString& filenames, bool delete_after_load/*
         }
     }
     Plater::TakeSnapshot snapshot(this, snapshot_label);
+    
+    // don't load hfp project as stl
+    std::vector<fs::path> model_modifiers;
+    for (auto it = paths.begin(); it != paths.end();) {
+        if ((*it).extension() == ".hfp") {
+            model_modifiers.push_back(*it);
+            it = paths.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
     load_files(paths, true, true, true, false);
+
+    // load hfp project (modify stl just loaded ?)
+    for (const fs::path &path : model_modifiers) {
+        this->load_model_hueforge(path.string());
+    }
 
     return true;
 }
@@ -6636,7 +6720,6 @@ void Plater::set_force_preview(Preview::ForceState force) {
 Preview::ForceState Plater::get_force_preview() {
     return p->preview->get_force_state();
 }
-
 
 bool Plater::is_preview_shown() const { return p->is_preview_shown(); }
 bool Plater::is_preview_loaded() const { return p->is_preview_loaded(); }
@@ -8479,6 +8562,29 @@ void Plater::changed_object(int obj_idx)
     if (object == nullptr)
         return;
     changed_object(*object);
+}
+
+void Plater::changed_all_objects() {
+    for (ModelObject *object : p->model.objects) {
+        if (object->min_z() >= SINKING_Z_THRESHOLD) {
+            // re - align to Z = 0
+            object->ensure_on_bed();
+        }
+    }
+    if (this->p->printer_technology == ptSLA) {
+        // Update the SLAPrint from the current Model, so that the reload_scene()
+        // pulls the correct data, update the 3D scene.
+        this->p->update_restart_background_process(true, false);
+    }
+    else {
+        p->view3D->reload_scene(false);
+        for (size_t obj_idx = 0; obj_idx < p->model.objects.size(); obj_idx++) {
+            p->view3D->get_canvas3d()->update_instance_printable_state_for_object(obj_idx);
+        }
+    }
+
+    // update print
+    this->p->schedule_background_process();
 }
 
 void Plater::changed_objects(const std::vector<size_t>& object_idxs)

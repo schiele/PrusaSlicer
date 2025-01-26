@@ -190,6 +190,7 @@ public:
     void load_project();
     void load_project(const wxString& filename);
     void add_model(bool imperial_units = false);
+    void load_model_hueforge(const std::string& path = "");
     void import_zip_archive();
     void import_sl1_archive();
     void extract_config_from_project();
@@ -317,6 +318,7 @@ public:
     void changed_object(ModelObject &object);
     void changed_object(int obj_idx);
     void changed_objects(const std::vector<size_t>& object_idxs);
+    void changed_all_objects();
     void schedule_background_process(bool schedule = true);
     bool is_background_process_update_scheduled() const;
     void suppress_background_process(const bool stop_background_process) ;

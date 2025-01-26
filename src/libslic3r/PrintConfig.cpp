@@ -12081,7 +12081,7 @@ static std::map<t_custom_gcode_key, t_config_option_keys> s_CustomGcodeSpecificP
     {"feature_gcode",           {"layer_num", "layer_z", "max_layer_z", "previous_extrusion_role", "next_extrusion_role", /*deprecated*/"extrusion_role", "last_extrusion_role" /*deprecated*/}},
     {"toolchange_gcode",        {"layer_num", "layer_z", "max_layer_z", "previous_extruder", "next_extruder", "toolchange_z"}},
     {"color_change_gcode",      {"color_change_extruder", "next_color", "next_colour"}},
-    {"pause_print_gcode",       {"color_change_extruder"}},
+    {"pause_print_gcode",       {"color_change_extruder", "next_color", "next_colour"}},
     {"between_objects_gcode",   {"layer_num", "layer_z"}},
 };
 
@@ -12133,11 +12133,16 @@ CustomGcodeSpecificConfigDef::CustomGcodeSpecificConfigDef()
     // TRN: This is a label in custom g-code editor dialog, belonging to color_change_extruder. Denoted index of the extruder for which color change is performed.
     def->label = L("Color change extruder");
     def->tooltip = L("Index of the extruder for which color change will be performed. The index is zero based (first extruder has index 0).");
-
+    
     def = this->add("next_color", coString);
     // TRN: This is a label in custom g-code editor dialog, belonging to color_change_extruder. Denoted index of the extruder for which color change is performed.
     def->label = L("Next color");
     def->tooltip = L("Next color to display when a color change is performed, in #ffffff format.");
+
+    def = this->add("next_colour", coString);
+    // TRN: This is a label in custom g-code editor dialog, belonging to color_change_extruder. Denoted index of the extruder for which color change is performed.
+    def->label = L("Next colour");
+    def->tooltip = L("Like next_color, but for british people.\nNext color to display when a color change is performed, in #ffffff format.");
 
     def = this->add("previous_extrusion_role", coString);
     def->label = L("Previous extrusion role");
