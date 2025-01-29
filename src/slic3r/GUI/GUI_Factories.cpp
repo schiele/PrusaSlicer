@@ -1223,8 +1223,8 @@ void MenuFactory::append_menu_item_edit_text(wxMenu *menu)
     auto open_emboss = [](const wxCommandEvent &) {
         GLGizmosManager &mng = plater()->canvas3D()->get_gizmos_manager();
         if (mng.get_current_type() == GLGizmosManager::Emboss)
-            mng.open_gizmo(GLGizmosManager::Emboss); // close() and reopen - move to be visible
-        mng.open_gizmo(GLGizmosManager::Emboss);
+            mng.open_gizmo(GLGizmosManager::Emboss, false); // close() and reopen - move to be visible
+        mng.open_gizmo(GLGizmosManager::Emboss, true);
     };
     append_menu_item(menu, wxID_ANY, name, description, open_emboss, icon, nullptr, can_edit_text, m_parent);
 }
@@ -1260,8 +1260,8 @@ void MenuFactory::append_menu_item_edit_svg(wxMenu *menu)
     auto open_svg = [](const wxCommandEvent &) {
         GLGizmosManager &mng = plater()->canvas3D()->get_gizmos_manager();
         if (mng.get_current_type() == GLGizmosManager::Svg)
-            mng.open_gizmo(GLGizmosManager::Svg); // close() and reopen - move to be visible
-        mng.open_gizmo(GLGizmosManager::Svg);
+            mng.open_gizmo(GLGizmosManager::Svg, false); // close() and reopen - move to be visible
+        mng.open_gizmo(GLGizmosManager::Svg, true);
     };
     append_menu_item(menu, wxID_ANY, name, description, open_svg, icon, nullptr, can_edit_svg, m_parent);
 }

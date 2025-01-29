@@ -388,7 +388,7 @@ void CreateObjectJob::finalize(bool canceled, std::exception_ptr &eptr)
     GLCanvas3D      *canvas  = plater->canvas3D();
     GLGizmosManager &manager = canvas->get_gizmos_manager();
     if (manager.get_current_type() != m_input.gizmo)
-        manager.open_gizmo(m_input.gizmo);
+        manager.open_gizmo(m_input.gizmo, false);
 
     // redraw scene
     canvas->reload_scene(true);
@@ -1155,7 +1155,7 @@ void create_volume(TriangleMesh                    &&mesh,
     // Now is valid text volume selected open emboss gizmo
     GLGizmosManager &manager = canvas->get_gizmos_manager();
     if (manager.get_current_type() != gizmo)
-        manager.open_gizmo(gizmo);
+        manager.open_gizmo(gizmo, false);
 
     // update model and redraw scene
     //canvas->reload_scene(true);

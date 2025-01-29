@@ -18,6 +18,7 @@
 #include "GalleryDialog.hpp"
 #include "MainFrame.hpp"
 #include "slic3r/Utils/UndoRedo.hpp"
+#include "Gizmos/GLGizmosManager.hpp"
 #include "Gizmos/GLGizmoCut.hpp"
 #include "Gizmos/GLGizmoScale.hpp"
 
@@ -2742,7 +2743,7 @@ void ObjectList::part_selection_changed()
                                                             info_type == InfoItemType::CustomSeam       ? GLGizmosManager::EType::Seam :
                                                             GLGizmosManager::EType::MmuSegmentation;
                         if (gizmos_mgr.get_current_type() != gizmo_type)
-                            gizmos_mgr.open_gizmo(gizmo_type);
+                            gizmos_mgr.open_gizmo(gizmo_type, false);
                         break;
                     }
                     case InfoItemType::Sinking:
@@ -4739,9 +4740,9 @@ void ObjectList::simplify()
 
     if (gizmos_mgr.get_current_type() == GLGizmosManager::Simplify) {
         // close first
-        gizmos_mgr.open_gizmo(GLGizmosManager::EType::Simplify);
+        gizmos_mgr.open_gizmo(GLGizmosManager::EType::Simplify, false);
     }
-    gizmos_mgr.open_gizmo(GLGizmosManager::EType::Simplify);
+    gizmos_mgr.open_gizmo(GLGizmosManager::EType::Simplify, true);
 }
 
 void ObjectList::update_item_error_icon(const int obj_idx, const int vol_idx) const 

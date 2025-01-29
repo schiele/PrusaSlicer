@@ -180,20 +180,20 @@ void GLGizmosManager::reset_all_states()
     const EType current = get_current_type();
     if (current != Undefined)
         // close any open gizmo
-        open_gizmo(current);
+        open_gizmo(current, false);
 
     activate_gizmo(Undefined);
     m_hover = Undefined;
 }
 
-bool GLGizmosManager::open_gizmo(EType type)
+bool GLGizmosManager::open_gizmo(EType type, bool is_action)
 {
     int idx = static_cast<int>(type);
 
     // re-open same type cause closing
     if (m_current == type) type = Undefined;
 
-    if (m_gizmos[idx]->is_actionable()) {
+    if (is_action && m_gizmos[idx]->is_actionable()) {
         m_gizmos[idx]->trigger_action();
         // remove update data into gizmo itself
         update_data();
@@ -275,7 +275,7 @@ bool GLGizmosManager::handle_shortcut(int key)
         return false;
 
     EType gizmo_type = EType(it - m_gizmos.begin());
-    return open_gizmo(gizmo_type);
+    return open_gizmo(gizmo_type, true);
 }
 
 bool GLGizmosManager::is_dragging() const
@@ -431,7 +431,7 @@ bool GLGizmosManager::gizmos_toolbar_on_mouse(const wxMouseEvent &mouse_event) {
         // mouse is above toolbar
         if (mouse_event.LeftDown() || mouse_event.LeftDClick()) {
             mc.left = true;
-            open_gizmo(gizmo);
+            open_gizmo(gizmo, true);
             return true;
         }
         else if (mouse_event.RightDown()) {

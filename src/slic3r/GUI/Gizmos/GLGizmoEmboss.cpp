@@ -347,18 +347,18 @@ bool GLGizmoEmboss::create_volume(ModelVolumeType volume_type)
 
 void GLGizmoEmboss::on_shortcut_key() {
     set_volume_by_selection();
-    if (m_volume == nullptr) {
-        // No volume to select from selection so create volume.
-        // NOTE: After finish job for creation emboss Text volume,
-        // GLGizmoEmboss will be opened
-        create_volume(ModelVolumeType::MODEL_PART);
-    }
-    else {
+    //if (m_volume == nullptr) {
+    //    // No volume to select from selection so create volume.
+    //    // NOTE: After finish job for creation emboss Text volume,
+    //    // GLGizmoEmboss will be opened
+    //    create_volume(ModelVolumeType::MODEL_PART);
+    //}
+    //else {
         // shortcut is pressed when text is selected soo start edit it.
         auto& mng = m_parent.get_gizmos_manager();
         if (mng.get_current_type() != GLGizmosManager::Emboss)
-            mng.open_gizmo(GLGizmosManager::Emboss);
-    }
+            mng.open_gizmo(GLGizmosManager::Emboss, true);
+    //}
 }
 
 bool GLGizmoEmboss::re_emboss(const ModelVolume &text_volume, std::shared_ptr<std::atomic<bool>> job_cancel)
@@ -1161,10 +1161,23 @@ bool GLGizmoEmboss::on_is_activable() const {
 
 bool GLGizmoEmboss::on_is_actionable() const {
     const Selection& selection = m_parent.get_selection();
-    return selection.is_single_full_instance();
+    const GLVolume  *gl_volume = get_selected_gl_volume(selection);
+    if (gl_volume == nullptr) return true;
+    const ModelObjectPtrs &objects = m_parent.get_model()->objects;
+    ModelVolume *volume = get_model_volume(*gl_volume, objects);
+    return (volume == nullptr || selection.is_single_full_instance()) && !selection.is_single_text();
 }
 
-void GLGizmoEmboss::trigger_action() { create_volume(ModelVolumeType::MODEL_PART); }
+void GLGizmoEmboss::trigger_action() {
+    const Selection& selection = m_parent.get_selection();
+    const GLVolume  *gl_volume = get_selected_gl_volume(selection);
+    if (gl_volume) {
+        const ModelObjectPtrs &objects = m_parent.get_model()->objects;
+        ModelVolume *volume = get_model_volume(*gl_volume, objects);
+        assert((volume == nullptr || selection.is_single_full_instance()) && !selection.is_single_text());
+    }
+    create_volume(ModelVolumeType::MODEL_PART);
+}
 
 void GLGizmoEmboss::set_volume_by_selection()
 {
@@ -1375,7 +1388,7 @@ void GLGizmoEmboss::close()
     // close gizmo == open it again
     auto& mng = m_parent.get_gizmos_manager();
     if (mng.get_current_type() == GLGizmosManager::Emboss)
-        mng.open_gizmo(GLGizmosManager::Emboss);
+        mng.open_gizmo(GLGizmosManager::Emboss, false);
 }
 
 void GLGizmoEmboss::draw_window()
@@ -1929,7 +1942,7 @@ void GLGizmoEmboss::draw_model_type()
         // which discard m_volume pointer and set it to nullptr also selection is cleared so gizmo is automaticaly closed
         auto &mng = m_parent.get_gizmos_manager();
         if (mng.get_current_type() != GLGizmosManager::Emboss)
-            mng.open_gizmo(GLGizmosManager::Emboss);
+            mng.open_gizmo(GLGizmosManager::Emboss, false);
         // TODO: select volume back - Ask @Sasa
     }
 }

@@ -2272,7 +2272,7 @@ void GLCanvas3D::deselect_all()
     // close actual opened gizmo before deselection(m_selection.remove_all()) write to undo/redo snapshot
     if (GLGizmosManager::EType current_type = m_gizmos.get_current_type();
         current_type != GLGizmosManager::Undefined)
-        m_gizmos.open_gizmo(current_type);            
+        m_gizmos.open_gizmo(current_type, false);
 
     m_selection.remove_all();
     wxGetApp().obj_manipul()->set_dirty();
@@ -4192,13 +4192,13 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
             if (hover_volume->text_configuration.has_value()) {
                 m_selection.add_volumes(Selection::EMode::Volume, {(unsigned) hover_volume_id});
                 if (type != GLGizmosManager::EType::Emboss)
-                    m_gizmos.open_gizmo(GLGizmosManager::EType::Emboss);            
+                    m_gizmos.open_gizmo(GLGizmosManager::EType::Emboss, false);
                 wxGetApp().obj_list()->update_selections();
                 return;
             } else if (hover_volume->emboss_shape.has_value()) {
                 m_selection.add_volumes(Selection::EMode::Volume, {(unsigned) hover_volume_id});
                 if (type != GLGizmosManager::EType::Svg)
-                    m_gizmos.open_gizmo(GLGizmosManager::EType::Svg);
+                    m_gizmos.open_gizmo(GLGizmosManager::EType::Svg, false);
                 wxGetApp().obj_list()->update_selections();
                 return;
             }

@@ -579,8 +579,8 @@ bool Selection::is_sla_compliant() const
 
 bool Selection::is_single_text() const
 {
-    if (!is_single_volume_or_modifier())
-      return false;
+    //if (!is_single_volume_or_modifier())
+    //  return false;
 
     const GLVolume* gl_volume = (m_volumes->volumes)[*m_list.begin()].get();
     const ModelVolume* model_volume = m_model->objects[gl_volume->object_idx()]->volumes[gl_volume->volume_idx()];
