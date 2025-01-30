@@ -4005,6 +4005,7 @@ void grow_holes_only(std::vector<ExPolygonAsynch> &unmoveable_contours,
                     ok_holes.erase(ok_holes.begin() + idx_hole);
                     idx_hole--;
                     it_contour_candidate_for_fuse = ex_contour_offset.erase(it_contour_candidate_for_fuse);
+                    break; // stop iterating the while, we already fused the hole
                 } else {
                     ++it_contour_candidate_for_fuse;
                 }
