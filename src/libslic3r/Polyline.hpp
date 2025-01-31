@@ -318,7 +318,7 @@ public:
     void append(const Points::const_iterator &begin, const Points::const_iterator &end);
     void append(const ArcPolyline &src);
     void append(ArcPolyline &&src);
-    void clear() { m_path.clear(); }
+    void clear();
     void swap(ArcPolyline &other) { m_path.swap(other.m_path); this->m_only_strait = other.m_only_strait; assert(is_valid()); }
     void reverse() { Geometry::ArcWelder::reverse(m_path); }
     
