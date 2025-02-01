@@ -530,6 +530,16 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig* config)
         toggle_field(el, have_support_material && have_support_interface);
     toggle_field("support_material_synchronize_layers", have_support_soluble);
 
+    // organic suport don't use soem fields, force disable them.
+    if (has_organic_supports) {
+        for (const std::string &key :
+             {"support_material_interface_layer_height", "support_material_bottom_interface_pattern",
+              "support_material_interface_contact_loops", "support_material_with_sheath", "support_material_pattern",
+              "support_material_spacing", "support_material_angle", "support_material_angle_height", "support_material_layer_height",
+              "support_material_bottom_interface_pattern"})
+            toggle_field(key, false);
+    }
+
     toggle_field("perimeter_extrusion_width", have_perimeters || have_brim);
     toggle_field("perimeter_extrusion_spacing", have_perimeters || have_brim);
     toggle_field("perimeter_extrusion_change_odd_layers", have_perimeters || have_brim);
@@ -728,9 +738,6 @@ void ConfigManipulation::toggle_printer_fff_options(DynamicPrintConfig *config, 
     bool is_marlin_flavor = flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware;
     // Disable silent mode for non-marlin firmwares.
     toggle_field("silent_mode", is_marlin_flavor);
-
-    // only allow to disable autoemit_temperature_commands if it's not already disabled by start_gcode_manual
-    toggle_field("autoemit_temperature_commands", !config->get_bool("start_gcode_manual"));
 
     for (size_t i = 0; i < extruder_count; ++i) {
         

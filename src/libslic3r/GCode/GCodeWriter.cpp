@@ -247,49 +247,73 @@ std::string GCodeWriter::set_temperature(const int16_t temperature, bool wait, i
     temp_w_offset += int16_t(get_tool(tool)->temp_offset());
     temp_w_offset = std::max(int16_t(0), std::min(int16_t(2000), temp_w_offset));
 
+    // gcfMakerWare and gcfSailfish can't wait for temp
+    if ((FLAVOR_IS(gcfMakerWare) || FLAVOR_IS(gcfSailfish)))
+        wait = false;
+
     // temp_w_offset has an effective minimum value of 0, so this cast is safe.
-    if (m_last_temperature_with_offset == temp_w_offset && !wait)
+    if (m_last_temperature_with_offset == temp_w_offset && (!wait || m_last_temperature_with_offset_waited))
         return "";
-    if (wait && (FLAVOR_IS(gcfMakerWare) || FLAVOR_IS(gcfSailfish)))
-        return {};
     
-    std::string_view code, comment;
-    if (wait && FLAVOR_IS_NOT(gcfTeacup) && FLAVOR_IS_NOT(gcfRepRap)) {
-        code = "M109"sv;
-        comment = "set temperature and wait for it to be reached"sv;
-    } else {
-        if (FLAVOR_IS(gcfRepRap)) { // M104 is deprecated on RepRapFirmware
-            code = "G10"sv;
-        } else {
-            code = "M104"sv;
-        }
-        comment = "set temperature"sv;
+    // some firmwares need to emit temp to wait for temp
+    bool need_emit_temp = m_last_temperature_with_offset != temp_w_offset;
+    bool can_M109 = FLAVOR_IS_NOT(gcfTeacup) && FLAVOR_IS_NOT(gcfRepRap);
+    if (wait && can_M109) {
+        need_emit_temp = true;
     }
-    
+
     std::ostringstream gcode;
-    gcode << code << " ";
-    if (FLAVOR_IS(gcfMach3) || FLAVOR_IS(gcfMachinekit)) {
-        gcode << "P";
-    } else if (FLAVOR_IS(gcfRepRap)) {
-        gcode << "P" << tool << " S";
-    } else if (wait && (FLAVOR_IS(gcfMarlinFirmware) || FLAVOR_IS(gcfMarlinLegacy)) && temp_w_offset < m_last_temperature_with_offset) {
-        gcode << "R"; //marlin doesn't wait with S if it's a cooling change, it needs a R
-    } else {
-        gcode << "S";
+    // emit temp (and sometimes wait)
+    if (need_emit_temp) {
+        std::string_view code, comment;
+        if (wait && can_M109) {
+            code = "M109"sv;
+            comment = "set temperature and wait for it to be reached"sv;
+        } else {
+            if (FLAVOR_IS(gcfRepRap)) { // M104 is deprecated on RepRapFirmware
+                code = "G10"sv;
+            } else {
+                code = "M104"sv;
+            }
+            comment = "set temperature"sv;
+        }
+
+        gcode << code;
+        if (FLAVOR_IS(gcfMach3) || FLAVOR_IS(gcfMachinekit)) {
+            gcode << " P";
+        } else if (FLAVOR_IS(gcfRepRap)) {
+            gcode << " P" << tool << " S";
+        } else if (wait && (FLAVOR_IS(gcfMarlinFirmware) || FLAVOR_IS(gcfMarlinLegacy)) &&
+                   temp_w_offset < m_last_temperature_with_offset) {
+            gcode << " R"; // marlin doesn't wait with S if it's a cooling change, it needs a R
+        } else {
+            gcode << " S";
+        }
+        gcode << temp_w_offset;
+        bool multiple_tools = this->multiple_extruders && !m_single_extruder_multi_material;
+        if (tool != -1 && (multiple_tools || FLAVOR_IS(gcfMakerWare) || FLAVOR_IS(gcfSailfish)) &&
+            FLAVOR_IS_NOT(gcfRepRap)) {
+            gcode << " T" << tool;
+        }
+        if (this->config.gcode_comments) {
+            gcode << " ; " << comment;
+        }
+        gcode << "\n";
     }
-    gcode << temp_w_offset;
-    bool multiple_tools = this->multiple_extruders && ! m_single_extruder_multi_material;
-    if (tool != -1 && (multiple_tools || FLAVOR_IS(gcfMakerWare) || FLAVOR_IS(gcfSailfish)) && FLAVOR_IS_NOT(gcfRepRap)) {
-        gcode << " T" << tool;
+    // emit wait (for  gcfTeacup, gcfRepRap, gcfNematX)
+    if (wait && !can_M109) {
+        if ((FLAVOR_IS(gcfTeacup) || FLAVOR_IS(gcfRepRap))) {
+            gcode << "M116";
+            if (this->config.gcode_comments) {
+                gcode << " ; wait for temperature to be reached";
+            }
+            gcode << "\n";
+        }
     }
-    gcode << " ; " << comment << "\n";
-    
-    if ((FLAVOR_IS(gcfTeacup) || FLAVOR_IS(gcfRepRap)) && wait)
-        gcode << "M116 ; wait for temperature to be reached\n";
-    
+    // update internal var to prevent repeat
     m_last_temperature = temperature;
     m_last_temperature_with_offset = temp_w_offset;
-
+    m_last_temperature_with_offset_waited  = wait;
     return gcode.str();
 }
 
@@ -313,7 +337,7 @@ std::string GCodeWriter::set_bed_temperature(uint32_t temperature, bool wait)
         code = "M140"sv;
         comment = "set bed temperature"sv;
     }
-    
+
     std::ostringstream gcode;
     gcode << code << " ";
     if (FLAVOR_IS(gcfMach3) || FLAVOR_IS(gcfMachinekit)) {
@@ -321,11 +345,20 @@ std::string GCodeWriter::set_bed_temperature(uint32_t temperature, bool wait)
     } else {
         gcode << "S";
     }
-    gcode << temperature << " ; " << comment << "\n";
-    
-    if (FLAVOR_IS(gcfTeacup) && wait)
-        gcode << "M116 ; wait for bed temperature to be reached\n";
-    
+    gcode << temperature;
+    if (this->config.gcode_comments) {
+         gcode << " ; " << comment;
+    }
+    gcode << "\n";
+
+    if (FLAVOR_IS(gcfTeacup) && wait) {
+        gcode << "M116";
+        if (this->config.gcode_comments) {
+            gcode << " ; wait for temperature to be reached";
+        }
+        gcode << "\n";
+    }
+
     return gcode.str();
 }
 
@@ -352,8 +385,11 @@ std::string GCodeWriter::set_chamber_temperature(uint32_t temperature, bool wait
     }
     
     std::ostringstream gcode;
-    gcode << code << " " << "S";
-    gcode << temperature << " ; " << comment << "\n";
+    gcode << code << " " << "S" << temperature;
+    if (this->config.gcode_comments) {
+        gcode << " ; " << comment;
+    }
+    gcode << "\n";
     
     return gcode.str();
 }
