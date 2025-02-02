@@ -3351,6 +3351,9 @@ LayerResult GCodeGenerator::process_layer(
         //gcode += "; m_wipe.reset_path(); after change_layer\n";
         assert(m_new_z_target || is_approx(print_z, m_writer.get_unlifted_position().z(), EPSILON));
     }
+    if (object_layer != nullptr) {
+        m_last_object_layer = object_layer;
+    }
     m_layer = &layer;
     if (this->line_distancer_is_required(layer_tools.extruders) && this->m_layer != nullptr && this->m_layer->lower_layer != nullptr)
         m_travel_obstacle_tracker.init_layer(layer, layers);
@@ -5849,8 +5852,6 @@ std::string GCodeGenerator::extrude_support(const ExtrusionEntityReferences &sup
     return gcode;
 }
 
-
-
 bool GCodeGenerator::GCodeOutputStream::is_error() const 
 {
     return ::ferror(this->f);
@@ -7630,13 +7631,18 @@ bool GCodeGenerator::can_cross_perimeter(const Polyline& travel, bool offset)
               !(m_config.enforce_retract_first_layer && m_layer_index == 0)) &&
              m_config.fill_density.value > 0) ||
             m_config.avoid_crossing_perimeters) {
-            if (m_layer_slices_offseted.layer != m_layer) {
-                m_layer_slices_offseted.layer    = m_layer;
+            assert(m_last_object_layer == m_layer ||
+                (dynamic_cast<const SupportLayer*>(m_layer) != nullptr && m_last_object_layer->print_z <= m_layer->print_z));
+            assert(m_last_object_layer);
+            if (m_layer_slices_offseted.layer != m_last_object_layer && m_last_object_layer != nullptr) {
+                m_layer_slices_offseted.layer    = m_last_object_layer;
                 m_layer_slices_offseted.diameter = scale_t(EXTRUDER_CONFIG_WITH_DEFAULT(nozzle_diameter, 0.4)) / 2;
-                ExPolygons slices                = m_layer->lslices();
-                ExPolygons slices_offsetted = offset_ex(m_layer->lslices(), -m_layer_slices_offseted.diameter * 1.5f);
+                ExPolygons slices                = m_last_object_layer->lslices();
+                ExPolygons slices_offsetted = offset_ex(m_last_object_layer->lslices(), -m_layer_slices_offseted.diameter * 1.5f);
+                //also offset in the other side, to avoid a travel that may cross it from the exterior
+                append(slices_offsetted, offset_ex(m_last_object_layer->lslices(), m_layer_slices_offseted.diameter * .5f));
                 // remove top surfaces
-                for (const LayerRegion *reg : m_layer->regions()) {
+                for (const LayerRegion *reg : m_last_object_layer->regions()) {
                     m_throw_if_canceled();
                     slices_offsetted = diff_ex(slices_offsetted, to_expolygons(reg->fill_surfaces().filter_by_type_flag(SurfaceType::stPosTop)));
                     slices           = diff_ex(slices, to_expolygons(reg->fill_surfaces().filter_by_type_flag(SurfaceType::stPosTop)));
