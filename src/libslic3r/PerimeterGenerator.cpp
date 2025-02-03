@@ -4543,7 +4543,7 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                         //growing back the polygon
                         ExPolygons thin = offset_ex(half_thin, double(min_width / 2));
                         assert(thin.size() <= 1);
-                        if (thin.empty()) continue;
+                        if (thin.empty() || thin.front().empty()) continue;
                         coord_t thin_walls_overlap = scale_t(params.config.thin_walls_overlap.get_abs_value(params.ext_perimeter_flow.nozzle_diameter()));
                         ExPolygons anchor = intersection_ex(offset_ex(half_thin, double(min_width / 2) +
                             (float)(thin_walls_overlap), jtSquare), no_thin_zone, ApplySafetyOffset::Yes);
