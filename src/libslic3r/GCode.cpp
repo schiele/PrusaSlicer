@@ -4754,9 +4754,16 @@ std::string GCodeGenerator::extrude_loop(const ExtrusionLoop &original_loop, con
 
     //if spiral vase, we have to ensure that all loops are in the same orientation.
     if (has_spiral_vase) {
-        // loop_to_seam.make_counter_clockwise();
-        if(!loop_to_seam.is_counter_clockwise())
-            loop_to_seam.reverse();
+        if (this->m_config.perimeter_direction.value == pdCW_CCW ||
+            this->m_config.perimeter_direction.value == pdCW_CW) {
+            // loop_to_seam.make_clockwise();
+            if(loop_to_seam.is_counter_clockwise())
+                loop_to_seam.reverse();
+        } else {
+            // loop_to_seam.make_counter_clockwise();
+            if(!loop_to_seam.is_counter_clockwise())
+                loop_to_seam.reverse();
+        }
         is_hole_loop = false;
     }
     for (const ExtrusionPath &path : loop_to_seam.paths)
@@ -5799,7 +5806,6 @@ void GCodeGenerator::extrude_ironing(const ExtrudeArgs &print_args, const LayerI
 void GCodeGenerator::extrude_skirt(
     ExtrusionLoop &loop_src, const ExtrusionFlow &extrusion_flow_override, std::string &gcode, const std::string_view description)
 {
-    assert(loop_src.is_counter_clockwise());
 
     if (loop_src.paths.empty())
         return;
