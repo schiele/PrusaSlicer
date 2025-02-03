@@ -4703,12 +4703,12 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                     // not using safety offset here would "detect" very narrow gaps
                     // (but still long enough to escape the area threshold) that gap fill
                     // won't be able to fill but we'd still remove from infill area
-                    no_last_gapfill = offset_ex(*all_next_onion, 0.5f * good_spacing + 10,
+                    no_last_gapfill = offset_ex(*all_next_onion, 0.5f * params.get_perimeter_spacing() + 30,
                         (params.use_round_perimeters() ? ClipperLib::JoinType::jtRound : ClipperLib::JoinType::jtMiter),
                         (params.use_round_perimeters() ? params.get_min_round_spacing() : 3));
                     if (perimeter_idx == 1) {
                         append(gaps, ensure_valid(diff_ex(
-                            offset_ex(last, -0.5f * params.get_ext_perimeter_spacing()),
+                            offset_ex(last, -0.5f * params.get_ext_perimeter_spacing() + 30),
                             no_last_gapfill), resolution));  // safety offset
                     } else {
                         append(gaps, ensure_valid(diff_ex(
