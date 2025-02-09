@@ -44,9 +44,11 @@ esac
 case "$*" in
 	*clean*) rm -rf "$DIR/$DDIR" "$DIR/$BDIR";;
 esac
+export CMAKE_C_COMPILER_LAUNCHER=ccache
+export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 mkdir -p "$DIR/$DDIR"
 cd "$DIR/$DDIR"
-cmake .. $DEPFLAGS -DDEP_WX_GTK3=ON -DDEP_DOWNLOAD_DIR="$DIR/deps/download" -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+cmake .. $DEPFLAGS -DDEP_WX_GTK3=ON -DDEP_DOWNLOAD_DIR="$DIR/deps/download"
 make -j $PAR
 mkdir -p "$DIR/$BDIR"
 cd "$DIR/$BDIR"
@@ -55,6 +57,6 @@ cmake .. -DSLIC3R_STATIC=1 $BLDFLAGS \
 	-DCMAKE_PREFIX_PATH="$DIR/$DDIR/destdir/usr/local" \
 	-DCMAKE_INSTALL_PREFIX=~/tools/orcaslicer/$BDIR \
 	-DBBL_RELEASE_TO_PUBLIC=1 -DBBL_INTERNAL_TESTING=0 \
-	-DORCA_TOOLS=ON -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+	-DORCA_TOOLS=ON
 make -j $PAR
 make install$STRIP
