@@ -1895,7 +1895,6 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_arachne(const Parameters &  
             std::max(params.ext_perimeter_flow.scaled_width() / 4, scale_t(params.print_config.resolution)),
             (is_external ? params.ext_perimeter_flow : params.perimeter_flow).scaled_width() / 10));
         //(const ThickPolyline& polyline, const ExtrusionRole role, const Flow& flow, const coord_t resolution_internal, const coord_t tolerance)
-        assert(paths.size() == 1);
         for (ExtrusionPath& path : paths) {
             //these variable_width paths aren't gapfill, they are proper perimeters
             path.set_can_reverse(is_loop);
@@ -5258,6 +5257,7 @@ void PerimeterGenerator::_merge_thin_walls(const Parameters &params, ExtrusionEn
     public:
         ChangeFlow(coordf_t resolution) : resolution_sqr(resolution * resolution) {}
         float percent_extrusion;
+        bool no_seam = false;
         std::vector<ExtrusionPath> paths;
         const Point* first_point = nullptr;
         coordf_t resolution_sqr;
@@ -5274,6 +5274,7 @@ void PerimeterGenerator::_merge_thin_walls(const Parameters &params, ExtrusionEn
                     travel.attributes_mutable().width = paths.back().width();
                     travel.attributes_mutable().height = paths.back().height();
                     travel.attributes_mutable().mm3_per_mm = 0;
+                    travel.attributes_mutable().no_seam = no_seam;
                     travel.polyline.append(last_point);
                     travel.polyline.append(pt);
                     paths.push_back(travel);
@@ -5291,6 +5292,7 @@ void PerimeterGenerator::_merge_thin_walls(const Parameters &params, ExtrusionEn
                         ExtrusionPath travel(ExtrusionAttributes(path.role(), ExtrusionFlow(0, path.width(), path.height())), false);
                         travel.polyline.append(*first_point);
                         travel.polyline.append(path.first_point());
+                        travel.attributes_mutable().no_seam = no_seam;
                         paths.push_back(travel);
                     }
                 }
@@ -5298,6 +5300,7 @@ void PerimeterGenerator::_merge_thin_walls(const Parameters &params, ExtrusionEn
             }
             path.attributes_mutable().mm3_per_mm *= percent_extrusion;
             path.attributes_mutable().width *= percent_extrusion;
+            path.attributes_mutable().no_seam = no_seam;
             paths.push_back(path);
         }
         virtual void use(ExtrusionPath3D &path3D) override { assert(false); /*shouldn't happen*/ }
@@ -5442,7 +5445,6 @@ void PerimeterGenerator::_merge_thin_walls(const Parameters &params, ExtrusionEn
             bool point_moved = false;
             if (first_part.size() <= 1 || first_part.length() < SCALED_EPSILON) {
                 assert(first_part.size() == 2);
-                assert(searcher.search_result.loop->paths.size() > 1);
                 //not long enough, move point to first point and destroy it
                 // idx_path_before will be replaced anyway by poly_after
                 assert(!searcher.search_result.loop->paths[idx_path_before].empty());
@@ -5524,6 +5526,9 @@ void PerimeterGenerator::_merge_thin_walls(const Parameters &params, ExtrusionEn
                 searcher.search_result.loop->visit(loop_assert_visitor);
 #endif
             } else {
+                //make these thin wall un-seamable
+                change_flow.no_seam = true;
+
                 //first add the return path
                 //ExtrusionEntityCollection tws_second = tws; // this does a deep copy
                 change_flow.first_point = &poly_after.front(); // end at the start of the next path
