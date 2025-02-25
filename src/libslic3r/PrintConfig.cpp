@@ -6495,18 +6495,19 @@ void PrintConfigDef::init_fff_params()
     def->mode = comExpert | comSuSi;
     def->set_default_value(new ConfigOptionFloatOrPercent(100, true));
 
-    def = this->add("threads", coInt);
-    def->label = L("Threads");
-    def->tooltip = L("Threads are used to parallelize long-running tasks. Optimal threads number "
-                   "is slightly above the number of available cores/processors.");
-    def->readonly = true;
-    def->min = 1;
-    def->mode = comExpert | comPrusa; // note: hidden setting (and should be a preference)
-    {
-        int threads = (unsigned int)boost::thread::hardware_concurrency();
-        def->set_default_value(new ConfigOptionInt(threads > 0 ? threads : 2));
-        def->cli = ConfigOptionDef::nocli;
-    }
+    // put it in Preferences if you want it.
+    //def = this->add("threads", coInt);
+    //def->label = L("Threads");
+    //def->tooltip = L("Threads are used to parallelize long-running tasks. Optimal threads number "
+    //               "is slightly above the number of available cores/processors.");
+    //def->readonly = true;
+    //def->min = 1;
+    //def->mode = comExpert | comPrusa; // note: hidden setting (and should be a preference)
+    //{
+    //    int threads = (unsigned int)boost::thread::hardware_concurrency();
+    //    def->set_default_value(new ConfigOptionInt(threads > 0 ? threads : 2));
+    //    def->cli = ConfigOptionDef::nocli;
+    //}
 
     def = this->add("time_cost", coFloat);
     def->label = L("Time cost");
@@ -8428,6 +8429,7 @@ static std::set<t_config_option_key> PrintConfigDef_ignore = {
     "print_center", "g0", "threads", "pressure_advance", "wipe_tower_per_color_wipe",
     "cooling", "serial_port", "serial_speed",
     "exact_last_layer_height",
+    "threads",
     // Introduced in some PrusaSlicer 2.3.1 alpha, later renamed or removed.
     "fuzzy_skin_perimeter_mode", "fuzzy_skin_shape",
     //replaced by brim_per_object, but can't translate the value as the old one is only used for complete_objects (and the default are differents).
@@ -9477,7 +9479,9 @@ void _deserialize_maybe_from_prusa(const std::map<t_config_option_key, std::stri
     config.handle_legacy_composite(deleted_keys);
     if (config_substitutions.rule == ForwardCompatibilitySubstitutionRule::Enable) {
         for (const auto &[key, value] : deleted_keys) {
-            config_substitutions.add(ConfigSubstitution(key, value));
+            if (key != "threads") {
+                config_substitutions.add(ConfigSubstitution(key, value));
+            }
         }
     }
     // from prusa: try again with from_prusa before handle_legacy
