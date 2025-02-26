@@ -13,6 +13,7 @@
 
 #include <tbb/task_scheduler_observer.h>
 #include <tbb/enumerable_thread_specific.h>
+#include <tbb/parallel_for.h>
 
 namespace Slic3r {
 
@@ -76,10 +77,10 @@ template<class Fn> inline boost::thread create_thread(Fn &&fn)
 // TODO: sort items idx by difficulty, so we can process the most difficult first.
 // for now, only used to swi
 void parallel_for(size_t begin, size_t size, std::function<void(size_t)> process_one_item);
-void not_parallel_for(size_t begin, size_t size, std::function<void(size_t)> process_one_item);
 #else
 using tbb::parallel_for;
 #endif
+void not_parallel_for(size_t begin, size_t size, std::function<void(size_t)> process_one_item);
 
 class ThreadData {
 public:
