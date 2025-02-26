@@ -24,7 +24,7 @@ add_cmake_project(OpenVDB
         -DOPENVDB_CORE_SHARED=${_build_shared} 
         -DOPENVDB_CORE_STATIC=${_build_static}
         -DOPENVDB_ENABLE_RPATH:BOOL=OFF
-        -DTBB_STATIC=${_build_static}
+        -DTBB_STATIC=OFF
         -DOPENVDB_BUILD_VDB_PRINT=${_openvdb_vdbprint}
         -DDISABLE_DEPENDENCY_VERSION_CHECKS=ON # Centos6 has old zlib
 )
