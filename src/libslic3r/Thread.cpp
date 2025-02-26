@@ -230,12 +230,12 @@ void parallel_for(size_t begin, size_t size, std::function<void(size_t)> process
     //    process_one_item(idx);
     //}
 }
+#endif
 void not_parallel_for(size_t begin, size_t size, std::function<void(size_t)> process_one_item) {
     for (size_t idx = begin; idx < size; ++idx) {
         process_one_item(idx);
     }
 }
-#endif
 
 static thread_local ThreadData s_thread_data;
 ThreadData& thread_data()
