@@ -7,6 +7,7 @@
 #include "libslic3r/Point.hpp"
 
 //#include "../wxExtensions.hpp"
+#include <wx/dcmemory.h>
 
 const int px_cnt = 16;
 
