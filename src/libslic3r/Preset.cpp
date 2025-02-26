@@ -320,10 +320,12 @@ void Preset::normalize(DynamicPrintConfig &config)
             if (key == "compatible_prints" || key == "compatible_printers")
                 continue;
             auto *opt = config.option(key, false);
+            auto *opt_default = defaults.option(key);
             /*assert(opt != nullptr);
             assert(opt->is_vector());*/
-            if (opt != nullptr && opt->is_vector())
-                static_cast<ConfigOptionVectorBase*>(opt)->resize(n, defaults.option(key));
+            if (opt != nullptr && opt->is_vector() && opt_default != nullptr) {
+                static_cast<ConfigOptionVectorBase*>(opt)->resize(n, opt_default);
+            }
         }
         // The following keys are mandatory for the UI, but they are not part of FullPrintConfig, therefore they are handled separately.
         for (const char *key : {"filament_settings_id"}) {
