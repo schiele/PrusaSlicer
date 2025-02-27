@@ -2,3 +2,29 @@ BUILD: version_2.9.0-7-g8017fdee51
 system: 43030
 date: Thu Feb 27 10:13:06 AM CET 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+[100%] Building CXX object src/CMakeFiles/PrusaSlicer.dir/PrusaSlicer.cpp.o
+[100%] Building CXX object tests/slic3rutils/CMakeFiles/slic3rutils_tests.dir/secretstore_tests.cpp.o
+[100%] Building CXX object tests/slic3rutils/CMakeFiles/slic3rutils_tests.dir/slic3rutils_tests_main.cpp.o
+[100%] Linking CXX executable slic3rutils_tests
+In file included from /usr/include/tbb/../oneapi/tbb/enumerable_thread_specific.h:26,
+                 from /usr/include/tbb/enumerable_thread_specific.h:17,
+                 from /home/rschiele/PrusaSlicer/src/libslic3r/Thread.hpp:10,
+                 from /home/rschiele/PrusaSlicer/src/PrusaSlicer.cpp:64:
+/usr/include/tbb/../oneapi/tbb/concurrent_vector.h: In member function ‘void tbb::detail::d1::concurrent_vector<T, Allocator>::reserve(size_type)’:
+/usr/include/tbb/../oneapi/tbb/concurrent_vector.h:500: note: ‘-Wmisleading-indentation’ is disabled from this point onwards, since column-tracking was disabled due to the size of the code/headers
+  500 |         if (n == 0) return;
+/usr/include/tbb/../oneapi/tbb/concurrent_vector.h:500: note: adding ‘-flarge-source-files’ will allow for more column-tracking support, at the expense of compilation time and memory
+/home/rschiele/PrusaSlicer/src/PrusaSlicer.cpp: In lambda function:
+/home/rschiele/PrusaSlicer/src/PrusaSlicer.cpp:716: warning: comparison of integer expressions of different signedness: ‘int’ and ‘unsigned int’ [-Wsign-compare]
+  716 |                                         for (int i = 0; i < height / 2; ++i) {
+/home/rschiele/PrusaSlicer/src/PrusaSlicer.cpp:694: warning: unused variable ‘num_entries’ [-Wunused-variable]
+  694 |                                     mz_uint num_entries = mz_zip_reader_get_num_files(&archive);
+[100%] Linking CXX executable prusa-slicer
+[100%] Built target slic3rutils_tests
+Symlinking the G-code viewer to PrusaSlicer
+Symlinking the resources directory into the build tree
+[100%] Built target PrusaSlicer
+make: Leaving directory '/home/rschiele/PrusaSlicer/build'
++ TES edit 8017fdee51609086e29c8b725de837769d74a7a6
+/home/rschiele/bin/mkslic3r: line 64: TES: command not found
