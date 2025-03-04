@@ -41,6 +41,7 @@ using namespace std;
 // 1) For the group given by group_name, initialize the presets.
 struct Prst {
     Prst(const std::string &section_name, const std::string &name, boost::property_tree::ptree *node) : section_name(section_name), name(name), node(node) {}
+    size_t section_idx = 0;
     // Name of this preset. If the name starts with '*', it is an intermediate preset,
     // this section name: [section_name: name]\nnode
     const std::string           section_name;
@@ -56,6 +57,12 @@ struct Prst {
     DynamicPrintConfig        config_diff;
     // Link to the presets, from which this preset inherits.
     std::vector<std::shared_ptr<Prst>>          inherits;
+    // if true, it means that it has all values defined from itself and its parents.
+    bool                                        has_all_values;
+    // you need to write all values, even the ones that are the same as the current default
+    bool                                        write_defaults;
+    // set it to true if it's useless or wrong.
+    bool                                        deleted = false;
     // Link to the presets, for which this preset is a direct parent.
     std::vector<std::shared_ptr<Prst>>          parent_of;
     // When running the Kahn's Topological sorting algorithm, this counter is decreased from inherits.size() to zero.
@@ -64,6 +71,14 @@ struct Prst {
     // Sorting by the name, to be used when inserted into std::set.
     bool operator==(const Prst &rhs) const { return this->name == rhs.name; }
     bool operator< (const Prst &rhs) const { return this->name < rhs.name; }
+
+    // also get the diffs from parent.
+    void apply_current_diff(DynamicPrintConfig &to_be_applied) const {
+        for (std::shared_ptr<Prst> parent : inherits) {
+            parent->apply_current_diff(to_be_applied);
+        }
+        to_be_applied.apply(config_diff);
+    }
 };
 typedef std::shared_ptr<Prst> PrstPtr;
 
@@ -92,6 +107,8 @@ t_config_option_keys config_diffs(
         if (opt_new == nullptr)
             //FIXME This may happen when executing some test cases.
             continue;
+        if (opt_new->is_phony() && opt_old->is_phony())
+            continue;
         if (*opt_new != *opt_old)
             print_diff.emplace_back(opt_key);
     }
@@ -101,7 +118,10 @@ t_config_option_keys config_diffs(
 
 void load_preset(const VendorProfile &vendor_profile, PrstPtr preset_to_load)
 {
-
+    bool check_preset_debug = false;
+    if (preset_to_load->name.find("*0.25nozzle*") != std::string::npos) {
+        check_preset_debug = true;
+    }
     std::cout << " --------- now loading preset ["<<preset_to_load->section_name<<":"<<preset_to_load->name<<"]  --------- \n";
 
 
@@ -109,7 +129,7 @@ void load_preset(const VendorProfile &vendor_profile, PrstPtr preset_to_load)
     PresetsConfigSubstitutions substitutions;
     //std::string section_name, boost::property_tree::ptree section_data
 
-    std::string path = "[file]";
+    std::string path = vendor_profile.name;
     PresetBundle::LoadConfigBundleAttributes flags = PresetBundle::LoadConfigBundleAttribute::LoadSystem | PresetBundle::LoadConfigBundleAttribute::ConvertFromPrusa;
     PresetCollection         *presets = nullptr;
     PresetBundle default_bundle; //bundle with only default presets
@@ -205,6 +225,7 @@ void load_preset(const VendorProfile &vendor_profile, PrstPtr preset_to_load)
     else {
         // Ignore an unknown section.
         BOOST_LOG_TRIVIAL(error) << "Error, unknown section: " <<preset_to_load->section_name;
+        preset_to_load->deleted = true;
         return;
     }
 
@@ -218,9 +239,9 @@ void load_preset(const VendorProfile &vendor_profile, PrstPtr preset_to_load)
     std::map<std::pair<t_config_option_key, std::string>, std::vector<std::pair<t_config_option_key, std::string>>> opts_prusa_transformed;
         std::map<t_config_option_key, std::string> opts_deleted;
     std::map<std::string, std::string> written_ini;
-    std::vector<std::string> ini_ordered_keys;
+    std::vector<std::string> ini_keys;
     try {
-        //auto parse_config_section = [ &preset_to_load, &written_ini, &ini_ordered_keys, &alias_name, &renamed_from, &substitution_context, &path, &flags,
+        //auto parse_config_section = [ &preset_to_load, &written_ini, &ini_keys, &alias_name, &renamed_from, &substitution_context, &path, &flags,
         //&merged_config]
                 //(DynamicPrintConfig &config) {
         //set base as the default
@@ -240,23 +261,32 @@ void load_preset(const VendorProfile &vendor_profile, PrstPtr preset_to_load)
                     }
                 }
             }
-            if (!default_config.has("printer_technology")) {
-                BOOST_LOG_TRIVIAL(error) << "Error in a Vendor Config Bundle \"" << path << "\": The preset \""
-                                         << preset_to_load->section_name << ":" << preset_to_load->name
-                                         << "\" does not contains a printer_technology field, and this is mandatory "
-                                            "for a printer section.";
-                return;
+            if (!default_config.has("printer_technology") && preset_to_load->has_all_values) {
+                if (!preset_to_load->parent_of.empty() && preset_to_load->inherits.empty()) {
+                    BOOST_LOG_TRIVIAL(warning)
+                        << "Warning in a Vendor Config Bundle \"" << path << "\": The preset \""
+                        << preset_to_load->section_name << ":" << preset_to_load->name
+                        << "\" does not contains a printer_technology field, and this should be set "
+                           " in the common root.";
+                } else {
+                    BOOST_LOG_TRIVIAL(error)
+                        << "Error in a Vendor Config Bundle \"" << path << "\": The preset \""
+                        << preset_to_load->section_name << ":" << preset_to_load->name
+                        << "\" does not contains a printer_technology field, and this is mandatory "
+                           "for at least one printer section in the inheritance tree.";
+                    preset_to_load->deleted = true;
+                    return;
+                }
             }
             default_config = presets->default_preset_for(default_config).config;
         } else {
             default_config = presets->default_preset().config;
         }
-        preset_to_load->config = default_config;
         //apply parents
-        // Iterate in a reverse order, so the last change will be placed first in merged.
-        for (auto it_inherits = preset_to_load->inherits.rbegin(); it_inherits != preset_to_load->inherits.rend(); ++it_inherits) {
-            preset_to_load->config.apply((*it_inherits)->config_diff);
+        for (auto it_inherits = preset_to_load->inherits.begin(); it_inherits != preset_to_load->inherits.end(); ++it_inherits) {
+            (*it_inherits)->apply_current_diff(default_config);
         }
+        preset_to_load->config = default_config;
         substitution_context.clear();
         std::unordered_map<t_config_option_key, std::pair<t_config_option_key, std::string>> dict_opt;
         for (auto &kvp : *preset_to_load->node) {
@@ -281,7 +311,6 @@ void load_preset(const VendorProfile &vendor_profile, PrstPtr preset_to_load)
                                          << "\" contains duplicate " << opt_key << " field.";
             } else {
                 written_ini[opt_key] = value;
-                ini_ordered_keys.push_back(opt_key);
             }
             if ("gcode_label_objects" == opt_key) {
                 std::string opt_key2 = kvp.first;
@@ -290,11 +319,13 @@ void load_preset(const VendorProfile &vendor_profile, PrstPtr preset_to_load)
             dict_opt[opt_key] = {opt_key, value};
         }
         PrintConfigDef::handle_legacy_map(dict_opt, true);
+        ini_keys.clear();
         for (auto &[saved_key, key_val] : dict_opt) {
             auto &[opt_key, value] = key_val;
             // don't throw for an unknown key, just ignore it
             if (!opt_key.empty()) {
                  preset_to_load->config.set_deserialize(opt_key, value, substitution_context);
+                ini_keys.push_back(opt_key);
             } else {
                 opts_deleted[saved_key] = value;
             }
@@ -361,47 +392,54 @@ void load_preset(const VendorProfile &vendor_profile, PrstPtr preset_to_load)
     } catch (const ConfigurationError &e) {
         throw ConfigurationError(format("Invalid configuration bundle \"%1%\", section [%2%]: ", path, preset_to_load->section_name + ":"s + preset_to_load->name) + e.what());
     }
-    
     Preset::normalize(preset_to_load->config);
     //Preset::normalize(preset_to_load->config_no_prusa_convert);
     // Report configuration fields, which are misplaced into a wrong group.
     std::string incorrect_keys = Preset::remove_invalid_keys(preset_to_load->config, default_config);
     if (! incorrect_keys.empty())
-        BOOST_LOG_TRIVIAL(error) << "Error in a Vendor Config Bundle \"" << path << "\": The printer preset \"" << 
+        BOOST_LOG_TRIVIAL(error) << "Error in a Vendor Config Bundle \"" << path << "\": The preset \"" << 
             preset_to_load->section_name << ":" << preset_to_load->name << "\" contains the following incorrect keys: " << incorrect_keys << ", which were removed";
-    if (flags.has(PresetBundle::LoadConfigBundleAttribute::LoadSystem) && presets == &default_bundle.printers) {
+    //if (flags.has(PresetBundle::LoadConfigBundleAttribute::LoadSystem) && presets == &default_bundle.printers) {
+    // if printer leaf, it needs to be linked to a printer_model
+    if (presets == &default_bundle.printers && preset_to_load->parent_of.empty()) {
         // Filter out printer presets, which are not mentioned in the vendor profile.
         // These presets are considered not installed.
-        auto printer_model   = preset_to_load->config.opt_string("printer_model");
-        if (printer_model.empty()) {
+        // note: *common* doesn't have any printer_model
+        auto printer_model   = preset_to_load->config.option("printer_model");
+        if (!printer_model || printer_model->serialize().empty()) {
             BOOST_LOG_TRIVIAL(error) << "Error in a Vendor Config Bundle \"" << path << "\": The printer preset \"" << 
                 preset_to_load->section_name << ":" << preset_to_load->name << "\" defines no printer model, it will be ignored.";
+            preset_to_load->deleted = true;
             return;
         }
         auto printer_variant = preset_to_load->config.opt_string("printer_variant");
         if (printer_variant.empty()) {
             BOOST_LOG_TRIVIAL(error) << "Error in a Vendor Config Bundle \"" << path << "\": The printer preset \"" << 
                 preset_to_load->section_name << ":" << preset_to_load->name << "\" defines no printer variant, it will be ignored.";
+            preset_to_load->deleted = true;
             return;
         }
         auto it_model = std::find_if(vendor_profile.models.cbegin(), vendor_profile.models.cend(),
-            [&](const VendorProfile::PrinterModel &m) { return m.id == printer_model; }
+            [&](const VendorProfile::PrinterModel &m) { return m.id == printer_model->serialize(); }
         );
         if (it_model == vendor_profile.models.end()) {
             BOOST_LOG_TRIVIAL(error) << "Error in a Vendor Config Bundle \"" << path << "\": The printer preset \"" << 
-                preset_to_load->section_name << ":" << preset_to_load->name << "\" defines invalid printer model \"" << printer_model << "\", it will be ignored.";
+                preset_to_load->section_name << ":" << preset_to_load->name << "\" defines invalid printer model \"" << printer_model->serialize() << "\", it will be ignored.";
+            preset_to_load->deleted = true;
             return;
         }
         auto it_variant = it_model->variant(printer_variant);
         if (it_variant == nullptr) {
             BOOST_LOG_TRIVIAL(error) << "Error in a Vendor Config Bundle \"" << path << "\": The printer preset \"" << 
                 preset_to_load->section_name << ":" << preset_to_load->name << "\" defines invalid printer variant \"" << printer_variant << "\", it will be ignored.";
+            preset_to_load->deleted = true;
             return;
         }
         const Preset *preset_existing = presets->find_preset(preset_to_load->section_name + ":"s + preset_to_load->name, false);
         if (preset_existing != nullptr) {
             BOOST_LOG_TRIVIAL(error) << "Error in a Vendor Config Bundle \"" << path << "\": The printer preset \"" << 
                 preset_to_load->section_name << ":" << preset_to_load->name << "\" has already been loaded from another Confing Bundle.";
+            preset_to_load->deleted = true;
             return;
         }
     } else if (! flags.has(PresetBundle::LoadConfigBundleAttribute::LoadSystem)) {
@@ -409,18 +447,25 @@ void load_preset(const VendorProfile &vendor_profile, PrstPtr preset_to_load)
         const Preset *existing = presets->find_preset(preset_to_load->name_with_template, false);
         if (existing != nullptr) {
             if (existing->is_system) {
-    			assert(existing->vendor != nullptr);
-                BOOST_LOG_TRIVIAL(error) << "Error in a user provided Config Bundle \"" << path << "\": The " << presets->name() << " preset \"" << 
-    				existing->name << "\" is a system preset of vendor " << existing->vendor->name << " and it will be ignored.";
+                assert(existing->vendor != nullptr);
+                BOOST_LOG_TRIVIAL(error)
+                    << "Error in a user provided Config Bundle \"" << path << "\": The " << presets->name()
+                    << " preset \"" << existing->name << "\" is a system preset of vendor " << existing->vendor->name
+                    << " and it will be ignored.";
+                preset_to_load->deleted = true;
                 return;
             } else {
                 assert(existing->vendor == nullptr);
                 BOOST_LOG_TRIVIAL(trace) << "A " << presets->name() << " preset \"" << existing->name << "\" was overwritten with a preset from user Config Bundle \"" << path << "\"";
             }
         } else {
-			BOOST_LOG_TRIVIAL(trace) << "A new " << presets->name() << " preset \"" << preset_to_load->name_with_template << "\" was imported from user Config Bundle \"" << path << "\"";
+            BOOST_LOG_TRIVIAL(trace) << "A new " << presets->name() << " preset \""
+                                     << preset_to_load->name_with_template
+                                     << "\" was imported from user Config Bundle \"" << path << "\"";
         }
     }
+
+
 //    // Decide a full path to this .ini file 
 //    auto file_name = boost::algorithm::iends_with(preset_to_load->name_with_template, ".ini") ? preset_to_load->name_with_template : preset_to_load->name_with_template + ".ini";
 //    auto file_path = (boost::filesystem::path(data_dir()) 
@@ -460,68 +505,106 @@ void load_preset(const VendorProfile &vendor_profile, PrstPtr preset_to_load)
         substitutions.push_back({preset_to_load->name_with_template, presets->type(), PresetConfigSubstitutions::Source::ConfigBundle,
                                     std::string(), std::move(substitution_context).data()});
 
-    std::vector<std::string> diff_keys;
+    {
+        std::set<std::string> diff_keys(ini_keys.begin(), ini_keys.end());
 
-    //populate config diff
-    diff_keys = config_diffs(preset_to_load->config, default_config);
-    for (const std::string &key : diff_keys) {
-        if (preset_to_load->config.has(key)) {
-            preset_to_load->config_diff.set_deserialize(key, preset_to_load->config.option(key)->serialize());
+        // populate config diff
+        // because convertion can add new keys
+        auto vec = config_diffs(preset_to_load->config, default_config);
+        for (std::string &key : vec) {
+            if (default_config.option(key)->size() == 0 && preset_to_load->config.option(key)->size() > 0) {
+                assert((preset_to_load->config.option(key)->type() & coVectorType) == coVectorType);
+                const ConfigOptionVectorBase* opt = static_cast<ConfigOptionVectorBase*>(preset_to_load->config.option(key));
+                ConfigOptionVectorBase* opt_copy = static_cast<ConfigOptionVectorBase*>(preset_to_load->config.option(key)->clone());
+                opt_copy->resize(0);
+                opt_copy->resize(opt->size());
+                bool is_default_ptr = (opt_copy) == (opt);
+                bool is_default = (*opt_copy) == (*opt);
+                delete opt_copy;
+                if (is_default && !preset_to_load->write_defaults) {
+                    continue;
+                }
+            }
+            diff_keys.insert(key);
+        }
+        for (const std::string &key : diff_keys) {
+            //assert(preset_to_load->config.has(key)); // ini_keys keys may have been deleted by convert
+            if (preset_to_load->config.has(key)) {
+                preset_to_load->config_diff.set_deserialize(key, preset_to_load->config.opt_serialize(key));
+            }
         }
     }
 
     //compare the ini settigns to the fixed profile
-    std::cout << " ===== list of legacy vconverted settings: ===== \n";
-    for (const std::string &key : ini_ordered_keys) {
-        if (!preset_to_load->config.option(key)) {
-            std::string opt_key = key;
-            std::string value = written_ini[key];
-            std::cout << "'" << opt_key << " = " << value << "'";
-            PrintConfigDef::handle_legacy_pair(opt_key, value, true);
-            if (opt_key.empty()) {
-                if (opts_deleted.find(key) != opts_deleted.end()) {
-                    std::cout << " => legacy delete. please remove this deprecated setting.";
-                } else {
-                    std::cout << " => transformed into something (see below), please delete this legacy value when you've written the new one.";
+    size_t count = 0;
+    for (const std::string &key : ini_keys)
+        if (!preset_to_load->config.option(key))
+            count++;
+    if (count > 0) {
+        std::cout << " ===== list of legacy vconverted settings: ===== \n";
+        for (const std::string &key : ini_keys) {
+            if (!preset_to_load->config.option(key)) {
+                std::string opt_key = key;
+                std::string value = written_ini[key];
+                std::cout << "'" << opt_key << " = " << value << "'";
+                PrintConfigDef::handle_legacy_pair(opt_key, value, true);
+                if (opt_key.empty()) {
+                    if (opts_deleted.find(key) != opts_deleted.end()) {
+                        std::cout << " => legacy delete. please remove this deprecated setting.";
+                    } else {
+                        std::cout << " => transformed into something (see below), please delete this legacy value "
+                                     "when you've written the new one.";
+                    }
+                } else if (opt_key != key || value != written_ini[key]) {
+                    std::cout << " => legacy convert:'" << opt_key << " = " << value << "'";
                 }
-            } else if (opt_key != key || value != written_ini[key]) {
-                std::cout << " => legacy convert:'" << opt_key << " = " << value << "'";
+                std::cout << "\n";
             }
-            std::cout << "\n";
         }
     }
-    diff_keys = config_diffs(preset_to_load->config_before_legacy_composite, preset_to_load->config_before_prusa);
-    std::cout << " ===== list of settings converted from prusa: " << diff_keys.size() << " ===== \n";
-    for (const std::string &key : diff_keys) {
-        std::cout << "'" << key << " = " << (preset_to_load->config_before_prusa.option(key) ? preset_to_load->config_before_prusa.option(key)->serialize() : "") << "'";
-        std::cout << "=> '" << key << " = " << (preset_to_load->config_before_legacy_composite.option(key) ? preset_to_load->config_before_legacy_composite.option(key)->serialize() : "") << "'";
-        std::cout << "\n";
-    }
-    for (auto &entry : opts_prusa_transformed) {
-        auto &old_pair = entry.first;
-        auto &vector = entry.second;
-        std::cout << "'" << old_pair.first << " = " << old_pair.second << "'";
-        if (vector.size() == 1) {
-            std::cout << "=> '" << vector.front().first << " = " << vector.front().second << "'";
-            std::cout << "\n";
-        } else {
-            std::cout << "=> [\n";
-            for (auto &new_pair : vector) {
-                std::cout << "        '" << new_pair.first << " = " << new_pair.second << "'\n";
+    {
+        std::vector<std::string> diff_keys = config_diffs(preset_to_load->config_before_legacy_composite, preset_to_load->config_before_prusa);
+        count = diff_keys.size() + opts_prusa_transformed.size();
+        if (count > 0){
+            std::cout << " ===== list of settings converted from prusa: " << diff_keys.size() << " ===== \n";
+            for (const std::string &key : diff_keys) {
+                std::cout << "'" << key << " = " << (preset_to_load->config_before_prusa.option(key) ? preset_to_load->config_before_prusa.opt_serialize(key) : "") << "'";
+                std::cout << "=> '" << key << " = " << (preset_to_load->config_before_legacy_composite.option(key) ? preset_to_load->config_before_legacy_composite.opt_serialize(key) : "") << "'";
+                std::cout << "\n";
             }
-            std::cout<<"    ]\n";
+            for (auto &entry : opts_prusa_transformed) {
+                auto &old_pair = entry.first;
+                auto &vector = entry.second;
+                std::cout << "'" << old_pair.first << " = " << old_pair.second << "'";
+                if (vector.size() == 1) {
+                    std::cout << "=> '" << vector.front().first << " = " << vector.front().second << "'";
+                    std::cout << "\n";
+                } else {
+                    std::cout << "=> [\n";
+                    for (auto &new_pair : vector) {
+                        std::cout << "        '" << new_pair.first << " = " << new_pair.second << "'\n";
+                    }
+                    std::cout<<"    ]\n";
+                }
+            }
         }
-
     }
-    diff_keys = config_diffs(preset_to_load->config, preset_to_load->config_before_legacy_composite);
-    std::cout << " ===== list of finals changes need to move from an old setting: " << diff_keys.size() << " ===== \n";
-    for (const std::string &key : diff_keys) {
-        std::cout << "'" << key << " = " << (preset_to_load->config_before_legacy_composite.option(key) ? preset_to_load->config_before_legacy_composite.option(key)->serialize() : "") << "'";
-        std::cout << "=> '" << key << " = " << (preset_to_load->config.option(key) ? preset_to_load->config.option(key)->serialize() : "") << "'";
-        std::cout << "\n";
+    {
+        std::vector<std::string> diff_keys = config_diffs(preset_to_load->config, preset_to_load->config_before_legacy_composite);
+        if (diff_keys.size() > 0) {
+            std::cout << " ===== list of finals changes need to move from an old setting: " << diff_keys.size() << " ===== \n";
+            for (const std::string &key : diff_keys) {
+                std::cout << "'" << key << " = " << (preset_to_load->config_before_legacy_composite.option(key) ? preset_to_load->config_before_legacy_composite.opt_serialize(key) : "") << "'";
+                std::cout << "=> '" << key << " = " << (preset_to_load->config.option(key) ? preset_to_load->config.opt_serialize(key) : "") << "'";
+                std::cout << "\n";
+            }
+        }
     }
-    if (!preset_to_load->config_before_legacy_composite.option("print_version")) {
-        std::cout << "'print_version = '";
+    if (preset_to_load->config_before_legacy_composite.option("print_version") &&
+        (preset_to_load->config_before_legacy_composite.option("print_version")->serialize() !=
+         ConfigOptionStringVersion().serialize())) {
+        std::cout << "'print_version = "
+                  << preset_to_load->config_before_legacy_composite.option("print_version")->serialize() << "'";
         std::cout << "=> 'print_version = " << ConfigOptionStringVersion().serialize() << "'";
         std::cout << "\n";
     }
@@ -539,9 +622,16 @@ std::vector<PrstPtr> get_configbundle_hierarchy(boost::property_tree::ptree &tre
     // Find the presets, store them into a std::map, addressed by their names.
     std::set<PrstPtr, ComparePrstPtr> presets;
     std::string group_name_preset = group_name + ":";
-    for (auto &section : tree)
-        if (boost::starts_with(section.first, group_name_preset) && section.first.size() > group_name_preset.size())
-            presets.emplace(std::make_shared<Prst>(group_name, section.first.substr(group_name_preset.size()), &section.second));
+    size_t section_idx = 0;
+    for (auto &section : tree) {
+        section_idx++;
+        if (boost::starts_with(section.first, group_name_preset) && section.first.size() > group_name_preset.size()) {
+            PrstPtr preset = std::make_shared<Prst>(group_name, section.first.substr(group_name_preset.size()), &section.second);
+            preset->section_idx = section_idx;
+            presets.emplace(preset);
+        }
+
+    }
     // Fill in the "inherits" and "parent_of" members, report invalid inheritance fields.
     for (const PrstPtr &prst : presets) {
         // Parse the list of comma separated values, possibly enclosed in quotes.
@@ -553,9 +643,10 @@ std::vector<PrstPtr> get_configbundle_hierarchy(boost::property_tree::ptree &tre
             for (const std::string &node_name : inherits_names) {
                 auto temp = std::make_shared<Prst>(group_name, node_name, nullptr);
                 auto it = presets.find(temp);
-                if (it == presets.end())
-                    BOOST_LOG_TRIVIAL(error) << "flatten_configbundle_hierarchy: The preset " << prst->name << " inherits an unknown preset \"" << node_name << "\"";
-                else {
+                if (it == presets.end()) {
+                    BOOST_LOG_TRIVIAL(error) << "flatten_configbundle_hierarchy: The preset " << prst->name
+                                             << " inherits an unknown preset \"" << node_name << "\"";
+                } else {
                     inherits_nodes.push_back(*it);
                     inherits_nodes.back()->parent_of.push_back(prst);
                 }
@@ -666,6 +757,138 @@ void update_preset(const VendorProfile &vendor_profile, PrstPtr preset_to_update
     
 }
 
+void add_common_deps(std::vector<PrstPtr> &ordered_presets) {
+    std::vector<PrstPtr> commons;
+    std::vector<PrstPtr> combined;
+    // update roots
+    // get roots with "common" name
+    // get other "combined" roots
+    for (PrstPtr &prstptr : ordered_presets) {
+        if (prstptr->inherits.empty()) {
+            if (prstptr->parent_of.empty() && !(prstptr->name.front() == '*' && prstptr->name.back() == '*')) {
+                commons.push_back(prstptr);
+                prstptr->write_defaults = true;
+                prstptr->has_all_values = true;
+            } else {
+                combined.push_back(prstptr);
+                prstptr->write_defaults = false;
+                prstptr->has_all_values = false;
+            }
+        } else {
+            // unless inherit , really set in next loop
+            prstptr->write_defaults = false;
+            prstptr->has_all_values = false;
+        }
+    }
+update_write_defaults:;
+    // update every intermediate node from it parents.
+    bool has_change = true;
+    while (has_change) {
+        has_change = false;
+        for (PrstPtr &prstptr : ordered_presets) {
+            if (!prstptr->inherits.empty() && !prstptr->has_all_values) {
+                for (PrstPtr &parent : prstptr->inherits) {
+                    if (parent->has_all_values) {
+                        prstptr->has_all_values = true;
+                        has_change = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    // update leafs
+    // put any "combined" root as "common" if they have at least one occurence when they don't combine with a "common" one
+    std::map<Prst*, std::set<PrstPtr>> associated_with;
+    for (PrstPtr &prstptr : ordered_presets) {
+        if (prstptr->parent_of.empty() && !prstptr->inherits.empty() && !prstptr->has_all_values) {
+            if (prstptr->name.front() == '*' && prstptr->name.back() == '*') {
+                // ignore, it will emit a warning in the loop after. not here because we can iterate this loop multiple times.
+                continue;
+            }
+            // get the root of first parent, and set the outmost parent to "write_defaults"
+            PrstPtr root = prstptr->inherits.front();
+            while (!root->inherits.empty()) {
+                root = root->inherits.front();
+            }
+            {
+                std::cout << "Preset " << root->section_name << ": '" << root->name
+                          << "' needs all default options because of the chain '";
+                PrstPtr root_chain = prstptr;
+                std::cout << prstptr->name;
+                while (!root_chain->inherits.empty()) {
+                    root_chain = root_chain->inherits.front();
+                    std::cout << "' -> '" << root_chain->name;
+                }
+                std::cout << "'\n";
+            }
+            root->write_defaults = true;
+            root->has_all_values = true;
+            // redo update
+            goto update_write_defaults;
+        }
+    }
+
+    
+    for (PrstPtr &prstptr : ordered_presets) {
+        if (prstptr->parent_of.empty() && !prstptr->inherits.empty() && !prstptr->has_all_values) {
+            if (prstptr->name.front() == '*' && prstptr->name.back() == '*') {
+                BOOST_LOG_TRIVIAL(warning) << "The preset " << prstptr->section_name << ":" << prstptr->name
+                                           << " isn't inherited by anything, hence is useless.";
+            }
+        }
+    }
+    //ensure an inherit doesn't erase evrything
+    for (PrstPtr &prstptr : ordered_presets) {
+        if (!prstptr->inherits.empty()) {
+            if ((prstptr->has_all_values || prstptr->parent_of.empty()) &&
+                !prstptr->inherits.front()->has_all_values) {
+                BOOST_LOG_TRIVIAL(warning) << "The preset " << prstptr->section_name << ":" << prstptr->name
+                                           << " inherits (first) a preset \"" << prstptr->inherits.front()->name
+                                           << " that doesn't define every setting, it's not recommended.\"";
+                //assert(false);
+            }
+            for (size_t parent_idx = 1; parent_idx < prstptr->inherits.size(); ++parent_idx) {
+                PrstPtr &parent = prstptr->inherits[parent_idx];
+                if (parent->has_all_values) {
+                    std::cout << "Looking at " << prstptr->section_name << ": " << prstptr->name << "\n";
+                    if (prstptr->inherits.front()->has_all_values) {
+                        std::cout << "first inherited preset " << prstptr->inherits.front()->name
+                                  << " need all default options because of the chain ";
+                        PrstPtr root_chain = prstptr->inherits.front();
+                        std::cout << prstptr->name;
+                        while (!root_chain->inherits.empty()) {
+                            root_chain = root_chain->inherits.front();
+                            std::cout << "->" << root_chain->name;
+                        }
+                        std::cout << "\n";
+                    } else {
+                        std::cout << "first inherited preset " << prstptr->inherits.front()->name
+                                  << " don't need all default options because of the chain.\n";
+                    }
+                    {
+                        std::cout << (parent_idx+1) << "-th inherited preset " << prstptr->inherits[parent_idx]->name
+                                  << " need all default options because of the chain ";
+                        PrstPtr root_chain = prstptr->inherits[parent_idx];
+                        std::cout << prstptr->inherits[parent_idx]->name;
+                        while (!root_chain->inherits.empty()) {
+                            root_chain = root_chain->inherits.front();
+                            std::cout << "->" << root_chain->name;
+                        }
+                        std::cout << "\n";
+                    }
+                    BOOST_LOG_TRIVIAL(error)
+                        << "The preset " << prstptr->section_name << ":" << prstptr->name << " inherits a preset \""
+                        << prstptr->inherits.front()->name
+                        << " that define every settings, erasing the previous inheritance(s)!\"";
+                    //assert(false);
+                }
+            }
+        }
+    }
+
+}
+
 std::pair<VendorProfile, std::vector<PrstPtr>> load_sections(const std::string &path) {
     
     // 1) Read the complete config file into a boost::property_tree.
@@ -695,6 +918,16 @@ std::pair<VendorProfile, std::vector<PrstPtr>> load_sections(const std::string &
         return {};
     }
 
+    // if there's no technologies field, check if it's not sla
+     auto vendor_section_it = tree.find("vendor");
+     const std::string technologies_field = vendor_section_it->second.get<std::string>("technologies", "");
+     if (technologies_field.empty()) {
+        assert(vp.technologies.size() == 1 && vp.technologies.front() == PrinterTechnology::ptFFF);
+         if (vp.name.find("SLA") != std::string::npos) {
+            vp.technologies.front() = PrinterTechnology::ptSLA;
+         }
+     }
+
     cout<<"Vendor profile '"<<vp.name<<"' loaded\n";
     cout << "full name: '" << vp.full_name << "'\n";
     cout << "id: '" << vp.id << "'\n";
@@ -718,37 +951,46 @@ std::pair<VendorProfile, std::vector<PrstPtr>> load_sections(const std::string &
         for(auto var : model.variants) cout<<" '"<<var.name<<"'";
         cout<<"]\n";
         cout << "    default materials:[";
-        for(auto mat : model.default_materials) cout<<" '"<<mat<<"'";
+        for (auto it = model.default_materials.rbegin(); it != model.default_materials.rend(); ++it) {
+            cout << " '" << (*it) << "'";
+        }
         cout<<"]\n";
     }
     
 
     std::vector<PrstPtr> ordered_presets_print = get_configbundle_hierarchy(tree, "print");
+    // also try to use a common config as common even if it's not said. (like when we combine 0.2 nozzle always with common)
+    add_common_deps(ordered_presets_print);
     // Apply the dependencies in their topological ordering.
     for (PrstPtr &prst : ordered_presets_print) {
         update_preset(vp, prst);
     }
     std::vector<PrstPtr> ordered_presets_sla_print = get_configbundle_hierarchy(tree, "sla_print");
+    add_common_deps(ordered_presets_sla_print);
     // Apply the dependencies in their topological ordering.
     for (PrstPtr &prst : ordered_presets_sla_print) {
         update_preset(vp, prst);
     }
     std::vector<PrstPtr> ordered_presets_printer = get_configbundle_hierarchy(tree, "printer");
+    add_common_deps(ordered_presets_printer);
     // Apply the dependencies in their topological ordering.
     for (PrstPtr &prst : ordered_presets_printer) {
         update_preset(vp, prst);
     }
     std::vector<PrstPtr> ordered_presets_filament = get_configbundle_hierarchy(tree, "filament");
+    add_common_deps(ordered_presets_filament);
     // Apply the dependencies in their topological ordering.
     for (PrstPtr &prst : ordered_presets_filament) {
         update_preset(vp, prst);
     }
     std::vector<PrstPtr> ordered_presets_material = get_configbundle_hierarchy(tree, "material");
+    add_common_deps(ordered_presets_material);
     // Apply the dependencies in their topological ordering.
     for (PrstPtr &prst : ordered_presets_material) {
         update_preset(vp, prst);
     }
     //load_preset(vp, std::string section_name, boost::property_tree::ptree section_data)
+
 
     std::vector<PrstPtr> all;
     append(all, ordered_presets_print);
@@ -756,17 +998,16 @@ std::pair<VendorProfile, std::vector<PrstPtr>> load_sections(const std::string &
     append(all, ordered_presets_printer);
     append(all, ordered_presets_filament);
     append(all, ordered_presets_material);
+    std::sort(all.begin(), all.end(), [](const PrstPtr &p1, const PrstPtr &p2) {
+            return p1->section_idx < p2->section_idx;
+        });
 
     return {vp, all};
 }
 
 
-void save(const std::string &file, VendorProfile &vp, std::vector<PrstPtr> &presets, const Semver &ver_susi)
+void save(boost::nowide::ofstream &c, VendorProfile &vp, std::vector<PrstPtr> &presets, const Semver &ver_susi)
 {
-    boost::nowide::ofstream c;
-    c.open(file, std::ios::out | std::ios::trunc);
-    c << "# " << Slic3r::header_slic3r_generated() << std::endl;
-    c << "# Generated to " SLIC3R_APP_NAME;
 
     c << "\n";
     c << "[vendor]\n";
@@ -812,15 +1053,54 @@ void save(const std::string &file, VendorProfile &vp, std::vector<PrstPtr> &pres
         c << "\n";
     }
 
+    //don't print special fields if empty
+    auto is_printable = [](const DynamicPrintConfig &config, const std::string &key) {
+        if(!config.has(key)) return false;
+        if(key == "printer_model") return false;
+        // also erase things that can't have any default value
+        if (std::set<std::string>{"tool_name", "print_settings_modified", "filament_settings_modified",
+                                  "sla_print_settings_modified", "sla_material_settings_modified",
+                                  "printer_settings_modified", "printer_vendor", "printer_notes", "printer_model",
+                                  "printer_variant", "default_print_profile", "default_filament_profile",
+                                  "default_sla_print_profile", "default_sla_material_profile", "host_type",
+                                  "print_host", "printhost_apikey", "printhost_cafile", "printhost_client_cert",
+                                  "printhost_client_cert_password", "printhost_port", "printhost_authorization_type",
+                                  // HTTP digest authentization (RFC 2617)
+                                  "printhost_user", "printhost_password", "printhost_ssl_ignore_revoke"}
+                .count(key) > 0) {
+            if (config.opt_serialize(key).empty()) {
+                return false;
+            }
+        }
+        return true;
+    };
+
     // config presets sections
     for (PrstPtr preset : presets) {
+        bool check_preset_debug = false;
+        if (preset->name.find("0.05mm 0.25nozzle V2") != std::string::npos) {
+            check_preset_debug = true;
+        }
+        if (preset->deleted) {
+            continue;
+        }
         c << "\n";
         if (!preset->name_with_template.empty()) {
             c << "#name_with_template = " << preset->name_with_template << "\n";
         }
+        assert(preset->has_all_values || !preset->parent_of.empty() ||
+               (preset->name.front() == '*' && preset->name.back() == '*'));
+        if((preset->name.front() == '*' && preset->name.back() == '*') && preset->parent_of.empty()){
+            if (preset->has_all_values) {
+                c << "# unused (common) preset\n";
+            } else {
+                c << "# unused (flavor) preset\n";
+            }
+        }
         c << "[" << preset->section_name << ":" << preset->name << "]\n";
-        // inherits
+        // inherits?
         if (!preset->inherits.empty()) {
+            assert(!preset->write_defaults);
             c << "inherits = ";
             DynamicPrintConfig        config_inherit;
             for (std::shared_ptr<Prst> &inherit_preset : preset->inherits) {
@@ -828,73 +1108,88 @@ void save(const std::string &file, VendorProfile &vp, std::vector<PrstPtr> &pres
                 if (inherit_preset != preset->inherits.front())
                     c <<"; ";
                 c << inherit_preset->name;
-                for (std::string &key : inherit_preset->config.keys()) {
-                    config_inherit.set_key_value(key, inherit_preset->config.option(key)->clone());
+                // has_all_values -> inherit a config with all settings, we can erase evrything
+                // !has_all_values -> only erase the diff
+                if (inherit_preset->has_all_values) {
+                    for (std::string &key : inherit_preset->config.keys()) {
+                        config_inherit.set_key_value(key, inherit_preset->config.option(key)->clone());
+                    }
+                } else {
+                    inherit_preset->apply_current_diff(config_inherit);
                 }
             }
             c << "\n";
-            //on ne met que le diff
-            t_config_option_keys diff = preset->config.diff(config_inherit);
-            for (const std::string &opt_key : diff)
-                c << opt_key << " = " << preset->config.opt_serialize(opt_key) << "\n";
+            // print onlydiff
+            t_config_option_keys diff = preset->config.diff(config_inherit, false);
+            //print printer_model first
+            if (std::find(diff.begin(), diff.end(), "printer_model") != diff.end() &&
+                !preset->config.opt_serialize("printer_model").empty()) {
+                c << "printer_model" << " = " << preset->config.opt_serialize("printer_model") << "\n";
+            }
+            //then the others
+            for (const std::string &opt_key : diff) {
+                if (is_printable( preset->config, opt_key)) {
+                    c << opt_key << " = " << preset->config.opt_serialize(opt_key) << "\n";
+                }
+            }
         } else {
-            for (const std::string &opt_key : preset->config.keys())
-                c << opt_key << " = " << preset->config.opt_serialize(opt_key) << "\n";
+            //print printer_model first
+            if (preset->config.has("printer_model") && !preset->config.opt_serialize("printer_model").empty()) {
+                c << "printer_model" << " = " << preset->config.opt_serialize("printer_model") << "\n";
+            }
+            //then the others
+            if (preset->write_defaults) {
+                for (const std::string &opt_key : preset->config.keys()) {
+                    if (is_printable( preset->config, opt_key)) {
+                        c << opt_key << " = " << preset->config.opt_serialize(opt_key) << "\n";
+                    }
+                }
+            } else {
+                for (const std::string &opt_key : preset->config_diff.keys()) {
+                    if (is_printable( preset->config_diff, opt_key)) {
+                        c << opt_key << " = " << preset->config.opt_serialize(opt_key) << "\n";
+                    }
+                }
+            }
         }
     }
-    c.close();
 }
 
-int main(int argc, char const *argv[])
-{
-    Semver slic3r_2_7_61("2.7.61-alpha+UNKNOWN");
-    Semver slic3r_2_7_alpha("2.7-alpha+UNKNOWN");
-    Semver slic3r_2_6_1_rc2("2.6.1-rc2");
-    Semver slic3r_2_6_2_alpha0("2.6.2-alpha0");
-    Semver slic3r_2_7_0_alpha2("2.7.0-alpha2");
-    Semver slic3r_2_7_0_beta1("2.7.0-beta1");
+void convert_config(boost::filesystem::path &path_in, boost::filesystem::path &path_out){
+    //if(path_in.string().find("Tri") == std::string::npos) return;
+    //Semver slic3r_2_7_61("2.7.61-alpha+UNKNOWN");
+    //Semver slic3r_2_7_alpha("2.7-alpha+UNKNOWN");
+    //Semver slic3r_2_6_1_rc2("2.6.1-rc2");
+    //Semver slic3r_2_6_2_alpha0("2.6.2-alpha0");
+    //Semver slic3r_2_7_0_alpha2("2.7.0-alpha2");
+    //Semver slic3r_2_7_0_beta1("2.7.0-beta1");
 
-    auto test = [](Semver& s1, Semver& s2){
-        std::cout << ((s1 == s2) ? "equal" : ((s1 < s2) ? "lower" : "higher")) << "\n"; };
-    
-    test(slic3r_2_6_1_rc2,slic3r_2_6_2_alpha0);
-    test(slic3r_2_6_2_alpha0,slic3r_2_7_0_alpha2);
-    test(slic3r_2_7_0_alpha2,slic3r_2_7_0_beta1);
-    std::cout<<"test 2.7-alpha+UNKNOWN\n";
-    test(slic3r_2_7_alpha,slic3r_2_6_1_rc2);
-    test(slic3r_2_7_alpha,slic3r_2_6_2_alpha0);
-    test(slic3r_2_7_alpha,slic3r_2_7_0_alpha2);
-    test(slic3r_2_7_alpha,slic3r_2_7_0_beta1);
-    test(slic3r_2_7_alpha,slic3r_2_7_61);
-    std::cout<<"2.7.61-alpha+UNKNOWN\n";
-    test(slic3r_2_7_61,slic3r_2_6_1_rc2);
-    test(slic3r_2_7_61,slic3r_2_6_2_alpha0);
-    test(slic3r_2_7_61,slic3r_2_7_0_alpha2);
-    test(slic3r_2_7_61,slic3r_2_7_0_beta1);
+    //auto test = [](Semver& s1, Semver& s2){
+    //    std::cout << ((s1 == s2) ? "equal" : ((s1 < s2) ? "lower" : "higher")) << "\n"; };
+    //
+    //test(slic3r_2_6_1_rc2,slic3r_2_6_2_alpha0);
+    //test(slic3r_2_6_2_alpha0,slic3r_2_7_0_alpha2);
+    //test(slic3r_2_7_0_alpha2,slic3r_2_7_0_beta1);
+    //std::cout<<"test 2.7-alpha+UNKNOWN\n";
+    //test(slic3r_2_7_alpha,slic3r_2_6_1_rc2);
+    //test(slic3r_2_7_alpha,slic3r_2_6_2_alpha0);
+    //test(slic3r_2_7_alpha,slic3r_2_7_0_alpha2);
+    //test(slic3r_2_7_alpha,slic3r_2_7_0_beta1);
+    //test(slic3r_2_7_alpha,slic3r_2_7_61);
+    //std::cout<<"2.7.61-alpha+UNKNOWN\n";
+    //test(slic3r_2_7_61,slic3r_2_6_1_rc2);
+    //test(slic3r_2_7_61,slic3r_2_6_2_alpha0);
+    //test(slic3r_2_7_61,slic3r_2_7_0_alpha2);
+    //test(slic3r_2_7_61,slic3r_2_7_0_beta1);
 
 
-    clipboardxx::clipboard clipboard;
-    if (argc != 2) {
-        std::cout<<"usage: test_config \"path/to/vendor/config.ini\"\n";
-        return 0;
-    }
-    std::string path_str = argv[1];
-    if(path_str.front() == '\"' && path_str.back() == '\"')
-        path_str = path_str.substr(1,path_str.size()-2);
-    boost::filesystem::path path_in(path_str);
     
     //PresetsConfigSubstitutions  substitutions;
     //std::pair<PresetsConfigSubstitutions, size_t> res = 
     //    this->load_configbundle(path_str, PresetBundle::LoadSystem, ForwardCompatibilitySubstitutionRule::);
-    auto [vp, presets] = load_sections(path_str);
+    auto [vp, presets] = load_sections(path_in.string());
 
     // get path & name
-    boost::filesystem::path path_out = path_in.parent_path();
-    path_out /= "converted";
-    boost::filesystem::create_directory(path_out);
-    path_out /= path_in.filename();
-    std::cout<<path_in.string()<<"\n";
-    std::cout<<path_out.string()<<"\n";
 
     //copy directory
     boost::filesystem::path path_dir = path_in.parent_path();
@@ -902,8 +1197,9 @@ int main(int argc, char const *argv[])
     path_dir_out /= "converted";
     path_dir /= path_in.stem();
     path_dir_out /= path_in.stem();
-    std::filesystem::copy(path_dir.string(), path_dir_out.string(), std::filesystem::copy_options::recursive);
-
+    try {
+        std::filesystem::copy(path_dir.string(), path_dir_out.string(), std::filesystem::copy_options::recursive);
+    } catch (std::exception) {}
     //ver
     Semver ver_susi  = vp.config_version;
     if (ver_susi.has_patch()) {
@@ -920,11 +1216,11 @@ int main(int argc, char const *argv[])
 
     //copy idx
     boost::filesystem::path path_idx = path_in.parent_path();
-    boost::filesystem::path path_idx_out = path_in.parent_path();
-    path_idx_out /= "converted";
+    boost::filesystem::path path_idx_out = path_out.parent_path();
     path_idx /= path_in.stem();
     path_idx_out /= path_in.stem();
     path_idx += ".idx";
+
     path_idx_out += ".idx";
     boost::nowide::ifstream ifs(path_idx.string());
     boost::nowide::ofstream c;
@@ -932,16 +1228,33 @@ int main(int argc, char const *argv[])
     string line;
     std::istream *ok = &std::getline(ifs, line);
     while (ok && boost::starts_with(line, "min_slic3r_version")) {
-        c << line << endl;
+        //c << line << endl;
         ok = &std::getline(ifs, line);
     }
+    c  << "min_slic3r_version = " << SLIC3R_VERSION_FULL << "\n";
     c << ver_susi.to_string() << " auto-convert to susi profile" << endl;
     c << line << endl;
     while (std::getline(ifs, line)) {
         c << line << endl;
     }
-
-    save(path_out.string(), vp, presets, ver_susi);
+    ifs.close();
+    c.close();
+    
+    //write ini
+    c.open(path_out.string(), std::ios::out | std::ios::trunc);
+    // copy header
+    c << "# " << Slic3r::header_slic3r_generated() << std::endl;
+    c << "# from file with header:\n\n";
+    ifs.open(path_in.string());
+    ok = &std::getline(ifs, line);
+    while (ok && !boost::starts_with(line, "[")) {
+        c << line << "\n";
+        ok = &std::getline(ifs, line);
+    }
+    
+    ifs.close();
+    save(c, vp, presets, ver_susi);
+    c.close();
     //Slic3r::Model model;
     //bool result = load_stl(path_str.c_str(), &model, "obj");
     //if (!result) {
@@ -977,6 +1290,65 @@ int main(int argc, char const *argv[])
 
     //clipboard << out_cpp.str();
     //std::cout << out_cpp.str();
+}
+
+
+int main(int argc, char const *argv[]) {
+
+    if (argc == 2) {
+        // get path in
+        std::string path_str = argv[1];
+        if (path_str.front() == '\"' && path_str.back() == '\"')
+            path_str = path_str.substr(1, path_str.size() - 2);
+        boost::filesystem::path path_in(path_str);
+
+        // get path out
+        boost::filesystem::path path_out = path_in.parent_path();
+        path_out /= "converted";
+        boost::filesystem::create_directory(path_out);
+        path_out /= path_in.filename();
+        std::cout << path_in.string() << "\n";
+        std::cout << path_out.string() << "\n";
+
+        convert_config(path_in, path_out);
+    } else if (argc == 3) {
+        std::string path_str = argv[1];
+        if (path_str.front() == '\"' && path_str.back() == '\"')
+            path_str = path_str.substr(1, path_str.size() - 2);
+        boost::filesystem::path dir_in(path_str);
+        if (!boost::filesystem::is_directory(dir_in)) {
+            std::cout<<"error, path \"" << dir_in.string() <<"\" isn't a directory\n";
+        }
+
+        path_str = argv[2];
+        if (path_str.front() == '\"' && path_str.back() == '\"')
+            path_str = path_str.substr(1, path_str.size() - 2);
+        boost::filesystem::path dir_out(path_str);
+        if (!boost::filesystem::exists(dir_out)) {
+                boost::filesystem::create_directory(dir_out);
+        }
+        if (!boost::filesystem::is_directory(dir_out)) {
+            std::cout<<"error, path \"" << dir_in.string() <<"\" isn't a directory\n";
+        }
+
+        for (boost::filesystem::directory_entry &entry : boost::make_iterator_range(boost::filesystem::directory_iterator(dir_in), {})) {
+            if (boost::filesystem::is_regular_file(entry.status()) && entry.path().extension() == ".ini") {
+                boost::filesystem::path path_in = entry.path();
+                boost::filesystem::path path_out = dir_out;
+                path_out /= path_in.filename();
+                std::cout << "convert \"" << path_in.string()
+                          << "\" to \"path_out.string()"
+                             "\"\n";
+                convert_config(path_in, path_out);
+            }
+        }
+
+    } else {
+        std::cout<<"usage: convert_config \"path/to/vendor/config.ini\"\n";
+        std::cout<<"usage: convert_config \"path/to/vendor_dir_in\" \"path/to/vendor_dir_out\"\n";
+        return 1;
+    }
 
     return 0;
+
 }
