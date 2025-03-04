@@ -1,4 +1,4 @@
 BUILD: version_2.9.1-rc1-7-ga92fc9e2dd
 system: 43070
 date: Tue Mar  4 11:21:23 PM CET 2025
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
