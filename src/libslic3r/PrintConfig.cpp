@@ -11943,10 +11943,21 @@ CustomGcodeSpecificConfigDef::CustomGcodeSpecificConfigDef()
     def->label = L("Next color");
     def->tooltip = L("Next color to display when a color change is performed, in #ffffff format.");
 
-    def = this->add("next_colour", coString);
-    // TRN: This is a label in custom g-code editor dialog, belonging to color_change_extruder. Denoted index of the extruder for which color change is performed.
-    def->label = L("Next colour");
-    def->tooltip = L("Next colour to display when a colour change is performed, in #ffffff format.");
+    def = this->add("previous_extrusion_role", coString);
+    def->label = L("Previous extrusion role");
+    def->tooltip = L("The extrusion role before changing to the new one.");
+
+    def = this->add("next_extrusion_role", coString);
+    def->label = L("Next extrusion role");
+    def->tooltip = L("The new extrusion role the gcode changes to.");
+
+    def = this->add("extrusion_role", coString);
+    def->label = L("Extrusion role");
+    def->tooltip = L("Deprecated, use next_extrusion_role.");
+
+    def = this->add("last_extrusion_role", coString);
+    def->label = L("Last extrusion role");
+    def->tooltip = L("Deprecated, use previous_extrusion_role.");
     
     def = this->add("start_gcode_bed_temperature", coInt);
     def->label = L("Computed bed temperature for first layer");
