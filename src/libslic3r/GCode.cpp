@@ -5177,7 +5177,7 @@ std::string GCodeGenerator::extrude_loop(const ExtrusionLoop &original_loop, con
                             }
                             assert(polys.front().closest_point(pt_inside) != nullptr &&
                                    std::abs(polys.front().closest_point(pt_inside)->distance_to_square(pt_inside) -
-                                            best_dist_sqr) < SCALED_EPSILON);
+                                            best_dist_sqr) < SCALED_EPSILON * SCALED_EPSILON);
                         } else {
                             polys = { original_polygon };
                         }
@@ -5528,7 +5528,7 @@ std::string GCodeGenerator::extrude_path(const ExtrusionPath &path, const std::s
     }
 
     // if the path is too small to be printed, put in the queue to be merge with the next one.
-    const coordf_t scaled_min_length = this->config().gcode_min_length.is_enabled() ?
+    const distf_t scaled_min_length = this->config().gcode_min_length.is_enabled() ?
         scale_d(this->config().gcode_min_length.get_abs_value(m_current_perimeter_extrusion_width)) :
         0;
     if (scaled_min_length > 0 && simplifed_path.length() < scaled_min_length) {
@@ -5542,31 +5542,69 @@ std::string GCodeGenerator::extrude_path(const ExtrusionPath &path, const std::s
     // simplify with gcode_resolution (not used yet). Simplify by junction deviation before the g1/sec count, to be able to use that decimation to reduce max_gcode_per_second triggers.
     // But as it can be visible on cylinders, should only be called if a max_gcode_per_second trigger may come.
     const coordf_t scaled_min_resolution = scale_d(this->config().gcode_min_resolution.get_abs_value(m_current_perimeter_extrusion_width));
-    const int32_t max_gcode_per_second = (false /*disabled*/&& this->config().max_gcode_per_second.is_enabled()) ?
+    const int32_t max_gcode_per_second = (this->config().max_gcode_per_second.is_enabled()) ?
         this->config().max_gcode_per_second.value :
         0;
     double fan_speed;
+    //if (max_gcode_per_second > 0) {
+    //    // if (broken) max_gcode_per_second is used, simplify the segment with it
+    //    const int32_t gcode_buffer_window = this->config().gcode_command_buffer.value;
+    //    double speed = _compute_speed_mm_per_sec(path, speed_mm_per_sec, fan_speed, nullptr);
+    //    coordf_t scaled_mean_length = scale_d(speed / max_gcode_per_second);
+
+    //    // set at least 2 buffer space, to not over-erase first lines.
+    //    if (gcode_buffer_window > 2 && gcode_buffer_window - m_last_command_buffer_used < 2) {
+    //        m_last_command_buffer_used = gcode_buffer_window - 2;
+    //    }
+
+    //    // simplify
+    //    m_last_command_buffer_used = simplifed_path.polyline.simplify_straits(scaled_min_resolution,
+    //                                                                            scaled_min_length,
+    //                                                                            scaled_mean_length,
+    //                                                                            gcode_buffer_window,
+    //                                                                            m_last_command_buffer_used);
+    //} else if (scaled_min_length > 0) {
+    //    // else, simplify with the simple algo only
+    //    simplifed_path.polyline.simplify_straits(scaled_min_resolution, scaled_min_length);
+    //}
+    // old 2.5 way
+    distf_t current_scaled_min_length = scaled_min_length;
     if (max_gcode_per_second > 0) {
-        // if (broken) max_gcode_per_second is used, simplify the segment with it
-        const int32_t gcode_buffer_window = this->config().gcode_command_buffer.value;
-        double speed = _compute_speed_mm_per_sec(path, speed_mm_per_sec, fan_speed, nullptr);
-        coordf_t scaled_mean_length = scale_d(speed / max_gcode_per_second);
-
-        // set at least 2 buffer space, to not over-erase first lines.
-        if (gcode_buffer_window > 2 && gcode_buffer_window - m_last_command_buffer_used < 2) {
-            m_last_command_buffer_used = gcode_buffer_window - 2;
-        }
-
-        // simplify
-        m_last_command_buffer_used = simplifed_path.polyline.simplify_straits(scaled_min_resolution,
-                                                                                scaled_min_length,
-                                                                                scaled_mean_length,
-                                                                                gcode_buffer_window,
-                                                                                m_last_command_buffer_used);
-    } else if (scaled_min_length > 0) {
-        // else, simplify with the simple algo only
-        simplifed_path.polyline.simplify_straits(scaled_min_resolution, scaled_min_length);
+        current_scaled_min_length = std::max(current_scaled_min_length, scale_d(_compute_speed_mm_per_sec(path, speed_mm_per_sec, fan_speed, nullptr)) / max_gcode_per_second);
     }
+    if (current_scaled_min_length > 0 && !simplifed_path.polyline.has_arc() && !config().spiral_vase) {
+        // it's an alternative to simplifed_path.simplify(scale_(this->config().min_length)); with more enphasis on
+        // the segment length that on the feature detail. because tolerance = min_length /10, douglas_peucker will
+        // erase more points if angles are shallower than 6° and then the '_plus' will kick in to keep a bit more. if
+        // angles are all bigger than 6°, then the douglas_peucker will do all the work.
+        // NOTE: okay to use set_points() as i have checked against the absence of arc.
+        bool can_simplify = true;
+        if (simplifed_path.polyline.size() < 3) {
+            can_simplify = false;
+        }
+        if (simplifed_path.polyline.size() < 4 &&
+            simplifed_path.polyline.front().coincides_with_epsilon(simplifed_path.polyline.back())) {
+            // polygon
+            can_simplify = false;
+        }
+        for (int i = 1; i < simplifed_path.polyline.size(); ++i)
+            assert(!simplifed_path.polyline.get_point(i - 1).coincides_with_epsilon(
+                simplifed_path.polyline.get_point(i)));
+        if (can_simplify) {
+            ExtrusionPath old_path = simplifed_path;
+            simplifed_path.polyline = ArcPolyline(
+                MultiPoint::_douglas_peucker_plus(simplifed_path.polyline.to_polyline().points,
+                                                  std::max(scaled_min_resolution, current_scaled_min_length / 20),
+                                                  current_scaled_min_length));
+            for (int i = 1; i < simplifed_path.polyline.size(); ++i)
+                assert(!simplifed_path.polyline.get_point(i - 1).coincides_with_epsilon(
+                    simplifed_path.polyline.get_point(i)));
+            if (simplifed_path.size() <= 1) {
+                simplifed_path = old_path;
+            }
+        }
+    }
+    // end old 2.5 way
 
     for(int i=1;i<simplifed_path.polyline.size();++i)
         assert(!simplifed_path.polyline.get_point(i - 1).coincides_with_epsilon(simplifed_path.polyline.get_point(i)));
@@ -6247,7 +6285,7 @@ std::string GCodeGenerator::_extrude(const ExtrusionPath &path, const std::strin
     return gcode;
 }
 
-double_t GCodeGenerator::_compute_speed_mm_per_sec(const ExtrusionPath& path, const double set_speed, double &fan_speed, std::string *comment) {
+double_t GCodeGenerator::_compute_speed_mm_per_sec(const ExtrusionPath& path, const double set_speed, double &fan_speed, std::string *comment) const {
 
     float factor = 1;
     double speed = set_speed;
@@ -6726,11 +6764,11 @@ std::string GCodeGenerator::_before_extrude(const ExtrusionPath &path, const std
             // go to midpoint to let us set the decel speed)
             if (!last_pos_defined() || !last_pos().coincides_with_epsilon(path.first_point())) {
                 Polyline poly_start = this->travel_to(gcode, path.first_point(), path.role());
-                coordf_t length = poly_start.length();
+                const coordf_t length = poly_start.length();
                 if (length > SCALED_EPSILON) {
                     // compute some numbers
                     double previous_accel = m_writer.get_acceleration(); // in mm/s²
-                    double previous_speed = m_writer.get_speed_mm_s(); // in mm/s
+                    double previous_speed = m_writer.get_speed_mm_s();   // in mm/s
                     double travel_speed = m_config.get_computed_value("travel_speed");
                     // first, the acceleration distance
                     const double extrude2travel_speed_diff = previous_speed >= travel_speed ?
@@ -6743,7 +6781,8 @@ std::string GCodeGenerator::_before_extrude(const ExtrusionPath &path, const std
                     assert(!std::isinf(dist_to_go_travel_speed));
                     assert(!std::isnan(dist_to_go_travel_speed));
                     // then the deceleration distance
-                    const double travel2extrude_speed_diff = speed_mm_s >= travel_speed ? 0 : (travel_speed - speed_mm_s);
+                    const double travel2extrude_speed_diff = speed_mm_s >= travel_speed ? 0 :
+                                                                                          (travel_speed - speed_mm_s);
                     const double seconds_to_go_extrude_speed = (travel2extrude_speed_diff / acceleration);
                     const coordf_t dist_to_go_extrude_speed = scaled(seconds_to_go_extrude_speed *
                                                                      (travel_speed - travel2extrude_speed_diff / 2));
@@ -6805,26 +6844,35 @@ std::string GCodeGenerator::_before_extrude(const ExtrusionPath &path, const std
                             poly_start.clip_end(length * ratio);
                             poly_end.clip_start(length * (1 - ratio));
                         }
-                        //gcode += "; acceleration to travel\n";
+                        // gcode += "; acceleration to travel\n";
                         m_writer.set_travel_acceleration((uint32_t) floor(travel_acceleration + 0.5));
                         this->write_travel_to(gcode, poly_start,
                                               "move to first " + description + " point (acceleration)");
                         // travel acceleration should be already set at startup via special gcode, and so it's
                         // automatically used by G0.
-                        //gcode += "; decel to extrusion\n";
+                        // gcode += "; decel to extrusion\n";
                         m_writer.set_travel_acceleration((uint32_t) floor(acceleration + 0.5));
                         this->write_travel_to(gcode, poly_end,
                                               "move to first " + description + " point (deceleration)");
                         // restore travel accel and ensure the new extrusion accel is set
                         m_writer.set_travel_acceleration((uint32_t) floor(travel_acceleration + 0.5));
                         m_writer.set_acceleration((uint32_t) floor(acceleration + 0.5));
-                        //gcode += "; end travel\n";
+                        // gcode += "; end travel\n";
                         assert(!moved_to_point);
                         moved_to_point = true;
                     }
+                } else if (poly_start.size() == 2 && length < SCALED_EPSILON) {
+                    // the travel is epsilon (can this really happen? maybe it needs to be investigated. I saw it happen one time with A21_borked project)
+                    // last_pos().coincides_with_epsilon(path.first_point()) should have prevented this, but it works with SCALED_EPSILON / 2
+                    // were's here because length is between SCALED_EPSILON / 2 and SCALED_EPSILON.
+                    // => No travel needed.
+                    assert(last_pos_defined());
+                    m_writer.set_acceleration((uint32_t)floor(acceleration + 0.5));
+                    assert(!moved_to_point);
+                    moved_to_point = true;
                 } else {
                     // this can only happen when !last_pos_defined(), and then poly_start has only one point
-                    assert(poly_start.size() == 1 && !last_pos_defined());
+                    assert(!last_pos_defined() && poly_start.size() == 1);
                     m_writer.set_travel_acceleration((uint32_t) floor(acceleration + 0.5));
                     m_writer.set_acceleration((uint32_t) floor(acceleration + 0.5));
                     this->write_travel_to(gcode, poly_start,
@@ -6833,6 +6881,8 @@ std::string GCodeGenerator::_before_extrude(const ExtrusionPath &path, const std
                     moved_to_point = true;
                 }
             } else {
+                assert(last_pos_defined());
+                assert(moved_to_point);
                 m_writer.set_acceleration((uint32_t)floor(acceleration + 0.5));
             }
         }
@@ -7936,7 +7986,7 @@ std::string GCodeGenerator::toolchange(uint16_t extruder_id, double print_z) {
     if (toolchange_gcode.empty() && m_writer.multiple_extruders) { // !custom_gcode_changes_tool(toolchange_gcode_parsed, m_writer.toolchange_prefix(), extruder_id) && !no_toolchange)
         gcode += toolchange_command;
     } else {
-        // user provided his own toolchange gcode, no need to do anything
+        // user provided his own toolchange gcode, no need to write anything
     }
     if (m_enable_cooling_markers) {
         gcode += ";_TOOLCHANGE " + std::to_string(extruder_id) + "\n";
