@@ -7173,7 +7173,7 @@ void PrintConfigDef::init_fff_params()
     def->min = 0;
     def->precision = 8;
     def->mode = comExpert | comSuSi;
-    def->set_default_value(new ConfigOptionFloat(0.005));
+    def->set_default_value(new ConfigOptionFloat(0.0));
 
     def = this->add("init_z_rotate", coFloat);
     def->label = L("Preferred orientation");
