@@ -1,4 +1,4 @@
 BUILD: version_2.7.2-rc1-2643-g1737242fd6
 system: 43080
 date: Thu Mar  6 05:32:46 PM CET 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
