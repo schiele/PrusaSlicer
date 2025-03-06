@@ -126,7 +126,6 @@ std::string WipeTowerIntegration::append_tcr(GCodeGenerator &gcodegen, const Wip
 
 
     // Insert the toolchange and deretraction gcode into the generated gcode.
-x
     std::string tcr_rotated_gcode = post_process_wipe_tower_moves(tcr, wipe_tower_offset, wipe_tower_rotation,// gcodegen.config().gcode_flavor.value,
                                                                   gcodegen, new_extruder_id);
     std::string tcr_gcode;
