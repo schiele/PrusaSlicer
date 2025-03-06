@@ -5091,10 +5091,11 @@ static void project_triangles_to_slabs(SpanOfConstPtrs<Layer> layers, const inde
     }
 }
 
-void PrintObject::project_and_append_custom_facets(
-        bool seam, EnforcerBlockerType type, std::vector<Polygons>& out) const
+std::vector<Polygons> PrintObject::project_and_append_custom_facets(
+        bool seam, EnforcerBlockerType type) const
 {
-    for (const ModelVolume* mv : this->model_object()->volumes)
+    std::vector<Polygons> out;
+    for (const ModelVolume* mv : this->model_object()->volumes) {
         if (mv->is_model_part()) {
             const indexed_triangle_set custom_facets = seam
                     ? mv->seam_facets.get_facets_strict(*mv, type)
@@ -5119,6 +5120,8 @@ void PrintObject::project_and_append_custom_facets(
                 }
             }
         }
+    }
+    return out;
 }
 
 const Layer* PrintObject::get_layer_at_printz(coordf_t print_z) const {

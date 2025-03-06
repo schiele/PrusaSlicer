@@ -126,16 +126,7 @@ std::string WipeTowerIntegration::append_tcr(GCodeGenerator &gcodegen, const Wip
 
 
     // Insert the toolchange and deretraction gcode into the generated gcode.
-    //boost::replace_first(tcr_rotated_gcode, "[toolchange_gcode_from_wipe_tower_generator]", toolchange_gcode_str);
-    //boost::replace_first(tcr_rotated_gcode, "[deretraction_from_wipe_tower_generator]", deretraction_str);
-    //boost::replace_first(tcr_rotated_gcode, "{layer_z}", to_string_nozero(gcodegen.writer().get_position().z() + gcodegen.writer().config.z_offset.value, 4));
-    //boost::replace_first(tcr_rotated_gcode, "[toolchange_gcode_disable_linear_advance]", gcodegen.writer().set_pressure_advance(0));
-    //if (gcodegen.config().filament_pressure_advance.is_enabled(new_extruder_id)) {
-    //    boost::replace_first(tcr_rotated_gcode, "[toolchange_gcode_enable_linear_advance]",
-    //                         gcodegen.writer().set_pressure_advance(gcodegen.config().filament_pressure_advance.get_at(new_extruder_id)));
-    //} else {
-    //    boost::replace_first(tcr_rotated_gcode, "[toolchange_gcode_enable_linear_advance]\n","");
-    //}
+x
     std::string tcr_rotated_gcode = post_process_wipe_tower_moves(tcr, wipe_tower_offset, wipe_tower_rotation,// gcodegen.config().gcode_flavor.value,
                                                                   gcodegen, new_extruder_id);
     std::string tcr_gcode;
@@ -291,7 +282,11 @@ std::string WipeTowerIntegration::post_process_wipe_tower_moves(const WipeTower:
             line = deretraction_from_wipe_tower_generator(gcodegen, tcr, new_extruder_id);
             line = "; deretraction_from_wipe_tower_generator\n" + line + "; END deretraction_from_wipe_tower_generator\n";
         } else if (boost::starts_with(line, "[toolchange_gcode_disable_linear_advance]")) {
-            line = gcodegen.writer().set_pressure_advance(0);
+            if (gcodegen.config().filament_pressure_advance.is_enabled(tcr.initial_tool)) {
+                line = gcodegen.writer().set_pressure_advance(0);
+            } else {
+                line = "";
+            }
         } else if (boost::starts_with(line, "[toolchange_gcode_enable_linear_advance]")) {
             if (gcodegen.config().filament_pressure_advance.is_enabled(new_extruder_id)) {
                 line = gcodegen.writer().set_pressure_advance(gcodegen.config().filament_pressure_advance.get_at(gcodegen.writer().tool()->id()));
