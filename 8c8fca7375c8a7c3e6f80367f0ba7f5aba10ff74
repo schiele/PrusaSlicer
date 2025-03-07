@@ -1,4 +1,4 @@
 BUILD: version_2.7.2-rc1-2651-g904e9114b3
 system: 43080
 date: Fri Mar  7 10:47:39 PM CET 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
