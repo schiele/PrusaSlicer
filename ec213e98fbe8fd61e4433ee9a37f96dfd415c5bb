@@ -1,4 +1,4 @@
 BUILD: v2.3.0-beta2-59-gbd45496987
 system: 43090
 date: Sat Mar  8 01:02:36 PM CET 2025
-tasks: configure_deps build_deps configure build install[incomplete]
+tasks: configure_deps build_deps configure build install
