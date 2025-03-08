@@ -1509,7 +1509,8 @@ void PreferencesDialog::layout()
     best_size += wxSize(3 * em, 12 * em);
     // also reduce size to fit in screen if needed
     try {
-        wxDisplay display(wxDisplay::GetFromWindow(this));
+        unsigned int display_id = wxDisplay::GetFromWindow(this);
+        wxDisplay display(display_id);
         wxRect screen = display.GetClientArea();
         best_size.x = std::min(best_size.x, screen.width);
         best_size.y = std::min(best_size.y, screen.height);

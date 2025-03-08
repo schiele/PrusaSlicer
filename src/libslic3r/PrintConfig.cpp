@@ -7224,7 +7224,7 @@ void PrintConfigDef::init_fff_params()
     def->min = 0;
     def->precision = 8;
     def->mode = comExpert | comSuSi;
-    def->set_default_value(new ConfigOptionFloat(0.005));
+    def->set_default_value(new ConfigOptionFloat(0.0));
 
     def = this->add("init_z_rotate", coFloat);
     def->label = L("Preferred orientation");
@@ -9027,14 +9027,19 @@ void _handle_legacy(std::unordered_map<t_config_option_key, std::pair<t_config_o
         // nil-> disabled
         if (value.find("nil") != std::string::npos) {
             const ConfigOptionDef *def = print_config_def.get(opt_key);
-            if (def->type != coString && def->type != coStrings) {
-                assert(def && def->can_be_disabled);
-                if (def && def->can_be_disabled) {
-                    ConfigOption *default_opt = def->default_value->clone();
-                    default_opt->set_enabled(false);
-                    value = default_opt->serialize();
-                    delete default_opt;
+            if (def) {
+                if (def->type != coString && def->type != coStrings) {
+                    assert(def && def->can_be_disabled);
+                    if (def && def->can_be_disabled) {
+                        ConfigOption *default_opt = def->default_value->clone();
+                        default_opt->set_enabled(false);
+                        value = default_opt->serialize();
+                        delete default_opt;
+                    }
                 }
+            } else {
+                // unknown key
+                opt_key.clear();
             }
         }
     }
