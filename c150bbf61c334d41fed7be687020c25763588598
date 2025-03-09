@@ -1,4 +1,4 @@
 BUILD: v2.3.0-beta2-68-gb3a8a81111
 system: 43090
 date: Sun Mar  9 10:40:00 AM CET 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
