@@ -835,9 +835,6 @@ std::vector<BoundingBoxes> create_line_bounds(const ExPolygonsWithIds &shapes, s
 
 template<typename Fnc> TriangleMesh create_mesh_per_glyph(DataBase &input, Fnc was_canceled)
 {
-    // method use square of coord stored into int64_t
-    static_assert( (std::is_same<Point::coord_type, int32_t>() && std::is_same<Coord2, int64_t>())
-        || (std::is_same<Point::coord_type, int64_t>() && std::is_same<Coord2, double>()));
     const EmbossShape &shape = input.create_shape();
     if (shape.shapes_with_ids.empty())
         return {};

@@ -107,6 +107,8 @@ static std::vector<ExPolygons> slice_volume(
             }
         }
     }
+    for(ExPolygons &expolys : out)
+        ensure_valid(expolys, scale_t(params.resolution));
     return out;
 }
 
@@ -149,7 +151,7 @@ static std::vector<VolumeSlices> slice_volumes_inner(
     params_base.closing_radius = print_object_config.slice_closing_radius.value;
     params_base.extra_offset   = 0;
     params_base.trafo          = object_trafo;
-    params_base.resolution     = print_config.resolution.value;
+    params_base.resolution     = std::max(EPSILON, print_config.resolution.value);
     params_base.model_resolution = print_object_config.model_precision.value;
 
     switch (print_object_config.slicing_mode.value) {

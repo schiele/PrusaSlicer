@@ -1187,7 +1187,7 @@ Point ArcPolyline::get_point_from_begin(coord_t distance) const {
             // Linear segment
             Vec2d  v    = (current.point - last.point).cast<double>();
             double lsqr = v.squaredNorm();
-            if (lsqr >= sqr(distance)) {
+            if (lsqr >= coord_sqr(distance)) {
                 // Length to go is zero.
                 return last.point + Point::round(v * (distance / sqrt(lsqr)));
             }
@@ -1222,7 +1222,7 @@ Point ArcPolyline::get_point_from_end(coord_t distance) const {
             // Linear segment
             Vec2d  v    = (current.point - last.point).cast<double>();
             double lsqr = v.squaredNorm();
-            if (lsqr >= sqr(distance)) {
+            if (lsqr >= coord_sqr(distance)) {
                 // Length to go is zero.
                 return last.point + Point::round(v * (distance / sqrt(lsqr)));
             }
@@ -1789,7 +1789,7 @@ void ArcPolyline::make_arc(ArcFittingType with_fitting_arc, coordf_t tolerance, 
         this->m_only_strait = not_arc(*this);
         assert(is_valid());
     } else {
-        auto it_end = douglas_peucker<double>(this->m_path.begin(), this->m_path.end(), this->m_path.begin(), tolerance,
+        auto it_end = douglas_peucker_impl(this->m_path.begin(), this->m_path.end(), this->m_path.begin(), tolerance,
                                         [](const Geometry::ArcWelder::Segment &s) { return s.point; });
         if (it_end != this->m_path.end()) {
             size_t new_size = size_t(it_end-this->m_path.begin());

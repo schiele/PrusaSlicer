@@ -2159,7 +2159,7 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_arachne(const Parameters &  
                 assert(poly.size() >= 2);
                 assert(is_length_more_than_epsilon(poly));
                 ClipperLib_Z::Path old_poly = poly;
-                auto it_end = Slic3r::douglas_peucker<coord_t/*ClipperLib_Z::cInt*/>(
+                auto it_end = Slic3r::douglas_peucker_impl(
                     poly.begin(), poly.end(), poly.begin(), double(SCALED_EPSILON),
                     [](const ClipperLib_Z::IntPoint &p) { return Point(p.x(), p.y()); });
                 assert(it_end <= poly.end());
