@@ -2,3 +2,4 @@ BUILD: version_2.7.2-rc1-2668-g53a1ce47ad
 system: 43130
 date: Wed Mar 19 05:38:48 PM CET 2025
 tasks: configure_deps build_deps configure build install
+SUCCESS
