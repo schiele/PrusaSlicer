@@ -811,15 +811,25 @@ void PresetUpdater::priv::check_install_indices() const
 					const auto ver_from_resource = idx_rsrc.find(version);
 					if (ver_from_resource != idx_rsrc.end()) {
 						if (idx_cache.version() < idx_rsrc.version()) {
-							if (fs::exists(bundle_path)) {
-								BOOST_LOG_TRIVIAL(info) << "Update index from resources (new version): " << path.filename();
-								copy_file_fix(path, path_in_cache);
-							}
+							BOOST_LOG_TRIVIAL(info) << "Update index from resources (new version): " << path.filename();
+							copy_file_fix(path, path_in_cache);
 						} else if (ver_from_cache == idx_cache.end()) {
 							BOOST_LOG_TRIVIAL(info) << "Update index from resources (only way to have a consistent idx): " << path.filename();
 							copy_file_fix(path, path_in_cache);
-						}
-					}
+                        } else {
+                            // don't update the idx, as the resources one is from an older version.
+                            BOOST_LOG_TRIVIAL(info) << "No Update index from resources (current version is more recent) : " << path.filename();
+                        }
+                    } else {
+                        // the resource idx doesn't have our version, maybe it was a prerelease? check if we have the next one.
+                        if (version < idx_rsrc.version()) {
+                            BOOST_LOG_TRIVIAL(info) << "Update index from resources (installed version don't exist in this idx but no biggy): " << path.filename();
+                            copy_file_fix(path, path_in_cache);
+                        } else {
+                            // don't update the idx, as the resources one is from an older version.
+                            BOOST_LOG_TRIVIAL(info) << "No Update index from resources (current unknown version is more recent) : " << path.filename();
+                        }
+                    }
 				} else if (idx_cache.version() < idx_rsrc.version() || idx_cache.configs().back().max_slic3r_version < idx_rsrc.configs().back().max_slic3r_version) {
 					//not installed, force update the .idx from resource
 					BOOST_LOG_TRIVIAL(info) << "Update index from resources (uninstalled & more up-to-date): " << path.filename();
