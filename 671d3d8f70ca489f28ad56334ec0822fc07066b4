@@ -1,4 +1,4 @@
 BUILD: v2.3.0-22-gd8070e8a9b
 system: 43130
 date: Thu Mar 20 08:58:23 PM CET 2025
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
