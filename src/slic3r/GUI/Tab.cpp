@@ -3075,6 +3075,17 @@ bool Tab::validate_custom_gcode(const wxString& title, const std::string& gcode)
 //    tab->update_dirty();
 //    tab->on_value_change(opt_key, value);
 //}
+std::pair<t_config_option_key, int> get_key_extruder_from_string(std::string key_extruder) {
+    t_config_option_key good_opt_key = key_extruder;
+    int extruder_idx = -1;
+    if (size_t pos_hash = key_extruder.find('#'); pos_hash != std::string::npos) {
+        good_opt_key = key_extruder.substr(0, pos_hash);
+        try {
+            extruder_idx = atoi(key_extruder.substr(pos_hash+1).c_str());
+        } catch (std::exception) { extruder_idx = 0; }
+    }
+    return { good_opt_key, extruder_idx };
+}
 
 void Tab::edit_custom_gcode(const t_config_option_key& opt_key)
 {
@@ -3088,28 +3099,32 @@ void Tab::edit_custom_gcode(const t_config_option_key& opt_key)
 
 const std::string& Tab::get_custom_gcode(const t_config_option_key& opt_key)
 {
-    return m_config->opt_string(opt_key);
+    return m_config->opt_string(get_key_extruder_from_string(opt_key).first);
 }
 
 void Tab::set_custom_gcode(const t_config_option_key& opt_key, const std::string& value)
 {
     DynamicPrintConfig new_conf = *m_config;
-    new_conf.set_key_value(opt_key, new ConfigOptionString(value));
+    new_conf.set_key_value(get_key_extruder_from_string(opt_key).first, new ConfigOptionString(value));
     load_config(new_conf);
 }
 
 const std::string& TabFilament::get_custom_gcode(const t_config_option_key& opt_key)
 {
-    return m_config->opt_string(opt_key, size_t(0));
+    auto [key, id] = get_key_extruder_from_string(opt_key);
+    assert(id == 0);
+    return m_config->opt_string(key, size_t(0));
 }
 
 void TabFilament::set_custom_gcode(const t_config_option_key& opt_key, const std::string& value)
 {
-    std::vector<std::string> gcodes = static_cast<const ConfigOptionStrings*>(m_config->option(opt_key))->get_values();
+    auto [key, id] = get_key_extruder_from_string(opt_key);
+    std::vector<std::string> gcodes = static_cast<const ConfigOptionStrings*>(m_config->option(key))->get_values();
+    assert(id == 0);
     gcodes[0] = value;
 
     DynamicPrintConfig new_conf = *m_config;
-    new_conf.set_key_value(opt_key, new ConfigOptionStrings(gcodes));
+    new_conf.set_key_value(key, new ConfigOptionStrings(gcodes));
     load_config(new_conf);
 }
 
