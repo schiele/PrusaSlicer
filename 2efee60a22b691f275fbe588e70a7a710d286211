@@ -1,4 +1,4 @@
 BUILD: v2.3.0-30-gc6d4aec1b6
 system: 43140
 date: Sat Mar 22 08:34:32 PM CET 2025
-tasks: configure_deps build_deps configure build install[incomplete]
+tasks: configure_deps build_deps configure build install
