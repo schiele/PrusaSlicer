@@ -1,4 +1,4 @@
 BUILD: version_2.7.2-rc1-2675-gbd12a35c6b
 system: 43140
 date: Sat Mar 22 07:25:01 PM CET 2025
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
