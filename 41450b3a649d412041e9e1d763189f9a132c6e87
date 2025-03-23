@@ -1,9 +1,9 @@
 BUILD: v2.3.0-31-g35ecd6bef4
 system: 43140
 date: Sun Mar 23 10:30:49 AM CET 2025
-tasks: configure_deps build_deps configure build install configure_deps build_deps configure build install[incomplete]
+tasks: configure_deps build_deps configure build install configure_deps build_deps configure build install
 ======================================================================
 BUILD: v2.3.0-31-g35ecd6bef4
 system: 43140
 date: Sun Mar 23 10:56:54 AM CET 2025
-tasks: configure_deps build_deps configure build install[incomplete]
+tasks: configure_deps build_deps configure build install
