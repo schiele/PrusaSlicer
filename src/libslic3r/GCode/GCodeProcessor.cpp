@@ -4887,7 +4887,10 @@ void GCodeProcessor::store_move_vertex(EMoveType type, bool internal_only)
 
     //push id of the move to time update
     TimeMachine& machine = m_time_processor.machines.front();
-    machine.blocks.back().moves.push_back(m_result.moves.size() - 1);
+    // note: machine.blocks can be empty if called from process_toolchange (or other not-G1 G2 G3 gcode)
+    if (!machine.blocks.empty()) {
+        machine.blocks.back().moves.push_back(m_result.moves.size() - 1);
+    }
 
     // stores stop time placeholders for later use
     if (type == EMoveType::Color_change || type == EMoveType::Pause_Print) {
