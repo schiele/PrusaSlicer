@@ -793,9 +793,37 @@ namespace Slic3r {
             }
         }
         if (!found_model) {
-            close_zip_reader(&archive);
-            add_error("Not valid 3mf. There is missing .model file.");
-            return false;
+            // fix: load an empty model, it was a bug from 2.3.55->2.7.61
+            // read .rels and check that there should be a (missing) MODEL_FILE in it
+            // check also that there is superslicer config in METADATA
+            bool has_superslicer_metadata = false;
+            bool has_MODEL_in_rels = false;
+            for (mz_uint i = 0; i < num_entries; ++i) {
+                if (mz_zip_reader_file_stat(&archive, i, &stat)) {
+                    std::string name(stat.m_filename);
+                    std::replace(name.begin(), name.end(), '\\', '/');
+                    if (name == "_rels/.rels") {
+                        // open
+                        std::string buffer((size_t) stat.m_uncomp_size, 0);
+                        mz_bool res = mz_zip_reader_extract_to_mem(&archive, stat.m_file_index,
+                                                                   (void *) buffer.data(),
+                                                                   (size_t) stat.m_uncomp_size, 0);
+                        if (res != 0) {
+                            has_MODEL_in_rels = buffer.find(MODEL_FILE) != std::string::npos;
+                        }
+                    } else if (name == "Metadata/SuperSlicer.config") {
+                        has_superslicer_metadata = true;
+                    }
+                }
+            }
+            if (has_superslicer_metadata && has_MODEL_in_rels) {
+                // unit: already in milimeter
+                // metadata : it's only used to verify the version, so it's all good.
+            } else {
+                close_zip_reader(&archive);
+                add_error("Not valid 3mf. There is missing .model file.");
+                return false;
+            }
         }
 
         // we then loop again the entries to read other files stored in the archive
