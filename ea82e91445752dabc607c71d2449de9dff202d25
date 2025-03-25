@@ -1,4 +1,4 @@
 BUILD: version_2.7.2-rc1-2678-gec1e62e85d
 system: 43140
 date: Tue Mar 25 09:27:00 PM CET 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
