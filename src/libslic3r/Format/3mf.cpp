@@ -2721,13 +2721,11 @@ namespace Slic3r {
         // Adds model file ("3D/3dmodel.model").
         // This is the one and only file that contains all the geometry (vertices and triangles) of all ModelVolumes.
         IdToObjectDataMap objects_data;
-        if(!model.objects.empty())
-            if (!_add_model_file_to_archive(filename, archive, model, objects_data))
-            {
-                close_zip_writer(&archive);
-                boost::filesystem::remove(filename);
-                return false;
-            }
+        if (!_add_model_file_to_archive(filename, archive, model, objects_data)) {
+            close_zip_writer(&archive);
+            boost::filesystem::remove(filename);
+            return false;
+        }
 
         // Adds file with information for object cut ("Metadata/Slic3r_PE_cut_information.txt").
         // All information for object cut of all ModelObjects are stored here, indexed by 1 based index of the ModelObject in Model.
