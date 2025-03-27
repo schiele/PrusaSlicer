@@ -1718,15 +1718,15 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_extrusions(const Paramet
 void convert_to_clipperpath_with_bbox(const Polygons& source, const BoundingBox& extrusion_path_bbox, ClipperLib_Z::Paths& dest) {
     dest.clear();
     dest.reserve(source.size());
-    Points clipped;
+    Polygon clipped;
     for (const Polygon& poly : source) {
         clipped.clear();
-        ClipperUtils::clip_clipper_polygon_with_subject_bbox(poly.points, extrusion_path_bbox, clipped);
+        ClipperUtils::clip_clipper_polygon_with_subject_bbox(poly, extrusion_path_bbox, clipped);
         if (! clipped.empty()) {
             dest.emplace_back();
             ClipperLib_Z::Path& out = dest.back();
-            out.reserve(poly.points.size());
-            for (const Point& pt : poly.points)
+            out.reserve(clipped.points.size());
+            for (const Point& pt : clipped.points)
                 out.emplace_back(pt.x(), pt.y(), 0);
         }
     }
