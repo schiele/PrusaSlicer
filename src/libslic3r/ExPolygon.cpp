@@ -365,27 +365,15 @@ ExPolygon::simplify(coord_t tolerance, ExPolygons &expolygons) const
 
 /// remove point that are at SCALED_EPSILON * 2 distance.
 //simplier than simplify
-void
-ExPolygon::remove_point_too_near(const coord_t tolerance) {
-    const double tolerance_sq = tolerance * (double)tolerance;
-    size_t id = 1;
-    while (id < this->contour.points.size() - 1) {
-        coord_t newdist = (coord_t)std::min(this->contour.points[id].distance_to_square(this->contour.points[id - 1])
-            , this->contour.points[id].distance_to_square(this->contour.points[id + 1]));
-        if (newdist < tolerance_sq) {
-            this->contour.points.erase(this->contour.points.begin() + id);
-            newdist = (coord_t)this->contour.points[id].distance_to_square(this->contour.points[id - 1]);
-        }
-        //go to next one
-        //if you removed a point, it check if the next one isn't too near from the previous one.
-        // if not, it byepass it.
-        if (newdist >= tolerance_sq) {
-            ++id;
-        }
+void ExPolygon::remove_point_too_close(const coord_t tolerance) {
+    this->contour.remove_point_too_close(tolerance);
+    if (contour.empty()) {
+        this->holes.clear();
     }
-    if (this->contour.points.front().distance_to_square(this->contour.points.back()) < tolerance_sq) {
-        this->contour.points.erase(this->contour.points.end() -1);
+    for (Polygon &hole : this->holes) {
+        hole.remove_point_too_close(tolerance);
     }
+    //note: may need a union_ex(), as contour may now cross a hole.
 }
 
 void ExPolygon::medial_axis(double min_width, double max_width, ThickPolylines &polylines) const
@@ -637,6 +625,22 @@ ExPolygons ensure_valid(ExPolygons &&expolygons, coord_t resolution /*= SCALED_E
 
 ExPolygons ensure_valid(coord_t resolution, ExPolygons &&expolygons) {
     return ensure_valid(std::move(expolygons), resolution);
+}
+
+void remove_point_too_close(ExPolygons &expolygons, coord_t resolution) {
+    for (ExPolygon &expoly : expolygons) {
+        expoly.remove_point_too_close(resolution);
+    }
+}
+
+//note: test if a ExPolygons remove_point_too_close(ExPolygons expolygons) isn't more efficient, if the copy elision can be performed.
+// ie test if b = remove_point_too_close(offset(a, 1)) (by rvalue and by value) copies more/less than
+// b = offset(a, 1); remove_point_too_close(b)
+ExPolygons remove_point_too_close(ExPolygons &&expolygons, coord_t resolution) {
+    for (ExPolygon &expoly : expolygons) {
+        expoly.remove_point_too_close(resolution);
+    }
+    return std::move(expolygons);
 }
 
 #ifdef _DEBUGINFO

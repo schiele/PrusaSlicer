@@ -4557,7 +4557,7 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                     ExPolygons half_thins = offset_ex(thin_zones, double(-min_width / 2));
                     //simplify them
                     for (ExPolygon& half_thin : half_thins) {
-                        half_thin.remove_point_too_near(params.get_ext_perimeter_width()/20);
+                        half_thin.remove_point_too_close(params.get_ext_perimeter_width()/20);
                     }
                     //we push the bits removed and put them into what we will use as our anchor
                     if (half_thins.size() > 0) {
@@ -4577,10 +4577,10 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                         for (ExPolygon& bound : bounds) {
                             if (!intersection_ex(thin[0], bound).empty()) {
                                 //be sure it's not too small to extrude reliably
-                                thin[0].remove_point_too_near(params.get_ext_perimeter_width() / 10);
+                                thin[0].remove_point_too_close(params.get_ext_perimeter_width() / 10);
                                 if (thin[0].area() > min_width * (params.get_ext_perimeter_width() + params.get_ext_perimeter_spacing())) {
                                     thins.push_back(thin[0]);
-                                    bound.remove_point_too_near(params.get_ext_perimeter_width() / 10);
+                                    bound.remove_point_too_close(params.get_ext_perimeter_width() / 10);
                                     // the maximum thickness of our thin wall area is equal to the minimum thickness of a single loop (*1.2 because of circles approx. and enlrgment from 'div')
                                     Slic3r::Geometry::MedialAxis ma{ thin[0], (coord_t)((params.get_ext_perimeter_width() + params.get_ext_perimeter_spacing()) * 1.2),
                                         min_width, scale_t(params.layer->height) };

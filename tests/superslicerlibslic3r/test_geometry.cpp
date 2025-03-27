@@ -613,4 +613,31 @@ TEST_CASE("Triangle Simplification does not result in less than 3 points"){
     REQUIRE(triangle.simplify(250000).at(0).points.size() == 3);
 }
 
+
+TEST_CASE("test remove_point_too_close", "[Polygons]") {
     
+    SECTION("union and simplify")
+    {
+        ExPolygon expoly1({Point{3411361,-7036595},Point{3504267,-6992270},Point{3641617,-6919951},Point{3790814,-6838827},Point{3489475,-6295197},Point{3289126,-6403342},Point{3042522,-6523701},Point{3304587,-7086682}},{});
+     
+        ExPolygons expolys2;
+        expolys2.push_back(ExPolygon({Point{4023650,-7053705},Point{4102606,-6782514},Point{3748856,-6144332},Point{3548196,-6263490},Point{3489383,-6295237},Point{3774857,-6810245},Point{3936189,-7101261}},{}));
+        expolys2.push_back(ExPolygon({Point{4023650,-7053705},Point{4102606,-6782514},Point{3748856,-6144332},Point{3548196,-6263490},Point{3489383,-6295237},Point{3774857,-6810245},Point{3936189,-7101261}},{}));
+
+        ExPolygons result_union = union_ex(ExPolygons{expoly1}, expolys2, ApplySafetyOffset::Yes);
+        for (ExPolygon &result : result_union) {
+            REQUIRE(result.contour.size() > 2);
+            size_t nb_holes = result.holes.size();
+            for (Slic3r::Polygon &hole : result.holes) {
+                REQUIRE(hole.size() > 2);
+            }
+            result.remove_point_too_close(0.04);
+            REQUIRE(result.contour.size() > 2);
+            REQUIRE(nb_holes == result.holes.size());
+            for (Slic3r::Polygon &hole : result.holes) {
+                REQUIRE(hole.size() > 2);
+            }
+        }
+    }
+}
+
