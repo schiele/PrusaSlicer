@@ -100,3 +100,28 @@ BUILD: version_2.9.1-7-g7ce089b395
 system: rolling
 date: Fri Mar 28 05:57:20 PM CET 2025
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+  add_custom_command(TARGET): DEPENDS.
+
+  Policy CMP0175 is not set: add_custom_command() rejects invalid arguments.
+  Run "cmake --help-policy CMP0175" for policy details.  Use the cmake_policy
+  command to set the policy and suppress this warning.
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at CMakeLists.txt:555 (add_custom_command):
+  The following keywords are not supported when using
+  add_custom_command(TARGET): DEPENDS.
+
+  Policy CMP0175 is not set: add_custom_command() rejects invalid arguments.
+  Run "cmake --help-policy CMP0175" for policy details.  Use the cmake_policy
+  command to set the policy and suppress this warning.
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Error at cmake/modules/FindNLopt.cmake:124 (message):
+  Unable to find requested NLopt installation: Cannot find NLopt library
+  'nlopt'.  Cannot find NLopt header file 'nlopt.hpp'.  NLopt not found in
+  system directories (and environment variable NLOPT is not set).
+Call Stack (most recent call first):
+  CMakeLists.txt:563 (find_package)
+
+-- Configuring incomplete, errors occurred!
