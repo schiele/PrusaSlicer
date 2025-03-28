@@ -21,7 +21,6 @@
 #include "Thread.hpp"
 #include "Utils.hpp"
 #include "libslic3r.h"
-#include "tbb/parallel_for.h"
 #include "tbb/blocked_range.h"
 #include "tbb/blocked_range2d.h"
 #include "tbb/parallel_reduce.h"
@@ -32,7 +31,6 @@
 #include <cstdio>
 #include <functional>
 #include <limits>
-#include <math.h>
 #include <oneapi/tbb/concurrent_vector.h>
 #include <oneapi/tbb/parallel_for.h>
 #include <optional>
