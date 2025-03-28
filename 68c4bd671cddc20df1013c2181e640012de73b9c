@@ -189,3 +189,28 @@ BUILD: version_2.9.1-7-g7ce089b395
 system: rolling
 date: Fri Mar 28 06:00:43 PM CET 2025
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+
+-- Found JPEG: /usr/lib/libjpeg.so (found version "80")
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR - Success
+CMake Error at src/libseqarrange/CMakeLists.txt:1 (find_package):
+  By not providing "FindZ3.cmake" in CMAKE_MODULE_PATH this project has asked
+  CMake to find a package configuration file provided by "Z3", but CMake did
+  not find one.
+
+  Could not find a package configuration file provided by "Z3" with any of
+  the following names:
+
+    Z3Config.cmake
+    z3-config.cmake
+
+  Add the installation prefix of "Z3" to CMAKE_PREFIX_PATH or set "Z3_DIR" to
+  a directory containing one of the above files.  If "Z3" provides a separate
+  development package or SDK, be sure it has been installed.
+
+-- Configuring incomplete, errors occurred!
