@@ -41,7 +41,7 @@
 #include <boost/nowide/iostream.hpp>
 
 #include <algorithm>
-#include <float.h>
+#include <cfloat>
 
 namespace Slic3r {
 

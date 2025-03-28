@@ -11,7 +11,7 @@
 #include <string>
 #include <string_view>
 #include <cstdint>
-#include <assert.h>
+#include <cassert>
 
 namespace Slic3r {
 //that's good and clean but a pain in the ass to debug with the debuggeur.
