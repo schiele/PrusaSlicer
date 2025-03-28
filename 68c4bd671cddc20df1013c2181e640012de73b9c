@@ -8,3 +8,29 @@ BUILD: version_2.9.1-7-g7ce089b395
 system: rolling
 date: Fri Mar 28 05:46:36 PM CET 2025
 tasks: configure_deps build_deps[failed]
+FAILED:
+[ 47%] Built target dep_heatshrink
+[ 40%] Performing build step for 'dep_NanoSVG'
+make[3]: warning: -j16 forced in submake: resetting jobserver mode.
+[ 25%] Building C object CMakeFiles/nanosvg.dir/nanosvg.c.o
+[ 50%] Linking C static library libnanosvg.a
+[ 50%] Built target nanosvg
+[ 75%] Building C object CMakeFiles/nanosvgrast.dir/nanosvgrast.c.o
+[100%] Linking C static library libnanosvgrast.a
+[100%] Built target nanosvgrast
+[ 50%] Performing install step for 'dep_NanoSVG'
+[ 50%] Built target nanosvg
+[100%] Built target nanosvgrast
+Install the project...
+-- Install configuration: "Release"
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/libnanosvg.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/libnanosvgrast.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/nanosvg/nanosvg.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/nanosvg/nanosvgrast.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/NanoSVG/NanoSVGTargets.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/NanoSVG/NanoSVGTargets-release.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/NanoSVG/NanoSVGConfig.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/NanoSVG/NanoSVGConfigVersion.cmake
+[ 52%] Completed 'dep_NanoSVG'
+[ 52%] Built target dep_NanoSVG
+make: *** [Makefile:136: all] Error 2
