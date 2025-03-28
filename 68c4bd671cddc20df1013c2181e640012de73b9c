@@ -219,3 +219,28 @@ BUILD: version_2.9.1-7-g7ce089b395
 system: rolling
 date: Fri Mar 28 06:01:43 PM CET 2025
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+-- Found JPEG: /usr/lib/libjpeg.so (found version "80")
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR - Success
+CMake Error at src/libseqarrange/CMakeLists.txt:19 (find_package):
+  By not providing "FindCatch2.cmake" in CMAKE_MODULE_PATH this project has
+  asked CMake to find a package configuration file provided by "Catch2", but
+  CMake did not find one.
+
+  Could not find a package configuration file provided by "Catch2" (requested
+  version 3.8) with any of the following names:
+
+    Catch2Config.cmake
+    catch2-config.cmake
+
+  Add the installation prefix of "Catch2" to CMAKE_PREFIX_PATH or set
+  "Catch2_DIR" to a directory containing one of the above files.  If "Catch2"
+  provides a separate development package or SDK, be sure it has been
+  installed.
+
+-- Configuring incomplete, errors occurred!
