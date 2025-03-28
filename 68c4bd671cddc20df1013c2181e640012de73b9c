@@ -95,3 +95,5 @@ Call Stack (most recent call first):
   CMakeLists.txt:486 (find_package)
 
 -- Configuring incomplete, errors occurred!
+======================================================================
+BUILD: version_2.9.1-7-g7ce089b395
