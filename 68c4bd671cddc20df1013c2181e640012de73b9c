@@ -280,3 +280,29 @@ BUILD: version_2.9.1-7-g7ce089b395
 system: rolling
 date: Fri Mar 28 06:09:59 PM CET 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp: In function ‘priv::SurfacePatches priv::diff_models(VCutAOIs&, CutMeshes&, CutMeshes&, const Project3d&)’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp:3074:5: error: ‘Trees’ was not declared in this scope
+ 3074 |     Trees trees(models.size());
+      |     ^~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp:3115:25: error: ‘Tree’ was not declared in this scope; did you mean ‘Slic3r::AABBTreeIndirect::Tree’?
+ 3115 |                         Tree &tree = trees[model_index2];
+      |                         ^~~~
+      |                         Slic3r::AABBTreeIndirect::Tree
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/AABBTreeIndirect.hpp:43:7: note: ‘Slic3r::AABBTreeIndirect::Tree’ declared here
+   43 | class Tree
+      |       ^~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp:3115:31: error: ‘tree’ was not declared in this scope; did you mean ‘free’?
+ 3115 |                         Tree &tree = trees[model_index2];
+      |                               ^~~~
+      |                               free
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp:3115:38: error: ‘trees’ was not declared in this scope
+ 3115 |                         Tree &tree = trees[model_index2];
+      |                                      ^~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp: In function ‘bool priv::is_over_whole_expoly(const CutAOI&, const Slic3r::ExPolygon&, const CutMesh&)’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp:3174:115: error: ‘class std::optional<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> >::Property_map<CGAL::SM_Vertex_index, const priv::IntersectingElement*> >’ has no member named ‘first’
+ 3174 |     const VertexShapeMap &vert_shape_map = mesh.property_map<VI, const IntersectingElement*>(vert_shape_map_name).first;
+      |                                                                                                                   ^~~~~
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r_cgal.dir/build.make:79: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/CutSurface.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:1572: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
