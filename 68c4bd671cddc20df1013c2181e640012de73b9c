@@ -214,3 +214,5 @@ CMake Error at src/libseqarrange/CMakeLists.txt:1 (find_package):
   development package or SDK, be sure it has been installed.
 
 -- Configuring incomplete, errors occurred!
+======================================================================
+BUILD: version_2.9.1-7-g7ce089b395
