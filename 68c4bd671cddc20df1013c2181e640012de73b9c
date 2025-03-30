@@ -767,3 +767,29 @@ BUILD: version_2.9.1-13-ga2c00a148d
 system: rolling
 date: Sun Mar 30 02:51:22 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+      |                                                                                          ^~~~~
+/home/rschiele/git/PrusaSlicer/tests/libslic3r/test_emboss.cpp:918:112: error: ‘class std::optional<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> >::Property_map<CGAL::SM_Edge_index, IntersectingElemnt> >’ has no member named ‘first’
+  918 |     auto edge_shape_map = cgal_shape.property_map<MyMesh::Edge_index, IntersectingElemnt>(edge_shape_map_name).first;
+      |                                                                                                                ^~~~~
+/home/rschiele/git/PrusaSlicer/tests/libslic3r/test_emboss.cpp:919:112: error: ‘class std::optional<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> >::Property_map<CGAL::SM_Face_index, IntersectingElemnt> >’ has no member named ‘first’
+  919 |     auto face_shape_map = cgal_shape.property_map<MyMesh::Face_index, IntersectingElemnt>(face_shape_map_name).first;
+      |                                                                                                                ^~~~~
+/home/rschiele/git/PrusaSlicer/tests/libslic3r/test_emboss.cpp:1035:39: error: no matching function for call to ‘CATCH2_INTERNAL_TEST_28()::Visitor::Visitor(<brace-enclosed initializer list>)’
+ 1035 |               face_map, vert_shape_map};
+      |                                       ^
+/home/rschiele/git/PrusaSlicer/tests/libslic3r/test_emboss.cpp:928:9: note: candidate: ‘CATCH2_INTERNAL_TEST_28()::Visitor::Visitor(const MyMesh&, const MyMesh&, CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> >::Property_map<CGAL::SM_Edge_index, IntersectingElemnt>, CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> >::Property_map<CGAL::SM_Face_index, IntersectingElemnt>, CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> >::Property_map<CGAL::SM_Face_index, int>, CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> >::Property_map<CGAL::SM_Vertex_index, IntersectingElemnt>)’
+  928 |         Visitor(const MyMesh &object, const MyMesh &shape,
+      |         ^~~~~~~
+/home/rschiele/git/PrusaSlicer/tests/libslic3r/test_emboss.cpp:928:9: note:   conversion of argument 3 would be ill-formed:
+/home/rschiele/git/PrusaSlicer/tests/libslic3r/test_emboss.cpp:927:12: note: candidate: ‘CATCH2_INTERNAL_TEST_28()::Visitor::Visitor(const CATCH2_INTERNAL_TEST_28()::Visitor&)’
+  927 |     struct Visitor : public CGAL::Polygon_mesh_processing::Corefinement::Default_visitor<MyMesh> {
+      |            ^~~~~~~
+/home/rschiele/git/PrusaSlicer/tests/libslic3r/test_emboss.cpp:927:12: note:   candidate expects 1 argument, 6 provided
+/home/rschiele/git/PrusaSlicer/tests/libslic3r/test_emboss.cpp:927:12: note: candidate: ‘CATCH2_INTERNAL_TEST_28()::Visitor::Visitor(CATCH2_INTERNAL_TEST_28()::Visitor&&)’
+/home/rschiele/git/PrusaSlicer/tests/libslic3r/test_emboss.cpp:927:12: note:   candidate expects 1 argument, 6 provided
+make[2]: *** [tests/libslic3r/CMakeFiles/libslic3r_tests.dir/build.make:569: tests/libslic3r/CMakeFiles/libslic3r_tests.dir/test_emboss.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+[ 60%] Building CXX object tests/libslic3r/CMakeFiles/libslic3r_tests.dir/test_quadric_edge_collapse.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:2078: tests/libslic3r/CMakeFiles/libslic3r_tests.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
