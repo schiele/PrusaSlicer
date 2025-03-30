@@ -1014,4 +1014,4 @@ make: *** [Makefile:146: all] Error 2
 BUILD: version_2.9.1-21-gd4cfaf73d4
 system: rolling
 date: Sun Mar 30 04:34:10 PM CEST 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
