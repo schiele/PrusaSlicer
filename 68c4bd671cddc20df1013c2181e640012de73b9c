@@ -519,4 +519,4 @@ CMake Error at bundled_deps/glu-libtess/CMakeLists.txt:1 (cmake_minimum_required
 BUILD: version_2.9.1-8-gcc121feae7
 system: rolling
 date: Sun Mar 30 12:46:02 PM CEST 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
