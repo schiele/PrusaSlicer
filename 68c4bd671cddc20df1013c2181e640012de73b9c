@@ -546,3 +546,6 @@ CMake Error at src/clipper/CMakeLists.txt:1 (cmake_minimum_required):
 -- Configuring incomplete, errors occurred!
 ======================================================================
 BUILD: version_2.9.1-8-g402af8f0f4
+system: rolling
+date: Sun Mar 30 12:47:36 PM CEST 2025
+tasks:[incomplete]
