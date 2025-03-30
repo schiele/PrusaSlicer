@@ -1149,3 +1149,29 @@ BUILD: version_2.9.1-26-g39365d6fd5
 system: rolling
 date: Sun Mar 30 06:06:40 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+[ 97%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/PrusaConnect.cpp.o
+[ 98%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/GUI/WebViewPlatformUtilsLinux.cpp.o
+[ 76%] Linking CXX executable fff_print_tests
+/usr/bin/ld: ../../src/libslic3r/liblibslic3r.a(NSVGUtils.cpp.o): in function `Slic3r::nsvgParseFromFile(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, char const*, float)':
+NSVGUtils.cpp:(.text+0x93e): undefined reference to `nsvgParseFromFile'
+/usr/bin/ld: NSVGUtils.cpp:(.text+0x945): undefined reference to `nsvgDelete'
+/usr/bin/ld: ../../src/libslic3r/liblibslic3r.a(NSVGUtils.cpp.o): in function `Slic3r::nsvgParse(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, char const*, float)':
+NSVGUtils.cpp:(.text+0x9ac): undefined reference to `nsvgParse'
+/usr/bin/ld: NSVGUtils.cpp:(.text+0x9b3): undefined reference to `nsvgDelete'
+/usr/bin/ld: ../../src/libslic3r/liblibslic3r.a(NSVGUtils.cpp.o): in function `Slic3r::init_image(Slic3r::EmbossShape::SvgFile&)':
+NSVGUtils.cpp:(.text+0x10e6): undefined reference to `nsvgParse'
+/usr/bin/ld: NSVGUtils.cpp:(.text+0x1130): undefined reference to `nsvgDelete'
+/usr/bin/ld: ../../src/libslic3r/liblibslic3r.a(NSVGUtils.cpp.o): in function `Slic3r::init_image(Slic3r::EmbossShape::SvgFile&) [clone .cold]':
+NSVGUtils.cpp:(.text.unlikely+0x49a): undefined reference to `nsvgDelete'
+/usr/bin/ld: ../../src/libslic3r/liblibslic3r.a(SL1_SVG.cpp.o): in function `Slic3r::SL1_SVGReader::read(std::vector<std::vector<Slic3r::ExPolygon, std::allocator<Slic3r::ExPolygon> >, std::allocator<std::vector<Slic3r::ExPolygon, std::allocator<Slic3r::ExPolygon> > > >&, Slic3r::DynamicPrintConfig&)':
+SL1_SVG.cpp:(.text+0xe0c): undefined reference to `nsvgParse'
+/usr/bin/ld: SL1_SVG.cpp:(.text+0x15a0): undefined reference to `nsvgDelete'
+/usr/bin/ld: ../../src/libslic3r/liblibslic3r.a(SL1_SVG.cpp.o): in function `Slic3r::SL1_SVGReader::read(std::vector<std::vector<Slic3r::ExPolygon, std::allocator<Slic3r::ExPolygon> >, std::allocator<std::vector<Slic3r::ExPolygon, std::allocator<Slic3r::ExPolygon> > > >&, Slic3r::DynamicPrintConfig&) [clone .cold]':
+SL1_SVG.cpp:(.text.unlikely+0x404): undefined reference to `nsvgDelete'
+collect2: error: ld returned 1 exit status
+make[2]: *** [tests/fff_print/CMakeFiles/fff_print_tests.dir/build.make:740: tests/fff_print/fff_print_tests] Error 1
+make[1]: *** [CMakeFiles/Makefile2:2120: tests/fff_print/CMakeFiles/fff_print_tests.dir/all] Error 2
+[ 98%] Linking CXX static library liblibslic3r_gui.a
+[ 98%] Built target libslic3r_gui
+make: *** [Makefile:146: all] Error 2
