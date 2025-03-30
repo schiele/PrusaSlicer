@@ -984,3 +984,29 @@ BUILD: version_2.9.1-20-g1ee113eb43
 system: rolling
 date: Sun Mar 30 04:32:02 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+      |                                          ^~~~~~~
+[ 97%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/MKS.cpp.o
+[ 97%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/Secrets.cpp.o
+[ 97%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/WxFontUtils.cpp.o
+[ 97%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/WifiScanner.cpp.o
+[ 97%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/PrusaConnect.cpp.o
+[ 98%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/ServiceConfig.cpp.o
+[ 76%] Linking CXX executable fff_print_tests
+[ 98%] Built target fff_print_tests
+[ 97%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/TCPConsole.cpp.o
+/home/rschiele/git/PrusaSlicer/src/slic3r/Utils/TCPConsole.cpp: In member function ‘bool Slic3r::Utils::TCPConsole::run_queue()’:
+/home/rschiele/git/PrusaSlicer/src/slic3r/Utils/TCPConsole.cpp:164:50: error: ‘boost::asio::ip::basic_resolver_results<boost::asio::ip::tcp>::const_iterator’ {aka ‘class boost::asio::ip::basic_resolver_iterator<boost::asio::ip::tcp>’} has no member named ‘endpoint’
+  164 |         m_socket.async_connect(endpoints.begin().endpoint(),
+      |                                                  ^~~~~~~~
+make[2]: *** [src/slic3r/CMakeFiles/libslic3r_gui.dir/build.make:2529: src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/TCPConsole.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+[ 98%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/GUI/WebViewPlatformUtilsLinux.cpp.o
+[ 95%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/Bonjour.cpp.o
+/home/rschiele/git/PrusaSlicer/src/slic3r/Utils/Bonjour.cpp: In member function ‘void Slic3r::UdpSocket::receive_handler(Slic3r::SharedSession, const boost::system::error_code&, size_t)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r/Utils/Bonjour.cpp:717:21: error: ‘using std::__shared_ptr_access<boost::asio::io_context, __gnu_cxx::_S_atomic, false, false>::element_type = class boost::asio::io_context’ {aka ‘class boost::asio::io_context’} has no member named ‘post’
+  717 |         io_service->post(boost::bind(&UdpSession::handle_receive, session, error, bytes));
+      |                     ^~~~
+make[2]: *** [src/slic3r/CMakeFiles/libslic3r_gui.dir/build.make:2431: src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/Bonjour.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:1924: src/slic3r/CMakeFiles/libslic3r_gui.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
