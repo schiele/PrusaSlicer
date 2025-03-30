@@ -21,6 +21,7 @@ add_cmake_project(Boost
         -DBOOST_IOSTREAMS_ENABLE_ZSTD:BOOL=OFF
         "${_context_abi_line}"
         "${_context_arch_line}"
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 )
 
 set(DEP_Boost_DEPENDS ZLIB)
