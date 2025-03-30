@@ -798,3 +798,29 @@ BUILD: version_2.9.1-14-g67e441d138
 system: rolling
 date: Sun Mar 30 03:05:37 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+    inlined from ‘Slic3r::MutablePriorityQueue<T, IndexSetter, LessPredicate, ResetIndexWhenRemoved>::~MutablePriorityQueue() [with T = long unsigned int; IndexSetter = Slic3r::astar::search_route<CellGridTracer2D_Axis, std::back_insert_iterator<std::vector<Eigen::Matrix<int, 2, 1, 2>, std::allocator<Eigen::Matrix<int, 2, 1, 2> > > > >(const CellGridTracer2D_Axis&, TracerNodeT<CellGridTracer2D_Axis>&, std::back_insert_iterator<std::vector<Eigen::Matrix<int, 2, 1, 2>, std::allocator<Eigen::Matrix<int, 2, 1, 2> > > >, std::unordered_map<long unsigned int, QNode<CellGridTracer2D_Axis>, std::hash<long unsigned int>, std::equal_to<long unsigned int>, std::allocator<std::pair<const long unsigned int, QNode<CellGridTracer2D_Axis> > > >&&)::<lambda(size_t, size_t)>; LessPredicate = Slic3r::astar::search_route<CellGridTracer2D_Axis, std::back_insert_iterator<std::vector<Eigen::Matrix<int, 2, 1, 2>, std::allocator<Eigen::Matrix<int, 2, 1, 2> > > > >(const CellGridTracer2D_Axis&, TracerNodeT<CellGridTracer2D_Axis>&, std::back_insert_iterator<std::vector<Eigen::Matrix<int, 2, 1, 2>, std::allocator<Eigen::Matrix<int, 2, 1, 2> > > >, std::unordered_map<long unsigned int, QNode<CellGridTracer2D_Axis>, std::hash<long unsigned int>, std::equal_to<long unsigned int>, std::allocator<std::pair<const long unsigned int, QNode<CellGridTracer2D_Axis> > > >&&)::LessPred; bool ResetIndexWhenRemoved = true]’ at /home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/MutablePriorityQueue.hpp:29:33:
+/usr/include/eigen3/Eigen/src/Core/PlainObjectBase.h:496:9: warning: ‘<unnamed>.Eigen::Matrix<int, 2, 1, 2, 2, 1>::<unnamed>.Eigen::PlainObjectBase<Eigen::Matrix<int, 2, 1, 2> >::m_storage’ may be used uninitialized [-Wmaybe-uninitialized]
+  496 |       : m_storage( std::move(other.m_storage) )
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/include/c++/14.2.1/tuple: In destructor ‘Slic3r::MutablePriorityQueue<T, IndexSetter, LessPredicate, ResetIndexWhenRemoved>::~MutablePriorityQueue() [with T = long unsigned int; IndexSetter = Slic3r::astar::search_route<CellGridTracer2D_Axis, std::back_insert_iterator<std::vector<Eigen::Matrix<int, 2, 1, 2>, std::allocator<Eigen::Matrix<int, 2, 1, 2> > > > >(const CellGridTracer2D_Axis&, TracerNodeT<CellGridTracer2D_Axis>&, std::back_insert_iterator<std::vector<Eigen::Matrix<int, 2, 1, 2>, std::allocator<Eigen::Matrix<int, 2, 1, 2> > > >, std::unordered_map<long unsigned int, QNode<CellGridTracer2D_Axis>, std::hash<long unsigned int>, std::equal_to<long unsigned int>, std::allocator<std::pair<const long unsigned int, QNode<CellGridTracer2D_Axis> > > >&&)::<lambda(size_t, size_t)>; LessPredicate = Slic3r::astar::search_route<CellGridTracer2D_Axis, std::back_insert_iterator<std::vector<Eigen::Matrix<int, 2, 1, 2>, std::allocator<Eigen::Matrix<int, 2, 1, 2> > > > >(const CellGridTracer2D_Axis&, TracerNodeT<CellGridTracer2D_Axis>&, std::back_insert_iterator<std::vector<Eigen::Matrix<int, 2, 1, 2>, std::allocator<Eigen::Matrix<int, 2, 1, 2> > > >, std::unordered_map<long unsigned int, QNode<CellGridTracer2D_Axis>, std::hash<long unsigned int>, std::equal_to<long unsigned int>, std::allocator<std::pair<const long unsigned int, QNode<CellGridTracer2D_Axis> > > >&&)::LessPred; bool ResetIndexWhenRemoved = true]’:
+/usr/include/c++/14.2.1/tuple:2888:9: note: ‘<anonymous>’ declared here
+ 2888 |         second(std::forward<_Args2>(std::get<_Indexes2>(__tuple2))...)
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[ 61%] Building CXX object tests/libslic3r/CMakeFiles/libslic3r_tests.dir/test_anyptr.cpp.o
+[ 61%] Building CXX object tests/libslic3r/CMakeFiles/libslic3r_tests.dir/test_jump_point_search.cpp.o
+[ 61%] Building CXX object tests/libslic3r/CMakeFiles/libslic3r_tests.dir/test_support_spots_generator.cpp.o
+[ 61%] Building CXX object tests/libslic3r/CMakeFiles/libslic3r_tests.dir/test_layer_region.cpp.o
+[ 61%] Building CXX object tests/libslic3r/CMakeFiles/libslic3r_tests.dir/__/data/prusaparts.cpp.o
+[ 61%] Building CXX object tests/libslic3r/CMakeFiles/libslic3r_tests.dir/test_static_map.cpp.o
+[ 62%] Building CXX object tests/libslic3r/CMakeFiles/libslic3r_tests.dir/test_hollowing.cpp.o
+[ 55%] Linking CXX executable libseqarrange_tests
+[ 62%] Built target libseqarrange_tests
+[ 55%] Linking CXX executable thumbnails_tests
+[ 62%] Built target thumbnails_tests
+[ 57%] Linking CXX executable sla_print_tests
+[ 62%] Built target sla_print_tests
+[ 60%] Building CXX object tests/libslic3r/CMakeFiles/libslic3r_tests.dir/test_emboss.cpp.o
+[ 62%] Linking CXX executable libslic3r_tests
+[ 62%] Built target libslic3r_tests
+make: *** [Makefile:146: all] Error 2
