@@ -891,3 +891,29 @@ BUILD: version_2.9.1-17-g438916fd9e
 system: rolling
 date: Sun Mar 30 03:36:28 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+                 from /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/event.h:16,
+                 from /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/window.h:18,
+                 from /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/nonownedwnd.h:14,
+                 from /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/toplevel.h:20,
+                 from /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/dialog.h:14,
+                 from /home/rschiele/git/PrusaSlicer/src/slic3r/GUI/MsgDialog.hpp:11,
+                 from /home/rschiele/git/PrusaSlicer/src/slic3r/GUI/MsgDialog.cpp:5:
+In member function ‘void wxStringIteratorNode::DoSet(const wxString*, std::__cxx11::basic_string<char>::const_iterator*, std::__cxx11::basic_string<char>::iterator*)’,
+    inlined from ‘wxStringIteratorNode::wxStringIteratorNode(const wxString*, std::__cxx11::basic_string<char>::const_iterator*)’ at /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:273:16,
+    inlined from ‘wxString::const_iterator::const_iterator(const wxString*, underlying_iterator)’ at /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:950:25,
+    inlined from ‘size_t wxString::PosFromImpl(size_t) const’ at /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:740:59:
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:4525:55: warning: storing the address of local variable ‘<anonymous>’ in ‘*this.wxString::m_iterators.wxString::wxStringIteratorNodeHead::ptr’ [-Wdangling-pointer=]
+ 4525 |         const_cast<wxString*>(m_str)->m_iterators.ptr = this;
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h: In member function ‘size_t wxString::PosFromImpl(size_t) const’:
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:740:59: note: ‘<anonymous>’ declared here
+  740 |           return const_iterator(this, m_impl.begin() + pos) - begin();
+      |                                                           ^
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:735:34: note: ‘this’ declared here
+  735 |   size_t PosFromImpl(size_t pos) const
+      |                                  ^~~~~
+[ 86%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/GUI/ConfigWizardWebViewPage.cpp.o
+[ 86%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/GUI/ConfigWizard.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:1924: src/slic3r/CMakeFiles/libslic3r_gui.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
