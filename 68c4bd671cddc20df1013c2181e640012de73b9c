@@ -922,3 +922,29 @@ BUILD: version_2.9.1-18-g7d5d57018e
 system: rolling
 date: Sun Mar 30 03:38:52 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+  237 | class ResolveSocket : public UdpSocket
+      |       ^~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r/Utils/Bonjour.hpp:237:7: note:   candidate expects 1 argument, 4 provided
+/home/rschiele/git/PrusaSlicer/src/slic3r/Utils/Bonjour.cpp:1019:44: error: invalid type argument of unary ‘*’ (have ‘int’)
+ 1019 |                 asio::deadline_timer timer(*io_service);
+      |                                            ^~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r/Utils/Bonjour.cpp: In lambda function:
+/home/rschiele/git/PrusaSlicer/src/slic3r/Utils/Bonjour.cpp:1026:43: error: base operand of ‘->’ is not a pointer
+ 1026 |                                 io_service->stop();
+      |                                           ^~
+/home/rschiele/git/PrusaSlicer/src/slic3r/Utils/Bonjour.cpp: In member function ‘void Slic3r::Bonjour::priv::resolve_perform()’:
+/home/rschiele/git/PrusaSlicer/src/slic3r/Utils/Bonjour.cpp:1044:27: error: base operand of ‘->’ is not a pointer
+ 1044 |                 io_service->run();
+      |                           ^~
+make[2]: *** [src/slic3r/CMakeFiles/libslic3r_gui.dir/build.make:2431: src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/Bonjour.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+[ 95%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/AstroBox.cpp.o
+[ 95%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/EmbossStyleManager.cpp.o
+[ 95%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/Repetier.cpp.o
+[ 95%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/PrintHost.cpp.o
+[ 96%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/Process.cpp.o
+[ 96%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/PresetUpdaterWrapper.cpp.o
+[ 96%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/PresetUpdater.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:1924: src/slic3r/CMakeFiles/libslic3r_gui.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
