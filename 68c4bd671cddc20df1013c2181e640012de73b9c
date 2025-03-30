@@ -1052,3 +1052,27 @@ BUILD: version_2.9.1-23-g0356e1a141
 system: rolling
 date: Sun Mar 30 05:11:26 PM CEST 2025
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+
+CMake Deprecation Warning at cmake/modules/FindOpenVDB.cmake:126 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+Call Stack (most recent call first):
+  CMakeLists.txt:571 (find_package)
+
+-- Could NOT find OpenVDB (missing: OpenVDB_LIB_COMPONENTS openvdb) (found suitable version "12.0.0", minimum required is "5.0")
+-- OpenVDB ABI Version: 12
+-- Performing Test HAVE_CXX_ATOMICS64_WITHOUT_LIB
+-- Performing Test HAVE_CXX_ATOMICS64_WITHOUT_LIB - Success
+-- Performing Test LLVM_HAS_ATOMICS
+-- Performing Test LLVM_HAS_ATOMICS - Success
+CMake Error at CMakeLists.txt:576 (message):
+  OpenVDB could not be found with the bundled find module.  You can try to
+  specify the find module location of your OpenVDB installation with the
+  OPENVDB_FIND_MODULE_PATH cache variable.
+
+-- Configuring incomplete, errors occurred!
