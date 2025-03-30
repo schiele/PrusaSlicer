@@ -1010,3 +1010,5 @@ make[2]: *** Waiting for unfinished jobs....
 make[2]: *** [src/slic3r/CMakeFiles/libslic3r_gui.dir/build.make:2431: src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/Bonjour.cpp.o] Error 1
 make[1]: *** [CMakeFiles/Makefile2:1924: src/slic3r/CMakeFiles/libslic3r_gui.dir/all] Error 2
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: version_2.9.1-21-gd4cfaf73d4
