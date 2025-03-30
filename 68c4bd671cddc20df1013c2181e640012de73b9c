@@ -705,3 +705,29 @@ BUILD: version_2.9.1-12-g5aa9ddbd6e
 system: rolling
 date: Sun Mar 30 02:46:49 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+[ 16%] Linking CXX static library libavrdude.a
+[ 16%] Built target avrdude
+[ 16%] Building CXX object bundled_deps/avrdude/CMakeFiles/avrdude-slic3r.dir/avrdude/main-standalone.cpp.o
+[ 16%] Linking CXX executable avrdude-slic3r
+[ 16%] Built target avrdude-slic3r
+[ 16%] Building CXX object src/libslic3r/CMakeFiles/libslic3r_cgal.dir/CutSurface.cpp.o
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp: In function ‘uint32_t priv::get_shape_point_index(const CutAOI&, const CutMesh&)’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp:2942:117: error: ‘class std::optional<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> >::Property_map<CGAL::SM_Vertex_index, const priv::IntersectingElement*> >’ has no member named ‘first’
+ 2942 |     const VertexShapeMap &vert_shape_map = model.property_map<VI, const IntersectingElement *>(vert_shape_map_name).first;
+      |                                                                                                                     ^~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp: In function ‘priv::SurfacePatch priv::separate_patch(const std::vector<CGAL::SM_Face_index>&, SurfacePatch&, const CvtVI2VI&)’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp:2967:75: error: ‘class std::optional<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> >::Property_map<CGAL::SM_Vertex_index, CGAL::SM_Vertex_index> >’ has no member named ‘first’
+ 2967 |     CvtVI2VI cvt = patch_new.mesh.property_map<VI, VI>(patch_source_name).first;
+      |                                                                           ^~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp: In function ‘void priv::divide_patch(size_t, SurfacePatchesEx&)’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp:2987:83: error: ‘class std::optional<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> >::Property_map<CGAL::SM_Vertex_index, CGAL::SM_Vertex_index> >’ has no member named ‘first’
+ 2987 |     const CvtVI2VI& cvt_from = patch.mesh.property_map<VI, VI>(patch_source_name).first;
+      |                                                                                   ^~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp: In function ‘bool priv::is_over_whole_expoly(const CutAOI&, const Slic3r::ExPolygon&, const CutMesh&)’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp:3174:115: error: ‘class std::optional<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> >::Property_map<CGAL::SM_Vertex_index, const priv::IntersectingElement*> >’ has no member named ‘first’
+ 3174 |     const VertexShapeMap &vert_shape_map = mesh.property_map<VI, const IntersectingElement*>(vert_shape_map_name).first;
+      |                                                                                                                   ^~~~~
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r_cgal.dir/build.make:79: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/CutSurface.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:1572: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
