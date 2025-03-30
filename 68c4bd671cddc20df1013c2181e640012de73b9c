@@ -1341,4 +1341,4 @@ make: *** [Makefile:146: all] Error 2
 BUILD: version_2.9.1-30-g8579d9559d
 system: rolling
 date: Sun Mar 30 08:05:06 PM CEST 2025
-tasks: configure_deps build_deps configure build[incomplete]
+tasks: configure_deps build_deps configure build install[incomplete]
