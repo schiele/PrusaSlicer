@@ -829,3 +829,29 @@ BUILD: version_2.9.1-15-g8020c196fb
 system: rolling
 date: Sun Mar 30 03:14:06 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h: In member function ‘size_t wxString::PosFromImpl(size_t) const’:
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:740:59: note: ‘<anonymous>’ declared here
+  740 |           return const_iterator(this, m_impl.begin() + pos) - begin();
+      |                                                           ^
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:735:34: note: ‘this’ declared here
+  735 |   size_t PosFromImpl(size_t pos) const
+      |                                  ^~~~~
+In member function ‘void wxStringIteratorNode::DoSet(const wxString*, std::__cxx11::basic_string<char>::const_iterator*, std::__cxx11::basic_string<char>::iterator*)’,
+    inlined from ‘wxStringIteratorNode::wxStringIteratorNode(const wxString*, std::__cxx11::basic_string<char>::iterator*)’ at /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:275:16,
+    inlined from ‘wxString::iterator::iterator(const wxString::iterator&)’ at /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:861:29,
+    inlined from ‘wxString::reverse_iterator_impl<T>::reverse_iterator_impl(iterator_type) [with T = wxString::iterator]’ at /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:1082:48,
+    inlined from ‘wxString::reverse_iterator wxString::rbegin()’ at /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:1408:36,
+    inlined from ‘wxUniCharRef wxString::Last()’ at /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:1549:21:
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:4525:55: warning: storing the address of local variable ‘<anonymous>’ in ‘*this.wxString::m_iterators.wxString::wxStringIteratorNodeHead::ptr’ [-Wdangling-pointer=]
+ 4525 |         const_cast<wxString*>(m_str)->m_iterators.ptr = this;
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h: In member function ‘wxUniCharRef wxString::Last()’:
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:1549:21: note: ‘<anonymous>’ declared here
+ 1549 |       return *rbegin();
+      |               ~~~~~~^~
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/wx-3.2/wx/string.h:1546:23: note: ‘this’ declared here
+ 1546 |     wxUniCharRef Last()
+      |                       ^
+make[1]: *** [CMakeFiles/Makefile2:1924: src/slic3r/CMakeFiles/libslic3r_gui.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
