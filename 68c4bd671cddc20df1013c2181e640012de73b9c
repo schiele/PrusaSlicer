@@ -491,3 +491,27 @@ BUILD: version_2.9.1-8-g97400d5d86
 system: rolling
 date: Sun Mar 30 12:44:01 PM CEST 2025
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+  command to set the policy and suppress this warning.
+Call Stack (most recent call first):
+  bundled_deps/avrdude/CMakeLists.txt:96 (encoding_check)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Deprecation Warning at bundled_deps/miniz/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+CMake Error at bundled_deps/glu-libtess/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 has been removed from CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+  Or, add -DCMAKE_POLICY_VERSION_MINIMUM=3.5 to try configuring anyway.
+
+-- Configuring incomplete, errors occurred!
