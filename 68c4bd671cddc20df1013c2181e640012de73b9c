@@ -1015,3 +1015,29 @@ BUILD: version_2.9.1-21-gd4cfaf73d4
 system: rolling
 date: Sun Mar 30 04:34:10 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp: In member function ‘Slic3r::ConfigOption* Slic3r::ConfigOptionDef::load_option_from_archive(Archive&) const [with Archive = cereal::BinaryInputArchive]’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:1501:42: note: ‘<anonymous>’ declared here
+ 1501 |                 this->values.assign(cnt, Vec2d());
+      |                                          ^~~~~~~
+[ 97%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/WinRegistry.cpp.o
+[ 97%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/MKS.cpp.o
+[ 97%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/Secrets.cpp.o
+[ 97%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/WxFontUtils.cpp.o
+[ 97%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/WifiScanner.cpp.o
+[ 98%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/ServiceConfig.cpp.o
+[ 97%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/PrusaConnect.cpp.o
+[ 98%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/GUI/WebViewPlatformUtilsLinux.cpp.o
+[ 76%] Linking CXX executable fff_print_tests
+[ 98%] Built target fff_print_tests
+[ 95%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/Bonjour.cpp.o
+/home/rschiele/git/PrusaSlicer/src/slic3r/Utils/Bonjour.cpp: In member function ‘void Slic3r::UdpSocket::receive_handler(Slic3r::SharedSession, const boost::system::error_code&, size_t)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r/Utils/Bonjour.cpp:717:21: error: ‘using std::__shared_ptr_access<boost::asio::io_context, __gnu_cxx::_S_atomic, false, false>::element_type = class boost::asio::io_context’ {aka ‘class boost::asio::io_context’} has no member named ‘post’
+  717 |         io_service->post(boost::bind(&UdpSession::handle_receive, session, error, bytes));
+      |                     ^~~~
+make[2]: *** [src/slic3r/CMakeFiles/libslic3r_gui.dir/build.make:2431: src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/Bonjour.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+[ 96%] Building CXX object src/slic3r/CMakeFiles/libslic3r_gui.dir/Utils/TCPConsole.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:1924: src/slic3r/CMakeFiles/libslic3r_gui.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
