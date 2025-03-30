@@ -983,4 +983,4 @@ make: *** [Makefile:146: all] Error 2
 BUILD: version_2.9.1-20-g1ee113eb43
 system: rolling
 date: Sun Mar 30 04:32:02 PM CEST 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
