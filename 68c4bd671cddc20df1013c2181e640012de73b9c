@@ -793,3 +793,5 @@ make[2]: *** Waiting for unfinished jobs....
 [ 60%] Building CXX object tests/libslic3r/CMakeFiles/libslic3r_tests.dir/test_quadric_edge_collapse.cpp.o
 make[1]: *** [CMakeFiles/Makefile2:2078: tests/libslic3r/CMakeFiles/libslic3r_tests.dir/all] Error 2
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: version_2.9.1-14-g67e441d138
