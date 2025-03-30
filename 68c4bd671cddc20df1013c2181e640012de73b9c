@@ -1280,3 +1280,29 @@ BUILD: version_2.9.1-31-gf5fa978fe9
 system: rolling
 date: Sun Mar 30 07:55:57 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/usr/bin/ld: binarize.cpp:(.text+0x2adc): undefined reference to `heatshrink_decoder_finish'
+/usr/bin/ld: binarize.cpp:(.text+0x2aec): undefined reference to `heatshrink_decoder_free'
+collect2: error: ld returned 1 exit status
+make[2]: *** [tests/sla_print/CMakeFiles/sla_print_tests.dir/build.make:322: tests/sla_print/sla_print_tests] Error 1
+make[1]: *** [CMakeFiles/Makefile2:2160: tests/sla_print/CMakeFiles/sla_print_tests.dir/all] Error 2
+[ 63%] Linking CXX executable libslic3r_tests
+/usr/bin/ld: ../../deps/destdir/usr/local/lib/libbgcode_binarize.a(binarize.cpp.o): in function `bgcode::binarize::compress(std::vector<unsigned char, std::allocator<unsigned char> >&, std::vector<unsigned char, std::allocator<unsigned char> >&, bgcode::core::ECompressionType) [clone .constprop.0]':
+binarize.cpp:(.text+0xe85): undefined reference to `heatshrink_encoder_alloc'
+/usr/bin/ld: binarize.cpp:(.text+0xf2e): undefined reference to `heatshrink_encoder_poll'
+/usr/bin/ld: binarize.cpp:(.text+0xf58): undefined reference to `heatshrink_encoder_sink'
+/usr/bin/ld: binarize.cpp:(.text+0xf64): undefined reference to `heatshrink_encoder_free'
+/usr/bin/ld: binarize.cpp:(.text+0xf74): undefined reference to `heatshrink_encoder_finish'
+/usr/bin/ld: binarize.cpp:(.text+0xf9a): undefined reference to `heatshrink_encoder_poll'
+/usr/bin/ld: binarize.cpp:(.text+0xfd2): undefined reference to `heatshrink_encoder_free'
+/usr/bin/ld: ../../deps/destdir/usr/local/lib/libbgcode_binarize.a(binarize.cpp.o): in function `bgcode::binarize::uncompress(std::vector<unsigned char, std::allocator<unsigned char> > const&, std::vector<unsigned char, std::allocator<unsigned char> >&, bgcode::core::ECompressionType, unsigned long) [clone .constprop.0]':
+binarize.cpp:(.text+0x281a): undefined reference to `heatshrink_decoder_alloc'
+/usr/bin/ld: binarize.cpp:(.text+0x2899): undefined reference to `heatshrink_decoder_sink'
+/usr/bin/ld: binarize.cpp:(.text+0x28da): undefined reference to `heatshrink_decoder_poll'
+/usr/bin/ld: binarize.cpp:(.text+0x28e6): undefined reference to `heatshrink_decoder_free'
+/usr/bin/ld: binarize.cpp:(.text+0x2adc): undefined reference to `heatshrink_decoder_finish'
+/usr/bin/ld: binarize.cpp:(.text+0x2aec): undefined reference to `heatshrink_decoder_free'
+collect2: error: ld returned 1 exit status
+make[2]: *** [tests/libslic3r/CMakeFiles/libslic3r_tests.dir/build.make:850: tests/libslic3r/libslic3r_tests] Error 1
+make[1]: *** [CMakeFiles/Makefile2:2078: tests/libslic3r/CMakeFiles/libslic3r_tests.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
