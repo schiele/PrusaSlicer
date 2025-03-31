@@ -1426,3 +1426,29 @@ BUILD: version_2.9.1-7-g5f957625f2
 system: rolling
 date: Mon Mar 31 12:32:27 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+                 from /home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/copyleft/cgal/mesh_boolean.cpp:11,
+                 from /home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/copyleft/cgal/mesh_boolean.h:226,
+                 from /home/rschiele/git/PrusaSlicer/src/libslic3r/MeshBoolean.cpp:14:
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/Intersections_3/internal/Plane_3_Triangle_3_intersection.h: In function ‘typename CGAL::Intersection_traits<K, typename K::Plane_3, typename K::Triangle_3>::result_type CGAL::Intersections::internal::intersection(const typename K::Plane_3&, const typename K::Triangle_3&, const K&)’:
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/Intersections_3/internal/Plane_3_Triangle_3_intersection.h:144:65: error: ‘prior’ is not a member of ‘boost’; did you mean ‘boost::mpl::prior’?
+  144 |            k.construct_segment_3_object()(*pts.begin(), *boost::prior(pts.end())));
+      |                                                                 ^~~~~
+In file included from /usr/include/boost/mpl/next.hpp:17,
+                 from /usr/include/boost/mpl/bind.hpp:25,
+                 from /usr/include/boost/mpl/lambda.hpp:18,
+                 from /usr/include/boost/mpl/apply.hpp:25,
+                 from /usr/include/boost/iterator/iterator_facade.hpp:36,
+                 from /usr/include/boost/iterator/iterator_adaptor.hpp:15,
+                 from /usr/include/boost/iterator/transform_iterator.hpp:13,
+                 from /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/boost/iterator/transform_iterator.hpp:27,
+                 from /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/Coercion_traits.h:27,
+                 from /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/number_type_basic.h:35,
+                 from /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/basic.h:28,
+                 from /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/Cartesian/Cartesian_base.h:20:
+/usr/include/boost/mpl/next_prior.hpp:38:8: note: ‘boost::mpl::prior’ declared here
+   38 | struct prior
+      |        ^~~~~
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r_cgal.dir/build.make:121: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/MeshBoolean.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:1572: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
