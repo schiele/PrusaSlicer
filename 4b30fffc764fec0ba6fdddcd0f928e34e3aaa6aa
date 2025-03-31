@@ -2,3 +2,29 @@ BUILD: version_2.9.1-8-g4b30fffc76
 system: rolling
 date: Mon Mar 31 04:24:44 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/usr/include/c++/14.2.1/bits/stl_uninitialized.h:373:37:   required from ‘_ForwardIterator std::__uninitialized_copy_a(_InputIterator, _InputIterator, _ForwardIterator, allocator<_Tp>&) [with _InputIterator = move_iterator<CGAL::AABB_tree<CGAL::AABB_traits<CGAL::Epick, CGAL::AABB_face_graph_triangle_primitive<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> > > > >*>; _ForwardIterator = CGAL::AABB_tree<CGAL::AABB_traits<CGAL::Epick, CGAL::AABB_face_graph_triangle_primitive<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> > > > >*; _Tp = CGAL::AABB_tree<CGAL::AABB_traits<CGAL::Epick, CGAL::AABB_face_graph_triangle_primitive<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> > > > >]’
+  373 |       return std::uninitialized_copy(__first, __last, __result);
+      |              ~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/include/c++/14.2.1/bits/stl_vector.h:1624:35:   required from ‘std::vector<_Tp, _Alloc>::pointer std::vector<_Tp, _Alloc>::_M_allocate_and_copy(size_type, _ForwardIterator, _ForwardIterator) [with _ForwardIterator = std::move_iterator<CGAL::AABB_tree<CGAL::AABB_traits<CGAL::Epick, CGAL::AABB_face_graph_triangle_primitive<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> > > > >*>; _Tp = CGAL::AABB_tree<CGAL::AABB_traits<CGAL::Epick, CGAL::AABB_face_graph_triangle_primitive<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> > > > >; _Alloc = std::allocator<CGAL::AABB_tree<CGAL::AABB_traits<CGAL::Epick, CGAL::AABB_face_graph_triangle_primitive<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> > > > > >; pointer = CGAL::AABB_tree<CGAL::AABB_traits<CGAL::Epick, CGAL::AABB_face_graph_triangle_primitive<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> > > > >*; size_type = long unsigned int]’
+ 1624 |               std::__uninitialized_copy_a(__first, __last, __result,
+      |               ~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 1625 |                                           _M_get_Tp_allocator());
+      |                                           ~~~~~~~~~~~~~~~~~~~~~~
+/usr/include/c++/14.2.1/bits/vector.tcc:86:36:   required from ‘void std::vector<_Tp, _Alloc>::reserve(size_type) [with _Tp = CGAL::AABB_tree<CGAL::AABB_traits<CGAL::Epick, CGAL::AABB_face_graph_triangle_primitive<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> > > > >; _Alloc = std::allocator<CGAL::AABB_tree<CGAL::AABB_traits<CGAL::Epick, CGAL::AABB_face_graph_triangle_primitive<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> > > > > >; size_type = long unsigned int]’
+   86 |               __tmp = _M_allocate_and_copy(__n,
+      |                       ~~~~~~~~~~~~~~~~~~~~^~~~~
+   87 |                 _GLIBCXX_MAKE_MOVE_IF_NOEXCEPT_ITERATOR(this->_M_impl._M_start),
+      |                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   88 |                 _GLIBCXX_MAKE_MOVE_IF_NOEXCEPT_ITERATOR(this->_M_impl._M_finish));
+      |                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp:2886:19:   required from here
+ 2886 |     result.reserve(models.size());
+      |     ~~~~~~~~~~~~~~^~~~~~~~~~~~~~~
+/usr/include/c++/14.2.1/bits/stl_uninitialized.h:90:56: error: static assertion failed: result type must be constructible from input type
+   90 |       static_assert(is_constructible<_ValueType, _Tp>::value,
+      |                                                        ^~~~~
+/usr/include/c++/14.2.1/bits/stl_uninitialized.h:90:56: note: ‘std::integral_constant<bool, false>::value’ evaluates to false
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r_cgal.dir/build.make:79: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/CutSurface.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:1572: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
