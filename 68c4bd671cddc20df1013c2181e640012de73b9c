@@ -1401,4 +1401,4 @@ SUCCESS
 BUILD: version_2.9.1-7-gdbdcd1d980
 system: rolling
 date: Mon Mar 31 05:21:29 AM CEST 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
