@@ -115,3 +115,29 @@ BUILD: version_2.9.1-9-gf7bd960381
 system: rolling
 date: Mon Mar 31 05:44:03 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp: In function ‘bool priv::is_patch_inside_of_model(const SurfacePatch&, const int&, const Project3d&)’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp:2922:25: error: request for member ‘number_of_intersected_primitives’ in ‘tree’, which is of non-class type ‘const int’
+ 2922 |     size_t count = tree.number_of_intersected_primitives(ray_query);
+      |                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp: In function ‘priv::SurfacePatches priv::diff_models(VCutAOIs&, CutMeshes&, CutMeshes&, const Project3d&)’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp:3074:5: error: ‘Trees’ was not declared in this scope
+ 3074 |     Trees trees(models.size());
+      |     ^~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp:3115:25: error: ‘Tree’ was not declared in this scope; did you mean ‘Slic3r::AABBTreeIndirect::Tree’?
+ 3115 |                         Tree &tree = trees[model_index2];
+      |                         ^~~~
+      |                         Slic3r::AABBTreeIndirect::Tree
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/AABBTreeIndirect.hpp:43:7: note: ‘Slic3r::AABBTreeIndirect::Tree’ declared here
+   43 | class Tree
+      |       ^~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp:3115:31: error: ‘tree’ was not declared in this scope; did you mean ‘free’?
+ 3115 |                         Tree &tree = trees[model_index2];
+      |                               ^~~~
+      |                               free
+/home/rschiele/git/PrusaSlicer/src/libslic3r/CutSurface.cpp:3115:38: error: ‘trees’ was not declared in this scope
+ 3115 |                         Tree &tree = trees[model_index2];
+      |                                      ^~~~~
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r_cgal.dir/build.make:79: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/CutSurface.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:1572: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
