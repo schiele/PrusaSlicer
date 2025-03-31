@@ -53,3 +53,29 @@ BUILD: version_2.9.1-9-gf7bd960381
 system: rolling
 date: Mon Mar 31 05:41:53 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+      |                                          ^~~~~~~~~
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/Polygon_mesh_processing/orientation.h:1291:32:   required from ‘bool CGAL::Polygon_mesh_processing::does_bound_a_volume(const TriangleMesh&, const NamedParameters&) [with TriangleMesh = CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> >; NamedParameters = CGAL::Named_function_parameters<bool, CGAL::internal_np::all_default_t>]’
+ 1291 |     volume_connected_components(tm, vidmap, np.do_orientation_tests(true)
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 1292 |                                               .i_used_as_a_predicate(true));
+      |                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/MeshBoolean.cpp:323:68:   required from here
+  323 |     return CGAL::is_closed(mesh.m) && CGALProc::does_bound_a_volume(mesh.m);
+      |                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/boost/graph/property_maps.h:137:19: error: no matching function for call to ‘CGAL::Properties::Property_array_handle<CGAL::SM_Vertex_index, CGAL::Point_3<CGAL::Epick> >::Property_array_handle()’
+  137 |     : m_pm(nullptr)
+      |                   ^
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/Properties.h:186:3: note: candidate: ‘CGAL::Properties::Property_array_handle<Index, T>::Property_array_handle(CGAL::Properties::Property_array<Index, T>&) [with Index = CGAL::SM_Vertex_index; T = CGAL::Point_3<CGAL::Epick>]’
+  186 |   Property_array_handle(Property_array<Index, T>& array) : m_array(array) {}
+      |   ^~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/Properties.h:186:3: note:   candidate expects 1 argument, 0 provided
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/Properties.h:170:7: note: candidate: ‘constexpr CGAL::Properties::Property_array_handle<CGAL::SM_Vertex_index, CGAL::Point_3<CGAL::Epick> >::Property_array_handle(const CGAL::Properties::Property_array_handle<CGAL::SM_Vertex_index, CGAL::Point_3<CGAL::Epick> >&)’
+  170 | class Property_array_handle {
+      |       ^~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/Properties.h:170:7: note:   candidate expects 1 argument, 0 provided
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/Properties.h:170:7: note: candidate: ‘constexpr CGAL::Properties::Property_array_handle<CGAL::SM_Vertex_index, CGAL::Point_3<CGAL::Epick> >::Property_array_handle(CGAL::Properties::Property_array_handle<CGAL::SM_Vertex_index, CGAL::Point_3<CGAL::Epick> >&&)’
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/Properties.h:170:7: note:   candidate expects 1 argument, 0 provided
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r_cgal.dir/build.make:121: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/MeshBoolean.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:1572: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
