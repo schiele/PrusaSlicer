@@ -8,3 +8,29 @@ BUILD: version_2.9.1-7-ga1c2988031
 system: rolling
 date: Mon Mar 31 04:15:07 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+      |             ^~~~~~~~
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/enum.h:86:13: note:   candidate expects 2 arguments, 1 provided
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/MP_Float_impl.h:213:1: note: candidate: ‘CGAL::MP_Float CGAL::operator*(const MP_Float&, const MP_Float&)’
+  213 | operator*(const MP_Float &a, const MP_Float &b)
+      | ^~~~~~~~
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/MP_Float_impl.h:213:1: note:   candidate expects 2 arguments, 1 provided
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/GMP/Gmpq_type.h:351:1: note: candidate: ‘CGAL::Gmpq CGAL::operator*(const Gmpq&, const Gmpq&)’
+  351 | operator*(const Gmpq &x, const Gmpq &y)
+      | ^~~~~~~~
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/CGAL/GMP/Gmpq_type.h:351:1: note:   candidate expects 2 arguments, 1 provided
+/usr/include/boost/math/cstdfloat/cstdfloat_complex_std.hpp:257:65: note: candidate: ‘std::complex<__float128> std::operator*(const complex<__float128>&, const complex<__float128>&)’
+  257 |     inline complex<BOOST_CSTDFLOAT_EXTENDED_COMPLEX_FLOAT_TYPE> operator*(const complex<BOOST_CSTDFLOAT_EXTENDED_COMPLEX_FLOAT_TYPE>& u, const complex<BOOST_CSTDFLOAT_EXTENDED_COMPLEX_FLOAT_TYPE>& v)
+      |                                                                 ^~~~~~~~
+/usr/include/boost/math/cstdfloat/cstdfloat_complex_std.hpp:257:65: note:   candidate expects 2 arguments, 1 provided
+/usr/include/boost/math/cstdfloat/cstdfloat_complex_std.hpp:273:65: note: candidate: ‘std::complex<__float128> std::operator*(const complex<__float128>&, const boost::math::cstdfloat::detail::float_internal128_t&)’
+  273 |     inline complex<BOOST_CSTDFLOAT_EXTENDED_COMPLEX_FLOAT_TYPE> operator*(const complex<BOOST_CSTDFLOAT_EXTENDED_COMPLEX_FLOAT_TYPE>& u, const BOOST_CSTDFLOAT_EXTENDED_COMPLEX_FLOAT_TYPE& v) { return complex<BOOST_CSTDFLOAT_EXTENDED_COMPLEX_FLOAT_TYPE>(u.real() * v, u.imag() * v); }
+      |                                                                 ^~~~~~~~
+/usr/include/boost/math/cstdfloat/cstdfloat_complex_std.hpp:273:65: note:   candidate expects 2 arguments, 1 provided
+/usr/include/boost/math/cstdfloat/cstdfloat_complex_std.hpp:278:65: note: candidate: ‘std::complex<__float128> std::operator*(const boost::math::cstdfloat::detail::float_internal128_t&, const complex<__float128>&)’
+  278 |     inline complex<BOOST_CSTDFLOAT_EXTENDED_COMPLEX_FLOAT_TYPE> operator*(const BOOST_CSTDFLOAT_EXTENDED_COMPLEX_FLOAT_TYPE& u, const complex<BOOST_CSTDFLOAT_EXTENDED_COMPLEX_FLOAT_TYPE>& v) { return complex<BOOST_CSTDFLOAT_EXTENDED_COMPLEX_FLOAT_TYPE>(u * v.real(), u * v.imag()); }
+      |                                                                 ^~~~~~~~
+/usr/include/boost/math/cstdfloat/cstdfloat_complex_std.hpp:278:65: note:   candidate expects 2 arguments, 1 provided
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r_cgal.dir/build.make:79: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/CutSurface.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:1572: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
