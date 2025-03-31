@@ -234,3 +234,5 @@ FAILED:
 make[2]: *** [src/libslic3r/CMakeFiles/libslic3r_cgal.dir/build.make:79: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/CutSurface.cpp.o] Error 1
 make[1]: *** [CMakeFiles/Makefile2:1572: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/all] Error 2
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: version_2.9.1-9-gf7bd960381
