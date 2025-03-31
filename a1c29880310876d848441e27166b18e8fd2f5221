@@ -1,4 +1,4 @@
 BUILD: version_2.9.1-7-ga1c2988031
 system: rolling
 date: Mon Mar 31 03:53:41 PM CEST 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
