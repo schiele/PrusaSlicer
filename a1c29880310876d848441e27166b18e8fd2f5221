@@ -39,3 +39,28 @@ BUILD: version_2.9.1-7-ga1c2988031
 system: rolling
 date: Mon Mar 31 04:21:01 PM CEST 2025
 tasks: configure_deps build_deps[failed]
+FAILED:
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeBinarizeTargets.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeBinarizeTargets-release.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/libbgcode_convert.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/LibBGCode/convert/convert.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/LibBGCode/convert/export.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeConvertTargets.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeConvertTargets-release.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeConfig.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeConfigVersion.cmake
+[100%] Completed 'dep_LibBGCode'
+[100%] Built target dep_LibBGCode
+[100%] Built target deps
++ mkdir build/extra
++ cmake -DCMAKE_INSTALL_PREFIX=/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local -S /home/rschiele/git/cgal -B build/extra
+CMake Error at CMakeLists.txt:4 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 has been removed from CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+  Or, add -DCMAKE_POLICY_VERSION_MINIMUM=3.5 to try configuring anyway.
+
+-- Configuring incomplete, errors occurred!
