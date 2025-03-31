@@ -87,4 +87,4 @@ SUCCESS
 BUILD: version_2.9.1-8-gb2a7c95d88
 system: rolling
 date: Mon Mar 31 05:28:54 PM CEST 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
