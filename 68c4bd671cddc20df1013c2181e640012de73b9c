@@ -1347,4 +1347,4 @@ SUCCESS
 BUILD: version_2.9.1-32-g9cbcc1c8c2
 system: rolling
 date: Mon Mar 31 04:41:47 AM CEST 2025
-tasks: configure_deps build_deps configure build[incomplete]
+tasks: configure_deps build_deps configure build install[incomplete]
