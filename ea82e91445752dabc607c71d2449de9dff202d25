@@ -424,3 +424,6 @@ make[1]: *** [CMakeFiles/Makefile2:1371: src/libslic3r/CMakeFiles/libslic3r_cgal
 make: *** [Makefile:156: all] Error 2
 ======================================================================
 BUILD: version_2.7.2-rc1-2683-g3920c4d1e1
+system: rolling
+date: Tue Apr  1 03:01:32 PM CEST 2025
+tasks:[incomplete]
