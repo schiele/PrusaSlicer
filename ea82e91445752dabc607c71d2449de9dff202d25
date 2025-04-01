@@ -515,3 +515,5 @@ collect2: error: ld returned 1 exit status
 make[2]: *** [src/CMakeFiles/Slic3r.dir/build.make:176: bin/Slic3r] Error 1
 make[1]: *** [CMakeFiles/Makefile2:728: src/CMakeFiles/Slic3r.dir/all] Error 2
 make: *** [Makefile:156: all] Error 2
+======================================================================
+BUILD: version_2.7.2-rc1-2686-gd594487497
