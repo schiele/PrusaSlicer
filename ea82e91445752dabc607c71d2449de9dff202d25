@@ -395,4 +395,4 @@ make: *** [Makefile:136: all] Error 2
 BUILD: version_2.7.2-rc1-2681-g6c475c6930
 system: rolling
 date: Tue Apr  1 02:54:34 PM CEST 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
