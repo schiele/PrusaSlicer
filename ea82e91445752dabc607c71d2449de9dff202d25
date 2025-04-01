@@ -158,3 +158,28 @@ BUILD: version_2.7.2-rc1-2680-g09d5d42db9
 system: rolling
 date: Tue Apr  1 02:28:18 PM CEST 2025
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+  src/avrdude/CMakeLists.txt:94 (encoding_check)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at src/build-utils/CMakeLists.txt:39 (add_custom_command):
+  Exactly one of PRE_BUILD, PRE_LINK, or POST_BUILD must be given.  Assuming
+  POST_BUILD to preserve backward compatibility.
+
+  Policy CMP0175 is not set: add_custom_command() rejects invalid arguments.
+  Run "cmake --help-policy CMP0175" for policy details.  Use the cmake_policy
+  command to set the policy and suppress this warning.
+Call Stack (most recent call first):
+  src/avrdude/CMakeLists.txt:95 (encoding_check)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Error at src/semver/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 has been removed from CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+  Or, add -DCMAKE_POLICY_VERSION_MINIMUM=3.5 to try configuring anyway.
+
+-- Configuring incomplete, errors occurred!
