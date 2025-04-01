@@ -331,3 +331,5 @@ Call Stack (most recent call first):
   src/CMakeLists.txt:60 (find_package)
 
 -- Configuring incomplete, errors occurred!
+======================================================================
+BUILD: version_2.7.2-rc1-2680-gcdf18f4cd1
