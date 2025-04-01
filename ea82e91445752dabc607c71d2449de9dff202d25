@@ -33,3 +33,5 @@ Call Stack (most recent call first):
   CMakeLists.txt:596 (find_package)
 
 -- Configuring incomplete, errors occurred!
+======================================================================
+BUILD: version_2.7.2-rc1-2679-ga72d2a628b
