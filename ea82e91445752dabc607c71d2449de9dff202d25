@@ -489,3 +489,29 @@ BUILD: version_2.7.2-rc1-2685-g0277b2f516
 system: rolling
 date: Tue Apr  1 04:28:07 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Config.hpp:1049:10:   required from here
+ 1049 |     bool apply_override(const ConfigOption *rhs, int32_t idx = -1) override {
+      |          ^~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Config.hpp:1057:29: warning: comparison of integer expressions of different signedness: ‘int32_t’ {aka ‘int’} and ‘size_t’ {aka ‘long unsigned int’} [-Wsign-compare]
+ 1057 |         if (idx >= 0 && idx < this->size()) {
+      |                         ~~~~^~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Config.hpp:1070:31: warning: comparison of integer expressions of different signedness: ‘int’ and ‘size_t’ {aka ‘long unsigned int’} [-Wsign-compare]
+ 1070 |             for (int i = 0; i < this->size(); ++i) {
+      |                             ~~^~~~~~~~~~~~~~
+[100%] Linking CXX executable ../bin/Slic3r
+/usr/bin/ld: ../deps/destdir/usr/local/lib/libwx_gtk3u_core-3.2.a(bmpsvg.cpp.o):(.data.rel.local+0x0): multiple definition of `nsvg__colors'; libslic3r/liblibslic3r.a(SL1_SVG.cpp.o):(.data.rel.local+0x0): first defined here
+/usr/bin/ld: ../deps/destdir/usr/local/lib/libwx_gtk3u_core-3.2.a(bmpsvg.cpp.o): in function `nsvg__parseXML(char*, void (*)(void*, char const*, char const**), void (*)(void*, char const*), void (*)(void*, char const*), void*)':
+bmpsvg.cpp:(.text+0xfd60): multiple definition of `nsvg__parseXML(char*, void (*)(void*, char const*, char const**), void (*)(void*, char const*), void (*)(void*, char const*), void*)'; libslic3r/liblibslic3r.a(SL1_SVG.cpp.o):SL1_SVG.cpp:(.text+0x85e0): first defined here
+/usr/bin/ld: ../deps/destdir/usr/local/lib/libwx_gtk3u_core-3.2.a(bmpsvg.cpp.o): in function `nsvgDuplicatePath':
+bmpsvg.cpp:(.text+0xfeb0): multiple definition of `nsvgDuplicatePath'; libslic3r/liblibslic3r.a(SL1_SVG.cpp.o):SL1_SVG.cpp:(.text+0x8730): first defined here
+/usr/bin/ld: ../deps/destdir/usr/local/lib/libwx_gtk3u_core-3.2.a(bmpsvg.cpp.o): in function `nsvgDelete':
+bmpsvg.cpp:(.text+0xff50): multiple definition of `nsvgDelete'; libslic3r/liblibslic3r.a(SL1_SVG.cpp.o):SL1_SVG.cpp:(.text+0x87d0): first defined here
+/usr/bin/ld: ../deps/destdir/usr/local/lib/libwx_gtk3u_core-3.2.a(bmpsvg.cpp.o): in function `nsvgParse':
+bmpsvg.cpp:(.text+0x10040): multiple definition of `nsvgParse'; libslic3r/liblibslic3r.a(SL1_SVG.cpp.o):SL1_SVG.cpp:(.text+0x88c0): first defined here
+/usr/bin/ld: ../deps/destdir/usr/local/lib/libwx_gtk3u_core-3.2.a(bmpsvg.cpp.o): in function `nsvgParseFromFile':
+bmpsvg.cpp:(.text+0x10e70): multiple definition of `nsvgParseFromFile'; libslic3r/liblibslic3r.a(SL1_SVG.cpp.o):SL1_SVG.cpp:(.text+0x9800): first defined here
+collect2: error: ld returned 1 exit status
+make[2]: *** [src/CMakeFiles/Slic3r.dir/build.make:176: bin/Slic3r] Error 1
+make[1]: *** [CMakeFiles/Makefile2:728: src/CMakeFiles/Slic3r.dir/all] Error 2
+make: *** [Makefile:156: all] Error 2
