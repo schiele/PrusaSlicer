@@ -8,3 +8,28 @@ BUILD: version_2.7.2-rc1-2678-gec1e62e85d
 system: rolling
 date: Tue Apr  1 02:23:06 PM CEST 2025
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- po_dir mo_file imgui : '/home/rschiele/git/PrusaSlicer/resources/localization/zh_TW_copy/Slic3r.po' and mo file is '/home/rschiele/git/PrusaSlicer/resources/localization/zh_TW_copy/Slic3r.mo'
+CMake Warning (dev) at CMakeLists.txt:580 (add_custom_command):
+  The following keywords are not supported when using
+  add_custom_command(TARGET): DEPENDS.
+
+  Policy CMP0175 is not set: add_custom_command() rejects invalid arguments.
+  Run "cmake --help-policy CMP0175" for policy details.  Use the cmake_policy
+  command to set the policy and suppress this warning.
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Error at cmake/modules/FindOpenVDB.cmake:126 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 has been removed from CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+  Or, add -DCMAKE_POLICY_VERSION_MINIMUM=3.5 to try configuring anyway.
+Call Stack (most recent call first):
+  CMakeLists.txt:596 (find_package)
+
+-- Configuring incomplete, errors occurred!
