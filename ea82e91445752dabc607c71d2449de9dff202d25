@@ -426,4 +426,4 @@ make: *** [Makefile:156: all] Error 2
 BUILD: version_2.7.2-rc1-2683-g3920c4d1e1
 system: rolling
 date: Tue Apr  1 03:01:32 PM CEST 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
