@@ -33,6 +33,7 @@ else ()
         #URL_HASH SHA256=cf4f4b2d80abb79e820e78c8077b6725bbbb4e8f41896783c899087be0e94068
         URL https://www.mpfr.org/mpfr-4.2.1/mpfr-4.2.1.tar.bz2
         URL_HASH SHA256=b9df93635b20e4089c29623b19420c4ac848a1b29df1cfd59f26cab0d2666aa0
+	PATCH_COMMAND autoreconf
         DOWNLOAD_DIR ${${PROJECT_NAME}_DEP_DOWNLOAD_DIR}/MPFR
         BUILD_IN_SOURCE ON
         CONFIGURE_COMMAND env "CFLAGS=${_gmp_ccflags}" "CXXFLAGS=${_gmp_ccflags}" ./configure ${_cross_compile_arg} --prefix=${${PROJECT_NAME}_DEP_INSTALL_PREFIX} --enable-shared=no --enable-static=yes --with-gmp=${${PROJECT_NAME}_DEP_INSTALL_PREFIX} ${_gmp_build_tgt}
