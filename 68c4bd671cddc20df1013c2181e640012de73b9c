@@ -1529,4 +1529,4 @@ SUCCESS
 BUILD: version_2.9.1-7-g49f546a3b2
 system: rolling
 date: Tue Apr  1 08:20:25 AM CEST 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure[failed]
