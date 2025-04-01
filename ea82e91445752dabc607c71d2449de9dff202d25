@@ -217,4 +217,4 @@ CMake Error at src/qoi/CMakeLists.txt:3 (cmake_minimum_required):
 BUILD: version_2.7.2-rc1-2680-ge88647ee98
 system: rolling
 date: Tue Apr  1 02:29:02 PM CEST 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure[failed]
