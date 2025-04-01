@@ -5,3 +5,6 @@ tasks: configure_deps build_deps configure build install
 SUCCESS
 ======================================================================
 BUILD: version_2.7.2-rc1-2678-gec1e62e85d
+system: rolling
+date: Tue Apr  1 02:23:06 PM CEST 2025
+tasks:[incomplete]
