@@ -335,4 +335,4 @@ Call Stack (most recent call first):
 BUILD: version_2.7.2-rc1-2680-gcdf18f4cd1
 system: rolling
 date: Tue Apr  1 02:35:22 PM CEST 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
