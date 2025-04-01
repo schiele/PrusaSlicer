@@ -67,4 +67,4 @@ CMake Error at src/admesh/CMakeLists.txt:1 (cmake_minimum_required):
 BUILD: version_2.7.2-rc1-2680-gaa08e98051
 system: rolling
 date: Tue Apr  1 02:25:37 PM CEST 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure[failed]
