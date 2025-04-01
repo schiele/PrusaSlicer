@@ -125,3 +125,6 @@ CMake Error at src/avrdude/CMakeLists.txt:1 (cmake_minimum_required):
 -- Configuring incomplete, errors occurred!
 ======================================================================
 BUILD: version_2.7.2-rc1-2680-g6b9ec6efea
+system: rolling
+date: Tue Apr  1 02:27:39 PM CEST 2025
+tasks:[incomplete]
