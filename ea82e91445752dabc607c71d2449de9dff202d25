@@ -247,3 +247,28 @@ BUILD: version_2.7.2-rc1-2680-g01fe84c610
 system: rolling
 date: Tue Apr  1 02:32:35 PM CEST 2025
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+  Policy CMP0175 is not set: add_custom_command() rejects invalid arguments.
+  Run "cmake --help-policy CMP0175" for policy details.  Use the cmake_policy
+  command to set the policy and suppress this warning.
+Call Stack (most recent call first):
+  src/libslic3r/CMakeLists.txt:593 (encoding_check)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Found JPEG: /usr/lib/libjpeg.so (found version "80")
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR - Success
+CMake Error at src/imgui/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 has been removed from CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+  Or, add -DCMAKE_POLICY_VERSION_MINIMUM=3.5 to try configuring anyway.
+
+-- Configuring incomplete, errors occurred!
