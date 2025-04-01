@@ -218,3 +218,27 @@ BUILD: version_2.7.2-rc1-2680-ge88647ee98
 system: rolling
 date: Tue Apr  1 02:29:02 PM CEST 2025
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+  command to set the policy and suppress this warning.
+Call Stack (most recent call first):
+  src/libslic3r/CMakeLists.txt:593 (encoding_check)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Found JPEG: /usr/lib/libjpeg.so (found version "80")
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR - Success
+CMake Error at src/occt_wrapper/CMakeLists.txt:25 (find_package):
+  Could not find a configuration file for package "OpenCASCADE" that is
+  compatible with requested version "7.6.2".
+
+  The following configuration files were considered but not accepted:
+
+    /usr/lib/cmake/opencascade/OpenCASCADEConfig.cmake, version: 7.8.1
+    /home/rschiele/git/PrusaSlicer/b_deps/builds/OCCT/OpenCASCADEConfig.cmake, version: 7.6.1
+    /lib/cmake/opencascade/OpenCASCADEConfig.cmake, version: 7.8.1
+
+-- Configuring incomplete, errors occurred!
