@@ -68,3 +68,28 @@ BUILD: version_2.7.2-rc1-2680-gaa08e98051
 system: rolling
 date: Tue Apr  1 02:25:37 PM CEST 2025
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+CMake Warning (dev) at CMakeLists.txt:580 (add_custom_command):
+  The following keywords are not supported when using
+  add_custom_command(TARGET): DEPENDS.
+
+  Policy CMP0175 is not set: add_custom_command() rejects invalid arguments.
+  Run "cmake --help-policy CMP0175" for policy details.  Use the cmake_policy
+  command to set the policy and suppress this warning.
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+COMPONENT = openvdb
+-- Found OpenVDB: /usr/include (found suitable version "12.0.0", minimum required is "5.0") found components: openvdb
+-- OpenVDB ABI Version: 12
+-- Found Blosc: /usr/lib/libblosc.so (found version "1.21.6")
+-- SPNAV library found
+CMake Error at src/admesh/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 has been removed from CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+  Or, add -DCMAKE_POLICY_VERSION_MINIMUM=3.5 to try configuring anyway.
+
+-- Configuring incomplete, errors occurred!
