@@ -4344,7 +4344,7 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
     // simplification already done at slicing
     //simplify the loop to avoid artifacts when shrinking almost-0 segments
     coord_t resolution = get_resolution(0, false, &surface);
-    ExPolygons last    = union_ex(surface.expolygon.simplify_p((resolution < SCALED_EPSILON ? SCALED_EPSILON : resolution)));
+    ExPolygons last    = union_ex(surface.expolygon.simplify_p(std::max(SCALED_EPSILON, resolution)));
     ExPolygons gaps;
     double last_area   = -1;
 
@@ -4551,53 +4551,66 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
 
                     ExPolygons no_thin_zone = offset_ex(*all_next_onion, double(params.get_ext_perimeter_width() / 2), jtSquare);
                     // medial axis requires non-overlapping geometry
-                    ExPolygons thin_zones = diff_ex(last, no_thin_zone, ApplySafetyOffset::Yes);
+                    const ExPolygons thin_zones = diff_ex(last, no_thin_zone, ApplySafetyOffset::Yes);
                     //don't use offset2_ex, because we don't want to merge the zones that have been separated.
                         //a very little bit of overlap can be created here with other thin polygons, but it's more useful than worisome.
-                    ExPolygons half_thins = offset_ex(thin_zones, double(-min_width / 2));
-                    //simplify them
-                    for (ExPolygon& half_thin : half_thins) {
-                        half_thin.remove_point_too_close(params.get_ext_perimeter_width()/20);
-                    }
+                    const ExPolygons half_thins = remove_point_too_close(offset_ex(thin_zones, double(-min_width / 2)),
+                                                                   params.get_ext_perimeter_width() / 20);
                     //we push the bits removed and put them into what we will use as our anchor
                     if (half_thins.size() > 0) {
                         no_thin_zone = diff_ex(last, offset_ex(half_thins, double(min_width / 2 - SCALED_EPSILON)), ApplySafetyOffset::Yes);
+                        no_thin_zone = offset2_ex(no_thin_zone, -params.get_ext_perimeter_width() / 20, params.get_ext_perimeter_width() / 20);
+                        remove_point_too_close(no_thin_zone);
                     }
                     ExPolygons thins;
                     // compute a bit of overlap to anchor thin walls inside the print.
-                    for (ExPolygon& half_thin : half_thins) {
-                        //growing back the polygon
-                        ExPolygons thin = offset_ex(half_thin, double(min_width / 2));
+                    for (const ExPolygon &half_thin : half_thins) {
+                        // growing back the polygon
+                        const ExPolygons thin = remove_point_too_close(offset_ex(half_thin, double(min_width / 2)),
+                                                                       params.get_ext_perimeter_width() / 10);
                         assert(thin.size() <= 1);
-                        if (thin.empty() || thin.front().empty()) continue;
-                        coord_t thin_walls_overlap = scale_t(params.config.thin_walls_overlap.get_abs_value(params.ext_perimeter_flow.nozzle_diameter()));
-                        ExPolygons anchor = intersection_ex(offset_ex(half_thin, double(min_width / 2) +
-                            (float)(thin_walls_overlap), jtSquare), no_thin_zone, ApplySafetyOffset::Yes);
+                        if (thin.empty() || thin.front().empty() ||
+                            thin[0].area() <=
+                                min_width * (params.get_ext_perimeter_width() + params.get_ext_perimeter_spacing())) {
+                            continue;
+                        }
+                        thins.push_back(thin[0]);
+                        const coord_t thin_walls_overlap = scale_t(params.config.thin_walls_overlap.get_abs_value(params.ext_perimeter_flow.nozzle_diameter()));
+                        const ExPolygons full_thin_with_overlap = offset_ex(half_thin,
+                                                                            double(min_width / 2) + (float) (thin_walls_overlap),
+                                                                            jtSquare);
+                        // clip no_thin_zone with bounding box from full_thin_with_overlap, as no_thin_zone can be huge.
+                        BoundingBox bbox_full_thin_with_overlap(contours_to_points(full_thin_with_overlap));
+                        bbox_full_thin_with_overlap.offset(SCALED_EPSILON * 10);
+                        const ExPolygons no_thin_zone_simplified =
+                            ClipperUtils::clip_clipper_expolygons_with_subject_bbox(no_thin_zone, bbox_full_thin_with_overlap);
+                        const ExPolygons anchor = intersection_ex(full_thin_with_overlap, no_thin_zone_simplified, ApplySafetyOffset::Yes);
                         ExPolygons bounds = union_ex(thin, anchor, ApplySafetyOffset::Yes);
-                        for (ExPolygon& bound : bounds) {
+                        for (ExPolygon &bound : bounds) {
                             if (!intersection_ex(thin[0], bound).empty()) {
-                                //be sure it's not too small to extrude reliably
-                                thin[0].remove_point_too_close(params.get_ext_perimeter_width() / 10);
-                                if (thin[0].area() > min_width * (params.get_ext_perimeter_width() + params.get_ext_perimeter_spacing())) {
-                                    thins.push_back(thin[0]);
-                                    bound.remove_point_too_close(params.get_ext_perimeter_width() / 10);
-                                    // the maximum thickness of our thin wall area is equal to the minimum thickness of a single loop (*1.2 because of circles approx. and enlrgment from 'div')
-                                    Slic3r::Geometry::MedialAxis ma{ thin[0], (coord_t)((params.get_ext_perimeter_width() + params.get_ext_perimeter_spacing()) * 1.2),
-                                        min_width, scale_t(params.layer->height) };
-                                    ma.use_bounds(bound)
-                                        .use_min_real_width(scale_t(params.ext_perimeter_flow.nozzle_diameter()))
-                                        .use_tapers(thin_walls_overlap)
-                                        .set_min_length(params.get_ext_perimeter_width() + params.get_ext_perimeter_spacing())
-                                        .build(thin_walls_thickpolys);
+                                bound.remove_point_too_close(params.get_ext_perimeter_width() / 10);
+                                if (bound.empty()) {
+                                    continue;
                                 }
-                                break;
+                                // the maximum thickness of our thin wall area is equal to the minimum thickness
+                                // of a single loop (*1.2 because of circles approx. and enlrgment from 'div')
+                                Slic3r::Geometry::MedialAxis ma{thin[0],
+                                                                (coord_t) ((params.get_ext_perimeter_width() + params.get_ext_perimeter_spacing()) * 1.2),
+                                                                min_width,
+                                                                scale_t(params.layer->height)};
+                                ma.use_bounds(bound)
+                                    .use_min_real_width(scale_t(params.ext_perimeter_flow.nozzle_diameter()))
+                                    .use_tapers(thin_walls_overlap)
+                                    .set_min_length(params.get_ext_perimeter_width() + params.get_ext_perimeter_spacing())
+                                    .build(thin_walls_thickpolys);
                             }
+                            break;
                         }
                     }
                     // use perimeters to extrude area that can't be printed by thin walls
                     // it's a bit like re-add thin area into perimeter area.
                     // it can over-extrude a bit, but it's for a better good.
-                    if(!special_area) {
+                    if (!special_area) {
                         if (thin_perimeter > 0.98) {
                             next_onion = union_ex(next_onion, offset_ex(diff_ex(last, thins, ApplySafetyOffset::Yes),
                                                                         -(float) (params.get_ext_perimeter_width() / 2),
@@ -4618,11 +4631,9 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                         }
                         //simplify the loop to avoid almost-0 segments
                         resolution = get_resolution(1, false, &surface);
-                        ExPolygons next_onion_temp;
-                        for (ExPolygon& exp : next_onion)
-                            exp.simplify((resolution < SCALED_EPSILON ? SCALED_EPSILON : resolution), next_onion_temp);
+                        expolygons_simplify(next_onion, std::max(SCALED_EPSILON, resolution));
                         //mask
-                        next_onion = intersection_ex(next_onion_temp, last);
+                        next_onion = intersection_ex(next_onion, last);
                     }
                 }
                 if (params.spiral_vase && all_next_onion->size() > 1) {
@@ -5852,11 +5863,13 @@ ExtrusionLoop PerimeterGenerator::_extrude_and_cut_loop(const Parameters &params
             for (size_t idx_path = good_idx; idx_path < paths.size(); idx_path++) {
                 ExtrusionPath &path = paths[idx_path];
                 if (need_to_reverse) path.reverse();
+                assert(!path.empty());
                 my_loop.paths.push_back(path);
             }
             for (size_t idx_path = 0; idx_path < good_idx; idx_path++) {
                 ExtrusionPath &path = paths[idx_path];
                 if (need_to_reverse) path.reverse();
+                assert(!path.empty());
                 my_loop.paths.push_back(path);
             }
         } else {
@@ -5875,6 +5888,7 @@ ExtrusionLoop PerimeterGenerator::_extrude_and_cut_loop(const Parameters &params
             path.attributes_mutable().mm3_per_mm = is_external ? params.ext_mm3_per_mm() : params.mm3_per_mm();
             path.attributes_mutable().width = is_external ? params.ext_perimeter_flow.width() : params.perimeter_flow.width();
             path.attributes_mutable().height = (float)(params.layer->height);
+            assert(!path.empty());
             my_loop.paths.push_back(path);
         }
 
