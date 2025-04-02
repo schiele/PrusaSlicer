@@ -586,4 +586,4 @@ SUCCESS
 BUILD: version_2.7.2-rc1-2679-g22bb3f7bbb
 system: rolling
 date: Wed Apr  2 07:03:11 PM CEST 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
