@@ -229,8 +229,16 @@ bool Polygon::intersections(const Line &line, Points *intersections) const
     for (size_t i = 0; i < this->points.size(); ++ i) {
         l.b = this->points[i];
         Point intersection;
-        if (l.intersection(line, &intersection))
-            intersections->emplace_back(std::move(intersection));
+        if (l.intersection(line, &intersection)) {
+            if (intersection == l.b || intersection == l.a) {
+                // if on a corner, only keep one intersection
+                if (std::find(intersections->begin(), intersections->end(), intersection) == intersections->end()) {
+                    intersections->emplace_back(std::move(intersection));
+                }
+            } else {
+                intersections->emplace_back(std::move(intersection));
+            }
+        }
         l.a = l.b;
     }
     return intersections->size() > intersections_size;
