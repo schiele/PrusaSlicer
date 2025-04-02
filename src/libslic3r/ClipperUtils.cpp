@@ -76,14 +76,18 @@ namespace ClipperUtils {
     // Clip source polygon to be used as a clipping polygon with a bouding box around the source (to be clipped) polygon.
     // Useful as an optimization for expensive ClipperLib operations, for example when clipping source polygons one by one
     // with a set of polygons covering the whole layer below.
-    inline void clip_clipper_polygon_with_subject_bbox(const Polygon &src, const BoundingBox &bbox, Points &out)
+    inline void clip_clipper_polygon_with_subject_bbox_new(const Polygon &src, BoundingBox bbox, Points &out)
     {
         // note: complexity in O(n), n = src.size()
 
         out.clear();
         const size_t cnt = src.size();
-        if (cnt < 3)
+        if (cnt < 3) {
             return;
+        }
+
+        // to allow crossing at different position.
+        //bbox.offset(SCALED_EPSILON/3);
 
         enum class Side : int {
             Left   = 1,
@@ -92,8 +96,8 @@ namespace ClipperUtils {
             Bottom = 8
         };
 
-        // note: can/should be put out of this emthod in a static cache.
-        int side_sides[9];
+        // note: can/should be put out of this method in a static cache.
+        int side_sides[11];
         side_sides[int(Side::Left)] = (int(Side::Bottom) + int(Side::Top));
         side_sides[int(Side::Right)] = (int(Side::Bottom) + int(Side::Top));
         side_sides[int(Side::Top)] = (int(Side::Left) + int(Side::Right));
@@ -127,15 +131,33 @@ namespace ClipperUtils {
                     int(p.y() <= bbox.min.y()) +
                     int(p.y() >= bbox.max.y());
         };
+        auto count_sides = [bbox](const int sides) {
+            return  int((sides & int(Side::Left)) != 0) +
+                    int((sides & int(Side::Right)) != 0) +
+                    int((sides & int(Side::Top)) != 0) +
+                    int((sides & int(Side::Bottom)) != 0);
+        };
+        // more like "in bbox infinite lines"
+        // to be sure your are in the bbox border, you need 'in_bbox(pt) && sides(pt) == 0'
+        auto in_bbox = [bbox](const Point &p) {
+            return  int(p.x() == bbox.min.x()) +
+                    int(p.x() == bbox.max.x()) +
+                    int(p.y() == bbox.min.y()) +
+                    int(p.y() == bbox.max.y());
+        };
 
         // precomputed bb polygon, to compute intersection with lines.
         Polygon bb_polygon = bbox.polygon();
+        assert(bb_polygon.is_counter_clockwise());
 
         // collection to follow the path around the bb
         std::vector<int> bb_path;
         int sides_this;
+        bool need_remove_duplicates = false;
+        Points intersections; // buffer
         size_t prev_i = size_t(-1);
         size_t i_end = size_t(-1);
+        int side_start = 0;
         // find a good start point
         for (size_t i = 0; i < cnt; ++i) {
             if (sides(src[i]) == 0) {
@@ -148,18 +170,118 @@ namespace ClipperUtils {
             // can't find a good pont -> all points are outside
             BoundingBox bb_src(src.points);
                 // bb_src.overlap(bbox) -> bbox can be inside src, or maybe not.
-            if (bb_src.overlap(bbox) && src.contains(bbox.min)) {
-                //return the bb
-                out = bb_polygon.points;
-                return;
+            if (bb_src.overlap(bbox)) {
+                //find an intersection, add the point and start from here
+                for (size_t i = 0, pi = cnt - 1; i < cnt; pi = i, ++i) {
+                    assert(pi == cnt - 1 || pi == i-1);
+                    Point pt_temp;
+                    if (bb_polygon.intersection(Line(src[pi],src[i]), &pt_temp)) {
+                        // go out of bb
+                        intersections.clear();
+                        bb_polygon.intersections(Line(Line(src[pi],src[i])), &intersections);
+                        if (intersections.size() == 1) {
+                            // hit a corner, not interested, continue to search real intersection.
+                            continue;
+                        }
+                        assert(intersections.size() == 2);
+                        if (src[i].distance_to_square(intersections.front()) < src[i].distance_to_square(intersections.back())) {
+                            // the order need to be src[prev_i] -> front -> back -> src[i]
+                            std::reverse(intersections.begin(), intersections.end());
+                        }
+                        //go back into bb
+                        out.push_back(intersections.front());
+                        bb_path.clear();
+                        side_start = bb_sides(intersections.front());
+                        //go out of bb
+                        out.push_back(intersections.back());
+                        bb_path.push_back(bb_sides(intersections.back()));
+                        // in unlucky, we are on a corner
+                        if (count_sides(bb_path.back()) == 2) {
+                            int front_side = bb_sides(intersections.front());
+                            if ((front_side & bb_path.back()) != 0) {
+                                bb_path.back() = bb_path.back() & (~front_side);
+                            } else if(count_sides(front_side) == 1){
+                                bb_path.back() = bb_path.back() & (~side_sides[front_side]);
+                            } else {
+                                // diagonal ...
+                                bb_path.back() = bb_path.back() & (int(Side::Top) | int(Side::Bottom));
+                            }
+                        }
+                        assert(count_sides(bb_path.back()) == 1);
+                        assert(intersections.size() == 2);
+                        i_end = cnt + i;
+                        // i instead of i-1, because we already took care of the first segment
+                        prev_i = i;
+                        break;
+                    }
+                }
+                if (i_end == size_t(-1)) {
+                    //check if the bb is inside or outside
+                    if (src.contains(bbox.min)) {
+                        // no intersection and still inside: it's the bb.
+                        out = std::move(bb_polygon.points);
+                        // costly but sadly, can't avoid.
+                        if (src.is_clockwise()) {
+                            std::reverse(out.begin(), out.end());
+                        }
+                        Polygon ccw_src = src;
+                        ccw_src.make_counter_clockwise();
+                        Slic3r::Polygons polys = intersection(ccw_src, bbox.polygon());
+                        if (src.is_clockwise() && !polys.empty()) {
+                            polys[0].reverse();
+                        }
+                        assert(polys.size() == 1);
+                    } else {
+                        // snake around
+                        Polygon ccw_src = src;
+                        ccw_src.make_counter_clockwise();
+                        Slic3r::Polygons polys = intersection(ccw_src, bbox.polygon());
+                        assert(polys.empty());
+                        // separate entities
+                        out.clear();
+                    }
+                    return;
+                }
             } else {
+                Polygon ccw_src = src;
+                ccw_src.make_counter_clockwise();
+                Slic3r::Polygons polys = intersection(ccw_src, bbox.polygon());
+                assert(polys.empty());
                 // separate entities
-                out.clear();
+                assert(out.empty());
                 return;
             }
-            return;
         }
-
+        // ensure it's well initialized
+        assert(sides(src[prev_i]) == 0 || (bb_path.size() == 1 && count_sides(bb_path.back()) == 1));
+        // method to call when you switch side, it add/remove a corner
+        auto add_corner = [&out, &src, &bb_path](const Point &pt_corner, int new_side) {
+            if (!out.empty() && pt_corner == out.back()) {
+                // same corner as previous -> we turn back (180°)
+                if (bb_path.size() > 1 && bb_path[bb_path.size() - 2] == new_side) {
+                    assert(bb_path.size() > 1);
+                    assert(bb_path[bb_path.size() - 2] == new_side);
+                    if (bb_path.size() > 1) {
+                        // so remove it
+                        out.pop_back();
+                        bb_path.pop_back();
+                    }
+                } else {
+                    // from/to corners
+                    if (bb_path.size() == 1) {
+                        // set the corner to our current side.
+                        bb_path.clear();
+                    }
+                    bb_path.push_back(new_side);
+                }
+            } else {
+                // change side
+                assert(out.empty() || out.back() != pt_corner);
+                out.push_back(pt_corner);
+                bb_path.push_back(new_side);
+            }
+        };
+        // main loop
         for (size_t i_rollover = prev_i + 1; i_rollover < i_end; ++ i_rollover) {
             size_t i = i_rollover % cnt;
             sides_this = sides(src[i]);
@@ -170,40 +292,119 @@ namespace ClipperUtils {
                     assert(sides(src[prev_i]) != 0);
                     if (sides(src[prev_i]) != 0) {
                         Point pt_in_bb;
-                        bool is_intersect = bb_polygon.intersection(Line(src[prev_i], src[i]), &pt_in_bb);
-                        assert(is_intersect);
-                        //check if went back over last/next corner
-                        int intersect_side = bb_sides(pt_in_bb);
-                        assert(intersect_side == int(Side::Left) || intersect_side == int(Side::Bottom) ||
-                                intersect_side == int(Side::Top) || intersect_side == int(Side::Right));
-                        if (intersect_side != bb_path.back()) {
-                            Point pt_corner = get_corner[intersect_side + bb_path.back()](bbox);
-                            if (pt_corner == out.back()) {
-                                out.pop_back();
-                            } else {
-                                out.push_back(pt_corner);
+                        bool is_intersect = false;
+                        if (in_bbox(src[i])) {
+                            // edge case: current point is on the bbox boundary, so it will trigger an intersection
+                            // point we want to check if there is another intersection
+                            intersections.clear();
+                            bb_polygon.intersections(Line(src[prev_i], src[i]), &intersections);
+                            assert(intersections.size() < 3);
+                            assert(intersections.size() > 0);
+                            if (intersections.size() == 2) {
+                                pt_in_bb = intersections.front() == src[i] ? intersections.back() :
+                                                                              intersections.front();
+                                is_intersect = true;
+                            } else if (intersections.size() == 1 && intersections.front() != src[i]) {
+                                // can happen if the (prev_i,i) line is over one bbox's edge
+                                // the intersection point is a corner of the bbox
+                                assert(in_bbox(intersections.front()) && count_sides(bb_sides(intersections.front())) == 2);
+                                // add the corner if it isn't here yet (it shouldn't)
+                                assert(out.back() != intersections.front());
+                                if (out.back() != intersections.front()) {
+                                    assert(out.empty() || out.back() != intersections.front());
+                                    out.push_back(intersections.front());
+                                }
                             }
+                        } else {
+                            is_intersect = bb_polygon.intersection(Line(src[prev_i], src[i]), &pt_in_bb);
+                            assert(is_intersect);
                         }
-                        // go in bb
-                        out.push_back(pt_in_bb);
-                        bb_path.clear();
+                        if (is_intersect) {
+                            // check if went back over last/next corner
+                            int intersect_side = bb_sides(pt_in_bb);
+                            // if this intersection side isn't the same as the current one, we need to add the corner.
+                            // note: if unlucky , we can hit a corner with the intersection
+                            // (count_sides(intersect_side) > 1)
+                            //   in this case, we don't  need to add an extra corner.
+                            if (intersect_side != bb_path.back() && count_sides(intersect_side) == 1) {
+                                // we need only one corner to go to intersect_side
+                                assert((side_sides[bb_path.back()] & intersect_side) != 0);
+                                if ((side_sides[bb_path.back()] & intersect_side) != 0) {
+                                    Point pt_corner = get_corner[intersect_side + bb_path.back()](bbox);
+                                    if (pt_corner == out.back()) {
+                                        out.pop_back();
+                                    } else {
+                                        assert(out.empty() || out.back() != pt_corner);
+                                        out.push_back(pt_corner);
+                                    }
+                                }
+                            }
+                            // go in bb
+                            assert(out.empty() || out.back() != pt_in_bb);
+                            out.push_back(pt_in_bb);
+                            bb_path.clear();
+                        } else {
+                            bb_path.clear();
+                        }
                     }
                 }
                 // add the current point
+                assert(out.empty() || out.back() != src[i]);
                 out.push_back(src[i]);
             } else {
                 // point is out, it won't be added
                 if (bb_path.empty()) {
+                    assert(sides(src[prev_i]) == 0);
                     // start the trip outside the bb, add the point in the boundary
-                    Point pt_in_bb;
-                    bool is_intersect = bb_polygon.intersection(Line(src[prev_i], src[i]), &pt_in_bb);
+                    intersections.clear();
+                    bool is_intersect = bb_polygon.intersections(Line(src[prev_i], src[i]), &intersections);
                     assert(is_intersect);
-                    assert(nb_sides(pt_in_bb) == 1);
-                    //go out of bb
-                    out.push_back(pt_in_bb);
-                    bb_path.push_back(bb_sides(pt_in_bb));
-                    assert(bb_path.back() == int(Side::Left) || bb_path.back() == int(Side::Bottom) ||
-                            bb_path.back() == int(Side::Top) || bb_path.back() == int(Side::Right));
+                    if (intersections.size() == 1) {
+                        assert((intersections.front() != src[i]));
+                        if (in_bbox(src[prev_i])) {
+                            // previous point was in the boundary (because bb_path.empty() means sides(src[prev_i]) == 0)
+                            // that means the intersection is at src[prev_i] 
+                            // OR it's // & on top of a border, the intersection is then to corner in the prev_i->i line
+                            assert(intersections.front() == src[prev_i] || in_bbox(src[i]));
+                            assert((bb_sides(src[prev_i]) & bb_sides(src[i])) != 0);
+                            // no need to add src[prev_i] to out, it has been added before or will be at the end.
+                            // can't use sides_this becasue in the case that in_bbox(src[i])
+                            bb_path.push_back(bb_sides(src[prev_i]) & bb_sides(src[i]));
+                        } else {
+                            // intersection between a point inside and me outside
+                            assert(bb_sides(src[prev_i]) == 0);
+                            assert(out.empty() || out.back() != intersections.front());
+                            out.push_back(intersections.front());
+                            bb_path.push_back(sides_this & bb_sides(intersections.front()));
+                            if (count_sides(bb_path.back()) == 2) {
+                                // passing through the corner, unlucky
+                                assert(bb_polygon.find_point(intersections.front()) != int(-1));
+                                bb_path.back() = bb_path.back() & (int(Side::Bottom) | int(Side::Top));
+                            }
+                        }
+                    } else {
+                        assert(intersections.size() == 2);
+                        // prev_i is on the bb on another side 
+                        bool front_in_bb = (intersections.front() == src[prev_i]);
+                        assert(front_in_bb || (intersections.back() == src[prev_i]));
+                        assert(in_bbox(src[prev_i]));
+                        // prev_i is on the bb in another side 
+                        assert((bb_sides(src[prev_i]) & sides_this) == 0);
+                        // go out: add intersection
+                        Point pt = front_in_bb ? intersections.back() : intersections.front();
+                        int pt_sides = bb_sides(pt);
+                        assert(out.empty() || out.back() != pt);
+                        out.push_back(pt);
+                        if (count_sides(pt_sides) == 1) {
+                            bb_path.push_back(pt_sides);
+                        } else if (count_sides(sides_this) == 1) {
+                            bb_path.push_back(pt_sides & side_sides[sides_this]);
+                        } else {
+                            // unlucky, go through a corner
+                            bb_path.back() = bb_path.back() & (int(Side::Bottom) | int(Side::Top));
+                        }
+                    }
+                    assert(count_sides(bb_path.back()) == 1);
                 } else {
                     // continue the trip outside the bb.
                     // Check if we are going to another side, if so we to add the corner
@@ -215,67 +416,208 @@ namespace ClipperUtils {
                         bool is_intersect = bb_polygon.intersection(Line(src[prev_i], src[i]), &pt_in_bb);
                         if (is_intersect) {
                             // get both points
-                            Points pts;
-                            bb_polygon.intersections(Line(src[prev_i], src[i]), &pts);
-                            assert(pts.size() == 2);
-                            if (src[i].distance_to_square(pts.front()) < src[i].distance_to_square(pts.back())) {
+                            intersections.clear();
+                            bb_polygon.intersections(Line(src[prev_i], src[i]), &intersections);
+                            assert(intersections.size() == 2);
+                            if (src[i].distance_to_square(intersections.front()) < src[i].distance_to_square(intersections.back())) {
                                 // the order need to be src[prev_i] -> front -> back -> src[i]
-                                std::reverse(pts.begin(), pts.end());
+                                std::reverse(intersections.begin(), intersections.end());
+                            }
+                            int previous_side = bb_path.back();
+                            int front_intersect_sides = bb_sides(intersections.front());
+                            // add another corner?
+                            if ((bb_path.back() & front_intersect_sides) == 0) {
+                                // basically, from a corner (count_sides=2) hit another side than the current one
+                                assert(count_sides(front_intersect_sides) == 1);
+                                Point pt_corner = get_corner[front_intersect_sides | bb_path.back()](bbox);
+                                add_corner(pt_corner, front_intersect_sides);
                             }
                             //go back into bb
-                            out.push_back(pts.front());
+                            assert(out.empty() || out.back() != intersections.front());
+                            out.push_back(intersections.front());
                             bb_path.clear();
                             //go out of bb
-                            out.push_back(pts.back());
-                            bb_path.push_back(bb_sides(pts.back()));
-                            assert(bb_path.back() == int(Side::Left) || bb_path.back() == int(Side::Bottom) ||
-                                   bb_path.back() == int(Side::Top) || bb_path.back() == int(Side::Right));
+                            assert(out.back() != intersections.back());
+                            out.push_back(intersections.back());
+                            bb_path.push_back(bb_sides(intersections.back()));
+                            // in unlucky, we are on a corner
+                            if (count_sides(bb_path.back()) == 2) {
+                                int front_side = bb_sides(intersections.front());
+                                if ((front_side & bb_path.back()) != 0) {
+                                    bb_path.back() = bb_path.back() & (~front_side);
+                                } else if(count_sides(front_side) == 1){
+                                    bb_path.back() = bb_path.back() & (~side_sides[front_side]);
+                                } else {
+                                    // diagonal
+                                    bb_path.back() = 15 & (~(previous_side | side_sides[previous_side]));
+                                }
+                            }
+                            assert(count_sides(bb_path.back()) == 1);
                         } else {
                             // switch side by going over the corner -> need to add the corner
 
                             // filter sides_this to only have one side, next to sides.back()
                             int this_single_side = sides_this & side_sides[bb_path.back()];
-                            assert(this_single_side == int(Side::Left) || this_single_side == int(Side::Bottom) ||
-                                   this_single_side == int(Side::Top) || this_single_side == int(Side::Right));
-                            // select corner to add
-                            assert((this_single_side + bb_path.back()) == (int(Side::Left) + int(Side::Top)) ||
-                                   (this_single_side + bb_path.back()) == (int(Side::Left) + int(Side::Bottom)) ||
-                                   (this_single_side + bb_path.back()) == (int(Side::Right) + int(Side::Top)) ||
-                                   (this_single_side + bb_path.back()) == (int(Side::Right) + int(Side::Bottom)));
-                            Point pt_corner = get_corner[this_single_side + bb_path.back()](bbox);
-                            if (pt_corner == out.back()) {
-                                //same corner as previous -> we turn back (180°)
-                                assert(bb_path.size() > 1);
-                                assert(bb_path[bb_path.size()-2] == this_single_side);
-                                if (bb_path.size() > 1) {
-                                    // so remove it
-                                    out.pop_back();
-                                    bb_path.pop_back();
-                                }
-                            } else {
-                                // change side
-                                out.push_back(pt_corner);
-                                bb_path.push_back(this_single_side);
-                                assert(bb_path.back() == int(Side::Left) || bb_path.back() == int(Side::Bottom) ||
-                                       bb_path.back() == int(Side::Top) || bb_path.back() == int(Side::Right));
+                            if (this_single_side == 0) {
+                                // this line just goes from a corner to the opposite side, bypassing the intermediate side, and withotu intersecting the bbox
+                                assert(count_sides(sides(src[prev_i])) == 2);
+                                assert(count_sides(sides_this) == 1);
+                                //add the first corner
+                                Point pt_corner = get_corner[sides(src[prev_i])](bbox);
+                                int first_single_side = sides(src[prev_i]) & side_sides[sides_this];
+                                assert(count_sides(first_single_side) == 1);
+                                assert((side_sides[bb_path.back()] & first_single_side) != 0);
+                                add_corner(pt_corner, first_single_side);
+                                assert(count_sides(bb_path.back()) == 1);
+                                // set the right side for the second one
+                                this_single_side = sides_this;
                             }
+                            // select corner to add
+                            assert(count_sides(this_single_side) == 1);
+                            assert((side_sides[bb_path.back()] & this_single_side) != 0);
+                            Point pt_corner = get_corner[this_single_side | bb_path.back()](bbox);
+                            add_corner(pt_corner, this_single_side);
+                            assert(count_sides(bb_path.back()) == 1);
                         }
                     }
                 }
             }
+            assert(bb_path.empty() || count_sides(bb_path.back()) == 1);
+            // update prev_i
             prev_i = i;
+        }
+
+        if (side_start > 0) {
+            // if end not on the same side as start, add a corner
+            if ((bb_path.back() & side_start) == 0) {
+                // basically, from a corner (count_sides=2) hit another side than the current one
+                assert(count_sides(side_start) == 1);
+                Point pt_corner = get_corner[side_start | bb_path.back()](bbox);
+                add_corner(pt_corner, side_start);
+            }
         }
 
         if (!out.empty() && out.front() == out.back()) {
             out.pop_back();
         }
+        
+        if (out.size() < 3) {
+            out.clear();
+            return;
+        }
+
+        //if ccw, then boundaries in CCW need to be moved a bit farther, so CW boundary won't be at the same pos.
+        // can't avoid that. at least it's on 'out' and not on 'src'
+        bool is_ccw = ClipperLib::Orientation(out);
+        // test for an edge direction if on boundary
+        auto is_good_move = [&bbox, &bb_sides, &count_sides, &in_bbox, is_ccw](const Point &pt1, Point &pt2) {
+            assert(in_bbox(pt1));
+            assert(in_bbox(pt2));
+            int side = bb_sides(pt1) & bb_sides(pt2);
+            assert(count_sides(side) <= 1);
+            if (side == 0) {
+                // intersect inside the bb, not a boundary
+                return false;
+            }else if (side == int(Side::Top)) {
+                assert(pt1.x() != pt2.x());
+                return is_ccw == (pt1.x() > pt2.x());
+            } else if (side == int(Side::Bottom)) {
+                assert(pt1.x() != pt2.x());
+                return is_ccw == (pt1.x() < pt2.x());
+            } else if (side == int(Side::Left)) {
+                assert(pt1.y() != pt2.y());
+                return is_ccw == (pt1.y() > pt2.y());
+            } else {
+                assert(side == int(Side::Right));
+                assert(pt1.y() != pt2.y());
+                return is_ccw == (pt1.y() < pt2.y());
+            }
+        };
+        // to move out a point outside the boundary
+        auto move_out = [&bbox, &bb_sides, &in_bbox](Point &pt, coord_t dist) {
+            assert(in_bbox(pt));
+            int pt_sides = bb_sides(pt);
+            if ((pt_sides & int(Side::Top)) != 0) {
+                // note: instead, you can also create a new point a bit farther away, that way the path isn't skwed at all.
+                // it's also possible to offset the bbox at the very start, and move the other points inward, as they are less frequent.
+                pt.y() += dist;
+            }
+            if ((pt_sides & int(Side::Bottom)) != 0) {
+                pt.y() -= dist;
+            }
+            if ((pt_sides & int(Side::Left)) != 0) {
+                pt.x() -= dist;
+            }
+            if ((pt_sides & int(Side::Right)) != 0) {
+                pt.x() += dist;
+            }
+        };
+        std::vector<size_t> start_stop_boundary;
+        bool prev_bbox = false;
+        bool also_move_prev = false;
+        Point prev_pt_before_move;
+        Point pt_first = out.front();
+        out.push_back(out.front());
+        // loop to move the point out of the boundary if they are in the right direction
+        for (size_t i = 0, pi = out.size() - 1; i < out.size(); pi = i, ++i) {
+            if (in_bbox(out[i])) {
+                if (prev_bbox) {
+                    if (is_good_move(prev_pt_before_move, out[i])) {
+                        prev_pt_before_move = out[i];
+                        //move out
+                        move_out(out[i], SCALED_EPSILON / 3);
+                        if (also_move_prev) {
+                            move_out(out[pi], SCALED_EPSILON / 3);
+                            also_move_prev = false;
+                        }
+                    } else {
+                        also_move_prev = true;
+                        prev_pt_before_move = out[i];
+                    }
+                } else {
+                    prev_bbox = true;
+                    also_move_prev = true;
+                    prev_pt_before_move = out[i];
+                }
+            } else {
+                prev_bbox = false;
+            }
+        }
+        if (pt_first != out.back()) {
+            out.front() = out.back();
+        }
+        out.pop_back();
+
+        // clean a little
+        // note: mayeb shouldn't be done here, as most of the geometry transformation don't do that and let the caller do it.
+        const distsqrf_t max_dist = SCALED_EPSILON * SCALED_EPSILON;
+        for (size_t i = 0, pi = out.size() - 1; i < out.size(); pi = i, ++i) {
+            if ((out[pi] - out[i]).squaredNorm() < max_dist) {
+                if (in_bbox(out[i])) {
+                    out.erase(out.begin() + pi);
+                    if (pi < i) {
+                        --i;
+                    }
+                } else {
+                    out.erase(out.begin() + i);
+                    --i;
+                }
+            }
+        }
 
         // hack bugfix https://github.com/prusa3d/PrusaSlicer/issues/13356
-        if(out.size() < 3)
+        if (out.size() < 3) {
             out.clear();
-        assert(out.size() > 2 || out.empty());
-    }
+            return;
+        }
 
+#ifdef _DEBUG
+        Polygon pout(out);
+        pout.assert_valid();
+        assert(out.size() > 2 || out.empty());
+#endif
+    }
+    
     // old version that can self-intersect, restricted now to polyline (don't use it if possible).
     template<typename PointsType>
     inline void clip_clipper_polyline_with_subject_bbox_templ(const PointsType &src, const BoundingBox &bbox, PointsType &out)
@@ -354,6 +696,13 @@ namespace ClipperUtils {
         { return clip_clipper_polyline_with_subject_bbox_templ(src, bbox); }
     [[nodiscard]] ZPoints clip_clipper_polyline_with_subject_bbox(const ZPoints &src, const BoundingBox &bbox)
         { return clip_clipper_polyline_with_subject_bbox_templ(src, bbox); }
+    
+    inline void clip_clipper_polygon_with_subject_bbox(const Polygon &src, const BoundingBox &bbox, Points &out) {
+        Polygon simpl = src;
+        if (ensure_valid(simpl)) {
+            clip_clipper_polygon_with_subject_bbox_new(simpl, bbox, out);
+        }
+    }
 
     void clip_clipper_polygon_with_subject_bbox(const Polygon &src, const BoundingBox &bbox, Polygon &out)
     {
