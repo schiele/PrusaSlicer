@@ -696,7 +696,7 @@ namespace ClipperUtils {
         { return clip_clipper_polyline_with_subject_bbox_templ(src, bbox); }
     [[nodiscard]] ZPoints clip_clipper_polyline_with_subject_bbox(const ZPoints &src, const BoundingBox &bbox)
         { return clip_clipper_polyline_with_subject_bbox_templ(src, bbox); }
-    
+
     inline void clip_clipper_polygon_with_subject_bbox(const Polygon &src, const BoundingBox &bbox, Points &out) {
         Polygon simpl = src;
         if (ensure_valid(simpl)) {

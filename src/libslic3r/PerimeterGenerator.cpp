@@ -43,7 +43,6 @@
 #include <iterator>
 #include <limits>
 #include <list>
-#include <math.h>
 #include <ostream>
 #include <stack>
 #include <string>

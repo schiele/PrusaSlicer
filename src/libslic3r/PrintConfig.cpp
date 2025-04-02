@@ -41,7 +41,7 @@
 #include <boost/nowide/iostream.hpp>
 
 #include <algorithm>
-#include <float.h>
+#include <cfloat>
 
 namespace Slic3r {
 
@@ -855,7 +855,7 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionFloatOrPercent(200, true));
 
     def = this->add("bridge_fan_speed", coInts);
-    def->label = L("Bridges fan speed");
+    def->label = L("Bridge Infill fan speed");
     def->category = OptionCategory::cooling;
     def->tooltip = L("This fan speed is enforced during bridges and overhangs. It won't slow down the fan if it's currently running at a higher speed."
         "\nSet to 0 to stop the fan."
@@ -964,7 +964,7 @@ void PrintConfigDef::init_fff_params()
 
     def = this->add("bridge_speed", coFloatOrPercent);
     def->label = L("Bridges");
-    def->full_label = L("Bridge speed");
+    def->full_label = L("Bridge Infill speed");
     def->category = OptionCategory::speed;
     def->tooltip = L("Speed for printing bridges."
         "\nThis can be expressed as a percentage (for example: 60%) over the Default speed."
@@ -3537,7 +3537,7 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionBool(true));
 
     def = this->add("internal_bridge_fan_speed", coInts);
-    def->label = L("Infill bridges fan speed");
+    def->label = L("Internal Bridge Infill fan speed");
     def->category = OptionCategory::cooling;
     def->tooltip = L("This fan speed is enforced during all infill bridges. It won't slow down the fan if it's currently running at a higher speed."
         "\nSet to 0 to stop the fan."
@@ -3563,8 +3563,7 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionFloatOrPercent(300, true));
 
     def = this->add("internal_bridge_speed", coFloatOrPercent);
-    def->label = L("Internal bridges");
-    def->full_label = L("Internal bridge speed");
+    def->label = L("Internal Bridge Infill speed");
     def->category = OptionCategory::speed;
     def->tooltip = L("Speed for printing the bridges that support the top layer.\nCan be a % of the bridge speed.");
     def->sidetext = L("mm/s or %");
@@ -4389,7 +4388,7 @@ void PrintConfigDef::init_fff_params()
     def->full_label = L("Overhangs speed");
     def->category = OptionCategory::speed;
     def->tooltip = L("Speed for printing overhangs."
-        "\nCan be a % of the bridge speed."
+        "\nCan be a % of the bridge infill speed."
         "\nSet zero to use autospeed for this feature.");
     def->sidetext = L("mm/s");
     def->ratio_over = "bridge_speed";
