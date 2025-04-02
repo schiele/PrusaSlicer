@@ -581,3 +581,4 @@ BUILD: version_2.7.2-rc1-2680-g7b80ea71ac
 system: rolling
 date: Wed Apr  2 06:36:14 PM CEST 2025
 tasks: configure_deps build_deps configure build install
+SUCCESS
