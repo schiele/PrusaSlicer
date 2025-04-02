@@ -76,8 +76,209 @@ namespace ClipperUtils {
     // Clip source polygon to be used as a clipping polygon with a bouding box around the source (to be clipped) polygon.
     // Useful as an optimization for expensive ClipperLib operations, for example when clipping source polygons one by one
     // with a set of polygons covering the whole layer below.
+    inline void clip_clipper_polygon_with_subject_bbox(const Polygon &src, const BoundingBox &bbox, Points &out)
+    {
+        // note: complexity in O(n), n = src.size()
+
+        out.clear();
+        const size_t cnt = src.size();
+        if (cnt < 3)
+            return;
+
+        enum class Side : int {
+            Left   = 1,
+            Right  = 2,
+            Top    = 4,
+            Bottom = 8
+        };
+
+        // note: can/should be put out of this emthod in a static cache.
+        int side_sides[9];
+        side_sides[int(Side::Left)] = (int(Side::Bottom) + int(Side::Top));
+        side_sides[int(Side::Right)] = (int(Side::Bottom) + int(Side::Top));
+        side_sides[int(Side::Top)] = (int(Side::Left) + int(Side::Right));
+        side_sides[int(Side::Bottom)] = (int(Side::Left) + int(Side::Right));
+
+        std::function<Point(const BoundingBox &)> get_corner[11];
+        get_corner[int(Side::Left) + int(Side::Top)] = 
+            [](const BoundingBox &bb) { return Point(bb.min.x(), bb.max.y()); };
+        get_corner[int(Side::Left) + int(Side::Bottom)] =
+            [](const BoundingBox &bb) { return bb.min; };
+        get_corner[int(Side::Right) + int(Side::Top)] =
+            [](const BoundingBox &bb) { return bb.max; };
+        get_corner[int(Side::Right) + int(Side::Bottom)] =
+            [](const BoundingBox &bb) { return Point(bb.max.x(), bb.min.y()); };
+        
+        auto sides = [bbox](const Point &p) {
+            return  int(p.x() < bbox.min.x()) * int(Side::Left) +
+                    int(p.x() > bbox.max.x()) * int(Side::Right) +
+                    int(p.y() < bbox.min.y()) * int(Side::Bottom) +
+                    int(p.y() > bbox.max.y()) * int(Side::Top);
+        };
+        auto bb_sides = [bbox](const Point &p) {
+            return  int(p.x() <= bbox.min.x()) * int(Side::Left) +
+                    int(p.x() >= bbox.max.x()) * int(Side::Right) +
+                    int(p.y() <= bbox.min.y()) * int(Side::Bottom) +
+                    int(p.y() >= bbox.max.y()) * int(Side::Top);
+        };
+        auto nb_sides = [bbox](const Point &p) {
+            return  int(p.x() <= bbox.min.x()) +
+                    int(p.x() >= bbox.max.x()) +
+                    int(p.y() <= bbox.min.y()) +
+                    int(p.y() >= bbox.max.y());
+        };
+
+        // precomputed bb polygon, to compute intersection with lines.
+        Polygon bb_polygon = bbox.polygon();
+
+        // collection to follow the path around the bb
+        std::vector<int> bb_path;
+        int sides_this;
+        size_t prev_i = size_t(-1);
+        size_t i_end = size_t(-1);
+        // find a good start point
+        for (size_t i = 0; i < cnt; ++i) {
+            if (sides(src[i]) == 0) {
+                i_end = cnt + i + 1;
+                prev_i = i;
+                break;
+            }
+        }
+        if (i_end == size_t(-1)) {
+            // can't find a good pont -> all points are outside
+            BoundingBox bb_src(src.points);
+                // bb_src.overlap(bbox) -> bbox can be inside src, or maybe not.
+            if (bb_src.overlap(bbox) && src.contains(bbox.min)) {
+                //return the bb
+                out = bb_polygon.points;
+                return;
+            } else {
+                // separate entities
+                out.clear();
+                return;
+            }
+            return;
+        }
+
+        for (size_t i_rollover = prev_i + 1; i_rollover < i_end; ++ i_rollover) {
+            size_t i = i_rollover % cnt;
+            sides_this = sides(src[i]);
+            if (sides_this == 0) {
+                // point is in, it will be added
+                if (!bb_path.empty()) {
+                    // first, finish the trip outside the bb
+                    assert(sides(src[prev_i]) != 0);
+                    if (sides(src[prev_i]) != 0) {
+                        Point pt_in_bb;
+                        bool is_intersect = bb_polygon.intersection(Line(src[prev_i], src[i]), &pt_in_bb);
+                        assert(is_intersect);
+                        //check if went back over last/next corner
+                        int intersect_side = bb_sides(pt_in_bb);
+                        assert(intersect_side == int(Side::Left) || intersect_side == int(Side::Bottom) ||
+                                intersect_side == int(Side::Top) || intersect_side == int(Side::Right));
+                        if (intersect_side != bb_path.back()) {
+                            Point pt_corner = get_corner[intersect_side + bb_path.back()](bbox);
+                            if (pt_corner == out.back()) {
+                                out.pop_back();
+                            } else {
+                                out.push_back(pt_corner);
+                            }
+                        }
+                        // go in bb
+                        out.push_back(pt_in_bb);
+                        bb_path.clear();
+                    }
+                }
+                // add the current point
+                out.push_back(src[i]);
+            } else {
+                // point is out, it won't be added
+                if (bb_path.empty()) {
+                    // start the trip outside the bb, add the point in the boundary
+                    Point pt_in_bb;
+                    bool is_intersect = bb_polygon.intersection(Line(src[prev_i], src[i]), &pt_in_bb);
+                    assert(is_intersect);
+                    assert(nb_sides(pt_in_bb) == 1);
+                    //go out of bb
+                    out.push_back(pt_in_bb);
+                    bb_path.push_back(bb_sides(pt_in_bb));
+                    assert(bb_path.back() == int(Side::Left) || bb_path.back() == int(Side::Bottom) ||
+                            bb_path.back() == int(Side::Top) || bb_path.back() == int(Side::Right));
+                } else {
+                    // continue the trip outside the bb.
+                    // Check if we are going to another side, if so we to add the corner
+                    if ((sides_this & bb_path.back()) != 0) {
+                        // ~same side, don't do anything.
+                    } else {
+                        //be sure it doesn't cross the bb
+                        Point pt_in_bb;
+                        bool is_intersect = bb_polygon.intersection(Line(src[prev_i], src[i]), &pt_in_bb);
+                        if (is_intersect) {
+                            // get both points
+                            Points pts;
+                            bb_polygon.intersections(Line(src[prev_i], src[i]), &pts);
+                            assert(pts.size() == 2);
+                            if (src[i].distance_to_square(pts.front()) < src[i].distance_to_square(pts.back())) {
+                                // the order need to be src[prev_i] -> front -> back -> src[i]
+                                std::reverse(pts.begin(), pts.end());
+                            }
+                            //go back into bb
+                            out.push_back(pts.front());
+                            bb_path.clear();
+                            //go out of bb
+                            out.push_back(pts.back());
+                            bb_path.push_back(bb_sides(pts.back()));
+                            assert(bb_path.back() == int(Side::Left) || bb_path.back() == int(Side::Bottom) ||
+                                   bb_path.back() == int(Side::Top) || bb_path.back() == int(Side::Right));
+                        } else {
+                            // switch side by going over the corner -> need to add the corner
+
+                            // filter sides_this to only have one side, next to sides.back()
+                            int this_single_side = sides_this & side_sides[bb_path.back()];
+                            assert(this_single_side == int(Side::Left) || this_single_side == int(Side::Bottom) ||
+                                   this_single_side == int(Side::Top) || this_single_side == int(Side::Right));
+                            // select corner to add
+                            assert((this_single_side + bb_path.back()) == (int(Side::Left) + int(Side::Top)) ||
+                                   (this_single_side + bb_path.back()) == (int(Side::Left) + int(Side::Bottom)) ||
+                                   (this_single_side + bb_path.back()) == (int(Side::Right) + int(Side::Top)) ||
+                                   (this_single_side + bb_path.back()) == (int(Side::Right) + int(Side::Bottom)));
+                            Point pt_corner = get_corner[this_single_side + bb_path.back()](bbox);
+                            if (pt_corner == out.back()) {
+                                //same corner as previous -> we turn back (180°)
+                                assert(bb_path.size() > 1);
+                                assert(bb_path[bb_path.size()-2] == this_single_side);
+                                if (bb_path.size() > 1) {
+                                    // so remove it
+                                    out.pop_back();
+                                    bb_path.pop_back();
+                                }
+                            } else {
+                                // change side
+                                out.push_back(pt_corner);
+                                bb_path.push_back(this_single_side);
+                                assert(bb_path.back() == int(Side::Left) || bb_path.back() == int(Side::Bottom) ||
+                                       bb_path.back() == int(Side::Top) || bb_path.back() == int(Side::Right));
+                            }
+                        }
+                    }
+                }
+            }
+            prev_i = i;
+        }
+
+        if (!out.empty() && out.front() == out.back()) {
+            out.pop_back();
+        }
+
+        // hack bugfix https://github.com/prusa3d/PrusaSlicer/issues/13356
+        if(out.size() < 3)
+            out.clear();
+        assert(out.size() > 2 || out.empty());
+    }
+
+    // old version that can self-intersect, restricted now to polyline (don't use it if possible).
     template<typename PointsType>
-    inline void clip_clipper_polygon_with_subject_bbox_templ(const PointsType &src, const BoundingBox &bbox, PointsType &out)
+    inline void clip_clipper_polyline_with_subject_bbox_templ(const PointsType &src, const BoundingBox &bbox, PointsType &out)
     {
         using PointType = typename PointsType::value_type;
 
@@ -120,47 +321,49 @@ namespace ClipperUtils {
         }
 
         // Never produce just a single point output polygon.
-        if (! out.empty())
+        if (!out.empty()) {
             if (int sides_next = sides(out.front());
                 // The last point is inside. Take it.
                 sides_this == 0 ||
                 // Either this point is outside and previous or next is inside, or
                 // the edge possibly cuts corner of the bounding box.
-                (sides_prev & sides_this & sides_next) == 0)
+                (sides_prev & sides_this & sides_next) == 0) {
                 out.emplace_back(src.back());
+            }
+        }
         // hack bugfix https://github.com/prusa3d/PrusaSlicer/issues/13356
         if(out.size() < 3)
             out.clear();
         assert(out.size() > 2 || out.empty());
     }
 
-    void clip_clipper_polygon_with_subject_bbox(const Points &src, const BoundingBox &bbox, Points &out)
-        { clip_clipper_polygon_with_subject_bbox_templ(src, bbox, out); }
-    void clip_clipper_polygon_with_subject_bbox(const ZPoints &src, const BoundingBox &bbox, ZPoints &out)
-        { clip_clipper_polygon_with_subject_bbox_templ(src, bbox, out); }
+    void clip_clipper_polyline_with_subject_bbox(const Points &src, const BoundingBox &bbox, Points &out)
+        { clip_clipper_polyline_with_subject_bbox_templ(src, bbox, out); }
+    void clip_clipper_polyline_with_subject_bbox(const ZPoints &src, const BoundingBox &bbox, ZPoints &out)
+        { clip_clipper_polyline_with_subject_bbox_templ(src, bbox, out); }
 
     template<typename PointsType>
-    [[nodiscard]] PointsType clip_clipper_polygon_with_subject_bbox_templ(const PointsType &src, const BoundingBox &bbox)
+    [[nodiscard]] PointsType clip_clipper_polyline_with_subject_bbox_templ(const PointsType &src, const BoundingBox &bbox)
     {
         PointsType out;
-        clip_clipper_polygon_with_subject_bbox(src, bbox, out);
+        clip_clipper_polyline_with_subject_bbox(src, bbox, out);
         return out;
     }
 
-    [[nodiscard]] Points clip_clipper_polygon_with_subject_bbox(const Points &src, const BoundingBox &bbox)
-        { return clip_clipper_polygon_with_subject_bbox_templ(src, bbox); }
-    [[nodiscard]] ZPoints clip_clipper_polygon_with_subject_bbox(const ZPoints &src, const BoundingBox &bbox)
-        { return clip_clipper_polygon_with_subject_bbox_templ(src, bbox); }
+    [[nodiscard]] Points clip_clipper_polyline_with_subject_bbox(const Points &src, const BoundingBox &bbox)
+        { return clip_clipper_polyline_with_subject_bbox_templ(src, bbox); }
+    [[nodiscard]] ZPoints clip_clipper_polyline_with_subject_bbox(const ZPoints &src, const BoundingBox &bbox)
+        { return clip_clipper_polyline_with_subject_bbox_templ(src, bbox); }
 
     void clip_clipper_polygon_with_subject_bbox(const Polygon &src, const BoundingBox &bbox, Polygon &out)
     {
-        clip_clipper_polygon_with_subject_bbox(src.points, bbox, out.points);
+        clip_clipper_polygon_with_subject_bbox(src, bbox, out.points);
     }
 
     [[nodiscard]] Polygon clip_clipper_polygon_with_subject_bbox(const Polygon &src, const BoundingBox &bbox)
     {
         Polygon out;
-        clip_clipper_polygon_with_subject_bbox(src.points, bbox, out.points);
+        clip_clipper_polygon_with_subject_bbox(src, bbox, out.points);
         return out;
     }
 
@@ -200,6 +403,50 @@ namespace ClipperUtils {
                   out.end());
         return out;
     }
+
+    [[nodiscard]] ExPolygons clip_clipper_expolygons_with_subject_bbox(const ExPolygons &src, const BoundingBox &bbox)
+    {
+        ExPolygons out;
+        Polygons temp;
+        out.reserve(number_polygons(src));
+        for (const ExPolygon &exp : src) {
+            temp.clear();
+            temp.emplace_back();
+            clip_clipper_polygon_with_subject_bbox(exp.contour, bbox, temp.back());
+            if (temp.back().empty()) {
+                // contour out of bounds, nothing is left.
+                continue;
+            } else if (temp.back().size() == exp.contour.size()) {
+                //no modification
+                out.push_back(exp);
+                continue;
+            }
+            bool need_union = false;
+            for (const Polygon &hole : exp.holes) {
+                temp.emplace_back();
+                clip_clipper_polygon_with_subject_bbox(hole, bbox, temp.back());
+                if (temp.back().empty() ) {
+                    // hole out of bounds, nothing is left.
+                    temp.pop_back();
+                } else if (temp.back().size() == exp.contour.size()) {
+                    //no modification
+                } else {
+                    need_union = true;
+                }
+            }
+            if (need_union) {
+                append(out, union_ex(temp));
+            } else {
+                out.emplace_back();
+                out.back().contour = temp.front();
+                if (temp.size() > 1) {
+                    out.back().holes.assign(temp.begin() + 1, temp.end());
+                }
+            }
+        }
+        return out;
+    }
+
 }
 
 
@@ -211,7 +458,9 @@ static ExPolygons PolyTreeToExPolygons(ClipperLib::PolyTree &&polytree)
             size_t cnt = expolygons->size();
             expolygons->resize(cnt + 1);
             (*expolygons)[cnt].contour.points = std::move(polynode.Contour);
-            if ((*expolygons)[cnt].contour.size() < 4 && !(*expolygons)[cnt].contour.is_counter_clockwise()) {
+            double area = std::abs((*expolygons)[cnt].contour.area());
+            // I saw a clockwise artifact with 4 points
+            if ((*expolygons)[cnt].contour.size() < 5 && !(*expolygons)[cnt].contour.is_counter_clockwise()) {
                 assert( std::abs((*expolygons)[cnt].contour.area()) < SCALED_EPSILON * SCALED_EPSILON * SCALED_EPSILON);
                 // error, delete.
                 (*expolygons).pop_back();
@@ -677,18 +926,25 @@ Slic3r::ExPolygons opening_ex(const Slic3r::Polygons& polygons, const double del
 
 bool test_path(const ClipperLib::Path &path) {
 
-    double area = std::abs(ClipperLib::Area(path));
+    double area = ClipperLib::Area(path);
     // get highest dist, but as it's n² in complexity, i use 2*dist to center wich is 2n in complexity
-    ClipperLib::cInt max_dist_sqrd = 0;
+    ClipperLib::cInt max_dist_sqr= 0;
+    // Centroid need the signed area.
     ClipperLib::IntPoint centroid = ClipperLib::Centroid(path, area);
+    area = std::abs(area);
     for (const ClipperLib::IntPoint& pt : path) {
         // &0x3FFFFFFF to let  (dx * dx + dy * dy) be storable into a int64
         ClipperLib::cInt dx = std::abs(pt.x() - centroid.x()) & 0x3FFFFFFF;
         ClipperLib::cInt dy = std::abs(pt.y() - centroid.y()) & 0x3FFFFFFF;
-        ClipperLib::cInt dist_sqrd = (dx * dx + dy * dy);
-        max_dist_sqrd = std::max(max_dist_sqrd, dist_sqrd);
+        ClipperLib::cInt dist_sqr = (dx * dx + dy * dy);
+        // store a bit more than the max (up to x2), but good enough as it avoid a branch.
+        max_dist_sqr = max_dist_sqr | dist_sqr; //std::max(max_dist_sqrd, dist_sqrd);
     }
-    return (area < (SCALED_EPSILON + SCALED_EPSILON) * std::sqrt(max_dist_sqrd));
+    // max_dist is the "biggest radius"
+    // area is < 2*max_dist * 2*max_dist
+    // here we create the min area posible: a cube with the radius x 2*Epsilon
+    // if it's lower than that, it means that the polygon is too small or too narrow.
+    return (area < (2 * SCALED_EPSILON) * std::sqrt(max_dist_sqr));
 }
 
 void remove_small_areas(ClipperLib::Paths& paths) {
