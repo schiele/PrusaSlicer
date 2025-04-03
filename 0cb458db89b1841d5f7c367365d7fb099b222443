@@ -2,3 +2,29 @@ BUILD: v2.3.0-70-ge67e5f111e
 system: rolling
 date: Thu Apr  3 06:52:43 AM CEST 2025
 tasks: configure_deps build_deps[failed]
+FAILED:
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_eye.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_eye_tree_eyeglasses.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_frontalcatface.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_frontalcatface_extended.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_frontalface_alt.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_frontalface_alt2.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_frontalface_alt_tree.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_frontalface_default.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_fullbody.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_lefteye_2splits.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_licence_plate_rus_16stages.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_lowerbody.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_profileface.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_righteye_2splits.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_russian_plate_number.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_smile.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/haarcascades/haarcascade_upperbody.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/lbpcascades/lbpcascade_frontalcatface.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/lbpcascades/lbpcascade_frontalface.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/lbpcascades/lbpcascade_frontalface_improved.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/lbpcascades/lbpcascade_profileface.xml
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/share/opencv4/lbpcascades/lbpcascade_silverware.xml
+[ 31%] Completed 'dep_OpenCV'
+[ 31%] Built target dep_OpenCV
+make: *** [Makefile:91: all] Error 2
