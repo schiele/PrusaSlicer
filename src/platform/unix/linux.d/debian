@@ -3,6 +3,7 @@ REQUIRED_DEV_PACKAGES=(
     autoconf
     build-essential
     cmake
+	desktop-file-utils
 #    eglexternalplatform-dev
     extra-cmake-modules
     file

@@ -130,9 +130,9 @@ done
         #vtool -show-build pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/MacOS/@SLIC3R_APP_KEY@ | grep sdk | sed 's/.* \([0-9]\+\.[0-9]\+\) .*/\1/'
         vtool -show-build pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/MacOS/@SLIC3R_APP_KEY@ | grep sdk | sed 's/.*\([0-9]\+\.[0-9]\+\) .*/\1/'
         # if version different
-        TEST_SDK=$(vtool -show-build $ZSDT_PATH | grep sdk | sed 's/.* \([0-9]\+\.[0-9]\+\) .*/\1/')
-        GOOD_OS=$(vtool -show-build pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/MacOS/@SLIC3R_APP_KEY@ | grep minos | sed 's/.*\([0-9]\+\.[0-9]\+\) .*/\1/')
-        GOOD_SDK=$(vtool -show-build pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/MacOS/@SLIC3R_APP_KEY@ | grep sdk | sed 's/.*\([0-9]\+\.[0-9]\+\) .*/\1/')
+        TEST_SDK=$(vtool -show-build $ZSDT_PATH | grep sdk)
+        GOOD_OS=$(vtool -show-build pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/MacOS/@SLIC3R_APP_KEY@ | grep minos)
+        GOOD_SDK=$(vtool -show-build pack/@SLIC3R_APP_KEY@/@SLIC3R_APP_KEY@.app/Contents/MacOS/@SLIC3R_APP_KEY@ | grep sdk)
         #copy libzstd
         if [[ -n "$INCLUDE_LIBZSTD" ]]
         then
@@ -235,15 +235,19 @@ fi
 # test homebrew zstd
 echo "install libzstd via homebrew"
 brew install zstd
+echo "ls -v /opt/homebrew/opt:"
+ls -v /opt/homebrew/opt/
+echo "ls -v /opt/homebrew/opt/zstd:"
+ls -v /opt/homebrew/opt/zstd
 echo "ls -v /opt/homebrew/opt/zstd/lib/libzstd.1.*.dylib:"
 ls -v /opt/homebrew/opt/zstd/lib/libzstd.1.*.dylib
-echo "ls -v /opt/homebrew/opt/zstd/lib/libzstd.1.*.dylib | tail -n 1:"
-ls -v /opt/homebrew/opt/zstd/lib/libzstd.1.*.dylib | tail -n 1
-# try with homebrew
-ZSDT_PATH=$(ls -v /opt/homebrew/opt/zstd/lib/libzstd.1.*.dylib | tail -n 1)
-echo "zstd var:'"$ZSDT_PATH"'
-echo "otool -L $ZSDT_PATH:"
-otool -L $ZSDT_PATH
-echo "vtool -show-build "$ZSDT_PATH
-vtool -show-build $ZSDT_PATH
+# echo "ls -v /opt/homebrew/opt/zstd/lib/libzstd.1.*.dylib | tail -n 1:"
+# ls -v /opt/homebrew/opt/zstd/lib/libzstd.1.*.dylib | tail -n 1
+try with homebrew
+# ZSDT_PATH=$(ls -v /opt/homebrew/opt/zstd/lib/libzstd.1.*.dylib | tail -n 1)
+# echo "zstd var:'"$ZSDT_PATH"'"
+# echo "otool -L $ZSDT_PATH:"
+# otool -L $ZSDT_PATH
+# echo "vtool -show-build "$ZSDT_PATH
+# vtool -show-build $ZSDT_PATH
 
