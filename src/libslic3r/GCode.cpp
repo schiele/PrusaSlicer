@@ -5870,8 +5870,10 @@ void GCodeGenerator::extrude_ironing(const ExtrudeArgs &print_args, const LayerI
         }
         if (!temp_fill_extrusions.empty()) {
             set_region_for_extrude(print, nullptr, &layerm, gcode);
-            for (const ExtrusionEntityReference &fill : chain_extrusion_references(temp_fill_extrusions, last_pos_defined() ? &last_pos() : nullptr))
+            for (const ExtrusionEntityReference &fill :
+                 chain_extrusion_references(temp_fill_extrusions, last_pos_defined() ? &last_pos() : nullptr)) {
                 gcode += this->extrude_entity(fill, "ironing"sv);
+            }
         }
         it = it_end;
         m_region = nullptr;
