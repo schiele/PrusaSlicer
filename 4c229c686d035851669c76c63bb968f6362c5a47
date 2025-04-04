@@ -2,3 +2,4 @@ BUILD: version_2.9.2-rc1-5-g256e7b3679
 system: rolling
 date: Fri Apr  4 04:14:01 AM CEST 2025
 tasks: configure_deps build_deps configure build install
+SUCCESS
