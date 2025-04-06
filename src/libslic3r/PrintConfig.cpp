@@ -8149,11 +8149,11 @@ void PrintConfigDef::init_sla_params()
     def->set_default_value(new ConfigOptionString());
     def->cli = ConfigOptionDef::nocli;
 
-    def = this->add("sla_print_settings_id", coBool);
+    def = this->add("sla_print_settings_modified", coBool);
     def->set_default_value(new ConfigOptionBool(false));
     def->cli = ConfigOptionDef::nocli;
 
-    def = this->add("sla_print_settings_modified", coString);
+    def = this->add("sla_print_settings_id", coString);
     def->set_default_value(new ConfigOptionString(""));
     def->cli = ConfigOptionDef::nocli;
 
