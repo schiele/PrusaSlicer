@@ -598,4 +598,4 @@ SUCCESS
 BUILD: version_2.7.2-rc1-2679-gc4dcc057b7
 system: rolling
 date: Tue Apr  8 12:35:11 PM CEST 2025
-tasks:[incomplete]
+tasks: configure_deps[incomplete]
