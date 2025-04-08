@@ -19,4 +19,4 @@ SUCCESS
 BUILD: version_2.9.2-rc2-8-g5a25a90e84
 system: rolling
 date: Tue Apr  8 11:41:35 AM CEST 2025
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
