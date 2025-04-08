@@ -629,4 +629,4 @@ collect2: error: ld returned 1 exit status
 BUILD: version_2.7.2-rc1-2679-gba85d23459
 system: rolling
 date: Tue Apr  8 12:38:56 PM CEST 2025
-tasks: configure_deps build_deps configure build[incomplete]
+tasks: configure_deps build_deps configure build install[incomplete]
