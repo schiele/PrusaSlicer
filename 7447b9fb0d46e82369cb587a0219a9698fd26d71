@@ -7,4 +7,4 @@ SUCCESS
 BUILD: version_2.9.2-rc2-6-gfdcf29e82d
 system: rolling
 date: Tue Apr  8 11:28:14 AM CEST 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
