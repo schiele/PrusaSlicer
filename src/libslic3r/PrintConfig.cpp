@@ -4646,7 +4646,7 @@ void PrintConfigDef::init_fff_params()
     def->category = OptionCategory::width;
     def->tooltip = L("This setting allows you to reduce the overlap between the perimeters, to reduce the impact of the perimeters' artifacts."
         " 100% means that no gap is left, and 0% means that perimeters are not touching each other anymore."
-        "\nIt's very experimental, please report about the usefulness. It may be removed if there is no use for it.");
+        "\nIt's very experimental, please report about the usefulness.");
     def->sidetext = L("%");
     def->min = 0;
     def->max = 100;
@@ -5047,12 +5047,12 @@ void PrintConfigDef::init_fff_params()
     def->label = L("Internal resolution");
     def->category = OptionCategory::slicing;
     def->tooltip = L("Minimum detail resolution, used for internal structures (gapfill and some infill patterns)."
-            "\nDon't put a too-small value (0.05mm is way too low for many printers), as it may create too many very small segments that may be difficult to display and print.");
+            "\nDon't put a too-small value, as it may create too many very small segments that may be difficult to display and print if your main resolution parameter is also very small.");
     def->sidetext = L("mm");
-    def->min = 0.001;
+    def->min = 0.0001;
     def->precision = 8;
     def->mode = comExpert | comSuSi;
-    def->set_default_value(new ConfigOptionFloat(0.1));
+    def->set_default_value(new ConfigOptionFloat(0.025));
 
     def = this->add("retract_before_travel", coFloats);
     def->label = L("Minimum travel after retraction");
@@ -8224,11 +8224,11 @@ void PrintConfigDef::init_sla_params()
     def->set_default_value(new ConfigOptionString());
     def->cli = ConfigOptionDef::nocli;
 
-    def = this->add("sla_print_settings_id", coBool);
+    def = this->add("sla_print_settings_modified", coBool);
     def->set_default_value(new ConfigOptionBool(false));
     def->cli = ConfigOptionDef::nocli;
 
-    def = this->add("sla_print_settings_modified", coString);
+    def = this->add("sla_print_settings_id", coString);
     def->set_default_value(new ConfigOptionString(""));
     def->cli = ConfigOptionDef::nocli;
 

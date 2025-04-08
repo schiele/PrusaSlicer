@@ -921,25 +921,27 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_classic(const Parameters &pa
     idx_lh_size++;
     if (!dynamic_speed.empty()) {
         extrusion_paths_append(paths, dynamic_speed,
-                               ExtrusionAttributes{role | ExtrusionRole::Bridge,
+                               ExtrusionAttributes{role | ExtrusionRoleModifier::ERM_Bridge,
                                                    ExtrusionFlow(is_external ? params.ext_mm3_per_mm() :
                                                                                params.mm3_per_mm(),
                                                                  is_external ? params.ext_perimeter_flow.width() :
                                                                                params.perimeter_flow.width(),
                                                                  idx_lh_size // layer height is used as id, temporarly
-                                                                 )});
+                                                                 ),
+                                                   OverhangAttributes{0, 1, 0}});
         idx_lh_size++;
     }
     if (!small_speed.empty()) {
         assert(!no_small_speed);
         extrusion_paths_append(paths, small_speed,
-                               ExtrusionAttributes{role | ExtrusionRole::Bridge,
+                               ExtrusionAttributes{role | ExtrusionRoleModifier::ERM_Bridge,
                                                    ExtrusionFlow(is_external ? params.ext_mm3_per_mm() :
                                                                                params.mm3_per_mm(),
                                                                  is_external ? params.ext_perimeter_flow.width() :
                                                                                params.perimeter_flow.width(),
                                                                  idx_lh_size // layer height is used as id, temporarly
-                                                                 )});
+                                                                 ),
+                                                   OverhangAttributes{1, 1, 0}});
     }
     // if (!no_small_speed)
     idx_lh_size++;
@@ -947,23 +949,25 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_classic(const Parameters &pa
     // assert(small_speed.empty());
     if (!big_speed.empty()) {
         extrusion_paths_append(paths, big_speed,
-                               ExtrusionAttributes{role | ExtrusionRole::Bridge,
+                               ExtrusionAttributes{role | ExtrusionRoleModifier::ERM_Bridge,
                                                    ExtrusionFlow(is_external ? params.ext_mm3_per_mm() :
                                                                                params.mm3_per_mm(),
                                                                  is_external ? params.ext_perimeter_flow.width() :
                                                                                params.perimeter_flow.width(),
                                                                  idx_lh_size // layer height is used as id, temporarly
-                                                                 )});
+                                                                 ),
+                                                   OverhangAttributes{1, 1, 0}});
     }
     idx_lh_size++;
     if (!small_flow.empty()) {
         assert(!no_small_flow);
         extrusion_paths_append(paths, small_flow,
-                               ExtrusionAttributes{role | ExtrusionRole::Bridge,
+                               ExtrusionAttributes{role | ExtrusionRoleModifier::ERM_Bridge,
                                                    ExtrusionFlow(params.m_mm3_per_mm_overhang,
                                                                  params.overhang_flow.width(),
                                                                  idx_lh_size // layer height is used as id, temporarly
-                                                                 )});
+                                                                 ),
+                                                   OverhangAttributes{1, 2, 0}});
     }
     if (!no_small_flow)
         idx_lh_size++;
@@ -971,11 +975,12 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_classic(const Parameters &pa
         assert(small_flow.empty());
     if (!big_flow.empty()) {
         extrusion_paths_append(paths, big_flow,
-                               ExtrusionAttributes{role | ExtrusionRole::Bridge,
+                               ExtrusionAttributes{role | ExtrusionRoleModifier::ERM_Bridge,
                                                    ExtrusionFlow(params.m_mm3_per_mm_overhang,
                                                                  params.overhang_flow.width(),
                                                                  idx_lh_size // layer height is used as id, temporarly
-                                                                 )});
+                                                                 ),
+                                                   OverhangAttributes{1, 2, 0}});
     }
     idx_lh_size++;
     assert(idx_lh_size > 3 && idx_lh_size < 7);
@@ -1080,17 +1085,23 @@ void PerimeterGenerator::_sort_overhangs(const Parameters &params,
     // big speed should go into a speed overhang or flow overhang.
     // small flow should go into a speed overhang or flow overhang.
     // big flow should only go into a flow overhang.
+    const bool is_loop = overhang_params.is_loop;
     std::function<void(ExtrusionPaths &, const std::function<bool(ExtrusionPath &, ExtrusionPath &, ExtrusionPath &)> &)> foreach =
-        [](ExtrusionPaths &paths, const std::function<bool(ExtrusionPath &, ExtrusionPath &, ExtrusionPath &)> &doforeach) {
+        [is_loop](ExtrusionPaths &paths, const std::function<bool(ExtrusionPath &, ExtrusionPath &, ExtrusionPath &)> &doforeach) {
             if (paths.size() > 2) {
                 // follow the number from this array to get the next item to check.
                 std::vector<uint32_t> sort(paths.size());
                 // initialize original index locations
-                std::vector<size_t> idxs(paths.size());
-                std::iota(idxs.begin(), idxs.end(), 0);
+                std::vector<size_t> idxs(paths.size() - (is_loop ? 0 : 2));
+                std::iota(idxs.begin(), idxs.end(), is_loop ? 0 : 1);
                 // sort indexes based (todo: optimise plz)
-                std::stable_sort(idxs.begin(), idxs.end(),
-                                 [&paths](size_t i1, size_t i2) { return paths[i1].length() < paths[i2].length(); });
+                std::stable_sort(idxs.begin(), idxs.end(), [&paths](size_t i1, size_t i2) {
+                    return paths[i1].length() < paths[i2].length();
+                });
+                if (!is_loop) {
+                    sort.front() = uint32_t(-1);
+                    sort.back() = uint32_t(-1);
+                }
                 for (uint32_t order = 0; order < uint32_t(idxs.size()); ++order) {
                     sort[idxs[order]] = order;
                 }
@@ -1099,7 +1110,8 @@ void PerimeterGenerator::_sort_overhangs(const Parameters &params,
                 for (uint32_t current_order = 0; current_order < end_order && paths.size() > 2; ++current_order) {
                     bool found = false;
                     assert(paths.size() == sort.size());
-                    for (size_t i_curr = 0; i_curr < sort.size(); i_curr++) {
+                    const size_t max = is_loop ? sort.size() : (sort.size() - 1);
+                    for (size_t i_curr = is_loop ? 0 : 1; i_curr < max; i_curr++) {
                         assert(!found);
                         if (sort[i_curr] == current_order) {
                             found = true;
@@ -1121,7 +1133,7 @@ void PerimeterGenerator::_sort_overhangs(const Parameters &params,
                     assert(found);
                 }
                 // merge same height
-                for (size_t i_curr = 0; i_curr < paths.size() && paths.size() > 1; i_curr++) {
+                for (size_t i_curr = 0; i_curr < (is_loop ? paths.size() : (paths.size() - 1)) && paths.size() > 1; i_curr++) {
                     // found our next item to check, do the thing.
                     size_t i_next = (i_curr + 1) % paths.size();
                     assert(paths[i_curr].polyline.back() == paths[i_next].polyline.front());
@@ -1171,14 +1183,14 @@ void PerimeterGenerator::_sort_overhangs(const Parameters &params,
             )};
         } else if (length_speed > length_flow) {
             paths.front().attributes_mutable() = ExtrusionAttributes{
-                role | ExtrusionRole::Bridge,
+                role | ExtrusionRoleModifier::ERM_Bridge,
                 ExtrusionFlow(overhang_params.is_external ? params.ext_mm3_per_mm() : params.mm3_per_mm(),
                     overhang_params.is_external ? params.ext_perimeter_flow.width() : params.perimeter_flow.width(),
                     2 // layer height is used as id, temporarly
             )};
         } else {
             paths.front().attributes_mutable() = ExtrusionAttributes{
-                role | ExtrusionRole::Bridge,
+                role | ExtrusionRoleModifier::ERM_Bridge,
                 ExtrusionFlow(params.m_mm3_per_mm_overhang,
                     params.overhang_flow.width(),
                     4 // layer height is used as id, temporarly
@@ -1642,7 +1654,7 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_extrusions(const Paramet
                 //enforce
                 for (ExtrusionPath& path : paths) {
                     assert(path.role().is_perimeter());
-                    path.set_role(path.role() | ExtrusionRole::Bridge);
+                    path.set_role(path.role() | ExtrusionRoleModifier::ERM_Bridge);
                 }
             }
         }
@@ -2224,7 +2236,7 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_arachne(const Parameters &  
             if (extrusion_path.size() <= 1)
                 continue;
             ExtrusionPaths thickpaths = Geometry::unsafe_variable_width(Arachne::to_thick_polyline(extrusion_path),
-                    role | ExtrusionRole::Bridge,
+                    role | ExtrusionRoleModifier::ERM_Bridge,
                     is_external ? params.ext_perimeter_flow : params.perimeter_flow,
                     std::max(params.ext_perimeter_flow.scaled_width() / 4, scale_t(params.print_config.resolution)),
                     (is_external ? params.ext_perimeter_flow : params.perimeter_flow).scaled_width() / 10);
@@ -2241,6 +2253,7 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_arachne(const Parameters &  
             for (ExtrusionPath& path : thickpaths) {
                 path.set_can_reverse(!is_loop);
                 path.attributes_mutable().height = idx_lh_size;
+                path.overhang_attributes_mutable() = OverhangAttributes{0, 1, 0};
                 paths.push_back(std::move(path));
             }
         }
@@ -2251,7 +2264,7 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_arachne(const Parameters &  
             if(extrusion_path.size() <= 1)
                 continue;
             ExtrusionPaths thickpaths = Geometry::unsafe_variable_width(Arachne::to_thick_polyline(extrusion_path),
-                    role | ExtrusionRole::Bridge,
+                    role | ExtrusionRoleModifier::ERM_Bridge,
                     is_external ? params.ext_perimeter_flow : params.perimeter_flow,
                     std::max(params.ext_perimeter_flow.scaled_width() / 4, scale_t(params.print_config.resolution)),
                     (is_external ? params.ext_perimeter_flow : params.perimeter_flow).scaled_width() / 10);
@@ -2268,6 +2281,7 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_arachne(const Parameters &  
             for (ExtrusionPath& path : thickpaths) {
                 path.set_can_reverse(!is_loop);
                 path.attributes_mutable().height = idx_lh_size;
+                path.overhang_attributes_mutable() = OverhangAttributes{1, 1, 0};
                 paths.push_back(std::move(path));
             }
         }
@@ -2278,7 +2292,7 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_arachne(const Parameters &  
             if(extrusion_path.size() <= 1)
                 continue;
             ExtrusionPaths thickpaths = Geometry::unsafe_variable_width(Arachne::to_thick_polyline(extrusion_path),
-                    role | ExtrusionRole::Bridge,
+                    role | ExtrusionRoleModifier::ERM_Bridge,
                     is_external ? params.ext_perimeter_flow : params.perimeter_flow,
                     std::max(params.ext_perimeter_flow.scaled_width() / 4, scale_t(params.print_config.resolution)),
                     (is_external ? params.ext_perimeter_flow : params.perimeter_flow).scaled_width() / 10);
@@ -2295,6 +2309,7 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_arachne(const Parameters &  
             for (ExtrusionPath& path : thickpaths) {
                 path.set_can_reverse(!is_loop);
                 path.attributes_mutable().height = idx_lh_size;
+                path.overhang_attributes_mutable() = OverhangAttributes{1, 1, 0};
                 paths.push_back(std::move(path));
             }
         }
@@ -2305,7 +2320,7 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_arachne(const Parameters &  
             if(extrusion_path.size() <= 1)
                 continue;
             ExtrusionPaths thickpaths = Geometry::unsafe_variable_width(Arachne::to_thick_polyline(extrusion_path),
-                    role | ExtrusionRole::Bridge,
+                    role | ExtrusionRoleModifier::ERM_Bridge,
                     is_external ? params.ext_perimeter_flow : params.perimeter_flow,
                     std::max(params.ext_perimeter_flow.scaled_width() / 4, scale_t(params.print_config.resolution)),
                     (is_external ? params.ext_perimeter_flow : params.perimeter_flow).scaled_width() / 10);
@@ -2328,6 +2343,7 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_arachne(const Parameters &  
                 }
                 path.set_can_reverse(!is_loop);
                 path.attributes_mutable().height = idx_lh_size;
+                path.overhang_attributes_mutable() = OverhangAttributes{1, 2, 0};
                 paths.push_back(std::move(path));
             }
         }
@@ -2367,6 +2383,7 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_arachne(const Parameters &  
                     path.attributes_mutable().mm3_per_mm = params.overhang_flow.mm3_per_mm();
                     path.attributes_mutable().height = params.overhang_flow.height();
                     path.attributes_mutable().width = params.overhang_flow.width();
+                    path.overhang_attributes_mutable() = OverhangAttributes{1, 2, 0};
                 }
                 path.set_can_reverse(!is_loop);
                 path.attributes_mutable().height = idx_lh_size;
@@ -2377,7 +2394,7 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_arachne(const Parameters &  
     idx_lh_size++;
     assert(idx_lh_size > 3 && idx_lh_size < 7);
     //FIXME from here, it's ~exactly the same as the other create_overhangs, please merge that into a function.
-    
+
     Params_sort_overhangs overhang_params;
     overhang_params.is_loop = is_loop;
     overhang_params.is_external = is_external;
@@ -3522,7 +3539,16 @@ void PerimeterGenerator::process(// Input:
         }
 
         if (overhang_speed_enabled || overhang_flow_enabled || overhang_dynamic_enabled || overhang_extra_enabled) {
-            coord_t offset_unprintable = scale_t(this->params.overhang_flow.nozzle_diameter()*0.75);
+            // FIXME: can remove thinalls from support. you need to take them back, but they are computed in // ...
+            coord_t offset_unprintable = scale_t(this->params.overhang_flow.nozzle_diameter() *
+                                                 ( 1 - params.config.thin_perimeters.get_abs_value(0.5)));
+            if (params.config.thin_walls.value) {
+                // not ideal...
+                coord_t min_width = scale_t(params.config.thin_walls_min_width.get_abs_value(params.ext_perimeter_flow.nozzle_diameter()));
+                offset_unprintable = std::min(offset_unprintable, min_width / 2);
+            }
+            offset_unprintable -= SCALED_EPSILON;
+            assert(offset_unprintable > SCALED_EPSILON);
             assert_valid(*lower_slices);
             ExPolygons lower_slices_storage = offset2_ex(*lower_slices, -offset_unprintable, offset_unprintable);
             const ExPolygons *simplified = &lower_slices_storage;
