@@ -50,4 +50,4 @@ collect2: error: ld returned 1 exit status
 BUILD: version_2.9.2-rc2-5-gccd7b862c4
 system: rolling
 date: Tue Apr  8 11:43:21 AM CEST 2025
-tasks: configure_deps build_deps configure build[incomplete]
+tasks: configure_deps build_deps configure build install[incomplete]
