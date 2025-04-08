@@ -13,4 +13,4 @@ SUCCESS
 BUILD: version_2.9.2-rc2-7-g4be6a6597a
 system: rolling
 date: Tue Apr  8 11:40:55 AM CEST 2025
-tasks: configure_deps build_deps configure build install[incomplete]
+tasks: configure_deps build_deps configure build install
