@@ -120,4 +120,4 @@ SUCCESS
 BUILD: version_2.9.2-rc2-5-gb33b360404
 system: rolling
 date: Wed Apr  9 07:07:09 PM CEST 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
