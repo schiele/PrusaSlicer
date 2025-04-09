@@ -114,4 +114,4 @@ CMake Error at tests/occt_wrapper/CMakeLists.txt:5 (target_link_libraries):
 BUILD: version_2.9.2-rc2-6-g3c432208e9
 system: rolling
 date: Wed Apr  9 06:59:39 PM CEST 2025
-tasks: configure_deps build_deps configure build[incomplete]
+tasks: configure_deps build_deps configure build install[incomplete]
