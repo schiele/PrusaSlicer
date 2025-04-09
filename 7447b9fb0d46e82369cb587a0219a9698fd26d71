@@ -57,3 +57,27 @@ BUILD: version_2.9.2-rc2-6-gcd8bcf2f0a
 system: rolling
 date: Wed Apr  9 06:31:37 PM CEST 2025
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+
+  Policy CMP0175 is not set: add_custom_command() rejects invalid arguments.
+  Run "cmake --help-policy CMP0175" for policy details.  Use the cmake_policy
+  command to set the policy and suppress this warning.
+Call Stack (most recent call first):
+  src/slic3r/CMakeLists.txt:439 (encoding_check)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Found GTK3: /usr/include/gtk-3.0;/usr/include/pango-1.0;/usr/include;/usr/include/cloudproviders;/usr/include/cairo;/usr/include/gdk-pixbuf-2.0;/usr/include/at-spi2-atk/2.0;/usr/include/at-spi-2.0;/usr/include/atk-1.0;/usr/include/dbus-1.0;/usr/lib/dbus-1.0/include;/usr/include/fribidi;/usr/include/pixman-1;/usr/include/harfbuzz;/usr/include/freetype2;/usr/include/libpng16;/usr/include/gio-unix-2.0;/usr/include/glib-2.0;/usr/lib/glib-2.0/include;/usr/include/libmount;/usr/include/blkid;/usr/include/sysprof-6
+-- Checking for one of the modules 'webkit2gtk-4.0;webkit2gtk-4.1'
+CMake Deprecation Warning at tests/cpp17/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+CMake Error at tests/occt_wrapper/CMakeLists.txt:5 (target_link_libraries):
+  Cannot specify link libraries for target "occt_wrapper" which is not built
+  by this project.
+
+-- Configuring incomplete, errors occurred!
