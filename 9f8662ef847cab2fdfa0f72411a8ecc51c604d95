@@ -1,4 +1,4 @@
 BUILD: version_2.9.2-5-ga8a0b72641
 system: rolling
 date: Thu Apr 10 06:37:37 PM CEST 2025
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
