@@ -198,7 +198,7 @@ std::pair<SupportGeneratorLayersPtr, SupportGeneratorLayersPtr> generate_interfa
                     assert_valid(intermediate_layer.polygons);
                     if (subtract){
                         // Trim the base interface layer with the interface layer.
-                        layer_new.polygons = diff(std::move(layer_new.polygons), *subtract);
+                        layer_new.polygons = ensure_valid(support_params.resolution, diff(std::move(layer_new.polygons), *subtract));
                     //FIXME filter layer_new.polygons islands by a minimum area?
         //                  $interface_area = [ grep abs($_->area) >= $area_threshold, @$interface_area ];
                     }
@@ -721,8 +721,7 @@ static inline void tree_supports_generate_paths(
                 ExPolygons level2 = offset2_ex({ expoly }, -1.5 * flow.scaled_width(), 0.5 * flow.scaled_width());
                 ensure_valid(level2, support_params.resolution);
                 if (level2.size() == 1) {
-                    Polylines polylines;
-                    extrusion_entities_append_paths(*eec, draw_perimeters(expoly, clip_length), { ExtrusionRole::SupportMaterial, flow },
+                    extrusion_entities_append_paths(*eec, ensure_valid(draw_perimeters(expoly, clip_length), support_params.resolution), { ExtrusionRole::SupportMaterial, flow },
                         // Disable reversal of the path, always start with the anchor, always print CCW.
                         false);
                     expoly = level2.front();
