@@ -111,4 +111,4 @@ SUCCESS
 BUILD: version_2.9.2-7-ga39c3ec885
 system: rolling
 date: Fri Apr 11 01:05:35 PM CEST 2025
-tasks: configure_deps build_deps configure build[incomplete]
+tasks: configure_deps build_deps configure build install[incomplete]
