@@ -99,4 +99,4 @@ collect2: error: ld returned 1 exit status
 BUILD: version_2.9.2-6-g09a4780c0d
 system: rolling
 date: Fri Apr 11 12:32:55 PM CEST 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
