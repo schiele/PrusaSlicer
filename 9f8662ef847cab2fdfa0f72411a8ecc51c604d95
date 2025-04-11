@@ -7,4 +7,4 @@ SUCCESS
 BUILD: version_2.9.2-6-g884bb2848c
 system: rolling
 date: Fri Apr 11 12:15:34 PM CEST 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure[failed]
