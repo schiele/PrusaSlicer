@@ -117,4 +117,4 @@ SUCCESS
 BUILD: version_2.9.2-6-ge1e1ac1a83
 system: rolling
 date: Fri Apr 11 01:12:43 PM CEST 2025
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
