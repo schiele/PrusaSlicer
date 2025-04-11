@@ -37,4 +37,4 @@ CMake Error at src/occt_wrapper/CMakeLists.txt:4 (if):
 BUILD: version_2.9.2-6-gc67d52d88f
 system: rolling
 date: Fri Apr 11 12:16:55 PM CEST 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
