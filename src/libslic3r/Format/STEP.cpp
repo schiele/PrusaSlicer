@@ -26,7 +26,7 @@
 
 namespace Slic3r {
 
-#if __APPLE__
+#ifndef _WIN32
 extern "C" bool load_step_internal(const char *path, OCCTResult* res, std::optional<std::pair<double, double>> deflections /*= std::nullopt*/);
 #endif
 
@@ -37,7 +37,7 @@ LoadStepFn get_load_step_fn()
 {
     static LoadStepFn load_step_fn = nullptr;
 
-#ifndef __APPLE__
+#ifdef _WIN32
     constexpr const char* fn_name = "load_step_internal";
 #endif
 
@@ -61,22 +61,8 @@ LoadStepFn get_load_step_fn()
             FreeLibrary(module);
             throw;
         }
-#elif __APPLE__
-        load_step_fn = &load_step_internal;
 #else
-        libpath /= "OCCTWrapper.so";
-        void *plugin_ptr = dlopen(libpath.c_str(), RTLD_NOW | RTLD_GLOBAL);
-
-        if (plugin_ptr) {
-            load_step_fn = reinterpret_cast<LoadStepFn>(dlsym(plugin_ptr, fn_name));
-            if (!load_step_fn) {
-                dlclose(plugin_ptr);
-                throw Slic3r::RuntimeError(std::string("Cannot load function from OCCTWrapper.so: ") + fn_name
-                                           + "\n\n" + dlerror());
-            }
-        } else {
-            throw Slic3r::RuntimeError(std::string("Cannot load OCCTWrapper.so:\n\n") + dlerror());
-        }
+        load_step_fn = &load_step_internal;
 #endif
     }
 
