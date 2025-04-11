@@ -662,7 +662,7 @@ target_link_libraries(libslic3r PUBLIC
     prusa_fdm_mixer
 )
 
-if (APPLE)
+if (APPLE OR LINUX)
     # TODO: we need to fix notarization with the separate shared library
     target_link_libraries(libslic3r PUBLIC OCCTWrapper)
 endif ()
