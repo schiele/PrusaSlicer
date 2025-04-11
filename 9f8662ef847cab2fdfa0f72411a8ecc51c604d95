@@ -38,3 +38,29 @@ BUILD: version_2.9.2-6-gc67d52d88f
 system: rolling
 date: Fri Apr 11 12:16:55 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+    inlined from ‘void std::_Construct(_Tp*, _Args&& ...) [with _Tp = Eigen::Matrix<double, 2, 1, 2>; _Args = {const Eigen::Matrix<double, 2, 1, 2, 2, 1>&}]’ at /usr/include/c++/14.2.1/bits/stl_construct.h:119:7,
+    inlined from ‘_ForwardIterator std::__do_uninit_fill_n(_ForwardIterator, _Size, const _Tp&) [with _ForwardIterator = Eigen::Matrix<double, 2, 1, 2>*; _Size = long unsigned int; _Tp = Eigen::Matrix<double, 2, 1, 2>]’ at /usr/include/c++/14.2.1/bits/stl_uninitialized.h:267:21,
+    inlined from ‘static _ForwardIterator std::__uninitialized_fill_n<_TrivialValueType>::__uninit_fill_n(_ForwardIterator, _Size, const _Tp&) [with _ForwardIterator = Eigen::Matrix<double, 2, 1, 2>*; _Size = long unsigned int; _Tp = Eigen::Matrix<double, 2, 1, 2>; bool _TrivialValueType = false]’ at /usr/include/c++/14.2.1/bits/stl_uninitialized.h:284:34,
+    inlined from ‘_ForwardIterator std::uninitialized_fill_n(_ForwardIterator, _Size, const _Tp&) [with _ForwardIterator = Eigen::Matrix<double, 2, 1, 2>*; _Size = long unsigned int; _Tp = Eigen::Matrix<double, 2, 1, 2>]’ at /usr/include/c++/14.2.1/bits/stl_uninitialized.h:327:17,
+    inlined from ‘_ForwardIterator std::__uninitialized_fill_n_a(_ForwardIterator, _Size, const _Tp&, allocator<_Tp2>&) [with _ForwardIterator = Eigen::Matrix<double, 2, 1, 2>*; _Size = long unsigned int; _Tp = Eigen::Matrix<double, 2, 1, 2>; _Tp2 = Eigen::Matrix<double, 2, 1, 2>]’ at /usr/include/c++/14.2.1/bits/stl_uninitialized.h:472:39,
+    inlined from ‘void std::vector<_Tp, _Alloc>::_M_fill_initialize(size_type, const value_type&) [with _Tp = Eigen::Matrix<double, 2, 1, 2>; _Alloc = std::allocator<Eigen::Matrix<double, 2, 1, 2> >]’ at /usr/include/c++/14.2.1/bits/stl_vector.h:1709:33,
+    inlined from ‘std::vector<_Tp, _Alloc>::vector(size_type, const value_type&, const allocator_type&) [with _Tp = Eigen::Matrix<double, 2, 1, 2>; _Alloc = std::allocator<Eigen::Matrix<double, 2, 1, 2> >]’ at /usr/include/c++/14.2.1/bits/stl_vector.h:572:27,
+    inlined from ‘void std::vector<_Tp, _Alloc>::_M_fill_assign(std::size_t, const value_type&) [with _Tp = Eigen::Matrix<double, 2, 1, 2>; _Alloc = std::allocator<Eigen::Matrix<double, 2, 1, 2> >]’ at /usr/include/c++/14.2.1/bits/vector.tcc:278:11,
+    inlined from ‘void std::vector<_Tp, _Alloc>::assign(size_type, const value_type&) [with _Tp = Eigen::Matrix<double, 2, 1, 2>; _Alloc = std::allocator<Eigen::Matrix<double, 2, 1, 2> >]’ at /usr/include/c++/14.2.1/bits/stl_vector.h:809:23,
+    inlined from ‘void Slic3r::ConfigOptionPoints::load(Archive&) [with Archive = cereal::BinaryInputArchive]’ at /home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:1501:22,
+    inlined from ‘static decltype (t.load(ar)) cereal::access::member_load(Archive&, T&) [with Archive = cereal::BinaryInputArchive; T = Slic3r::ConfigOptionPoints]’ at /usr/include/cereal/access.hpp:258:43,
+    inlined from ‘ArchiveType& cereal::InputArchive<ArchiveType, Flags>::processImpl(T&) [with T = Slic3r::ConfigOptionPoints; typename cereal::traits::detail::EnableIfHelper<cereal::traits::has_member_load<T, ArchiveType>::value, (! cereal::traits::has_invalid_input_versioning<T, ArchiveType>::value), (cereal::traits::is_input_serializable<T, ArchiveType>::value && (cereal::traits::is_specialized_member_load<T, ArchiveType>::value || (! cereal::traits::is_specialized<T, ArchiveType>::value)))>::type <anonymous> = (cereal::traits::detail::sfinae)0; ArchiveType = cereal::BinaryInputArchive; unsigned int Flags = 1]’ at /usr/include/cereal/cereal.hpp:933:28,
+    inlined from ‘void cereal::InputArchive<ArchiveType, Flags>::process(T&&) [with T = Slic3r::ConfigOptionPoints&; ArchiveType = cereal::BinaryInputArchive; unsigned int Flags = 1]’ at /usr/include/cereal/cereal.hpp:853:26,
+    inlined from ‘ArchiveType& cereal::InputArchive<ArchiveType, Flags>::operator()(Types&& ...) [with Types = {Slic3r::ConfigOptionPoints&}; ArchiveType = cereal::BinaryInputArchive; unsigned int Flags = 1]’ at /usr/include/cereal/cereal.hpp:730:16,
+    inlined from ‘Slic3r::ConfigOption* Slic3r::ConfigOptionDef::load_option_from_archive(Archive&) const [with Archive = cereal::BinaryInputArchive]’ at /home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:2295:80:
+/usr/include/eigen3/Eigen/src/Core/PlainObjectBase.h:512:17: warning: ‘<unnamed>.Eigen::Matrix<double, 2, 1, 2, 2, 1>::<unnamed>.Eigen::PlainObjectBase<Eigen::Matrix<double, 2, 1, 2> >::m_storage’ may be used uninitialized [-Wmaybe-uninitialized]
+  512 |       : Base(), m_storage(other.m_storage) { }
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp: In member function ‘Slic3r::ConfigOption* Slic3r::ConfigOptionDef::load_option_from_archive(Archive&) const [with Archive = cereal::BinaryInputArchive]’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:1501:42: note: ‘<anonymous>’ declared here
+ 1501 |                 this->values.assign(cnt, Vec2d());
+      |                                          ^~~~~~~
+[ 92%] Linking CXX static library liblibslic3r_gui.a
+[ 92%] Built target libslic3r_gui
+make: *** [Makefile:146: all] Error 2
