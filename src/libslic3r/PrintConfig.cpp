@@ -5018,7 +5018,7 @@ void PrintConfigDef::init_fff_params()
     def->min = 0;
     def->precision = 6;
     def->mode = comExpert | comSuSi;
-    def->set_default_value(new ConfigOptionFloatOrPercent(10, true));
+    def->set_default_value(new ConfigOptionFloatOrPercent(0, false));
 
     def = this->add("resolution_internal", coFloat);
     def->label = L("Internal resolution");
