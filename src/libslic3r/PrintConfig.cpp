@@ -4683,8 +4683,8 @@ void PrintConfigDef::init_fff_params()
     def->label = L("Max perimeter count for holes");
     def->category = OptionCategory::perimeter;
     def->tooltip = L("This option sets the number of perimeters to have over holes."
-                   " Note that if a hole-perimeter fuse with the contour, then it will go around like a contour perimeter.."
-                   "\nIf disabled, holes will have the same number of perimeters as contour."
+                   " Note that if a hole-perimeter fuse with the contour, then it will go around like a contour perimeter."
+                   "\nIf disabled, holes will have the same number of perimeters as contour. Cannot be enabled at the same time as Arachne generator."
                    "\nNote that Slic3r may increase this number automatically when it detects "
                    "sloping surfaces which benefit from a higher number of perimeters "
                    "if the Extra Perimeters option is enabled.");
