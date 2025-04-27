@@ -7,4 +7,4 @@ SUCCESS
 BUILD: version_2.9.2-12-gaa9056e11f
 system: rolling
 date: Sun Apr 27 10:50:47 AM CEST 2025
-tasks:[incomplete]
+tasks: configure_deps[incomplete]
