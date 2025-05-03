@@ -89,7 +89,6 @@
 #else
 	// POSIX
 #include <sstream>
-#include <boost/process.hpp>
 #include <unistd.h>     //readlink
 #endif
 
