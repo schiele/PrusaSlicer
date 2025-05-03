@@ -14,3 +14,29 @@ BUILD: version_2.9.2-11-gfb49b1fbdd
 system: rolling
 date: Sat May  3 09:30:47 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+      |                                           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:543:10:   required from here
+  543 |     void set(const std::vector<const ConfigOption*> &rhs) override
+      |          ^~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:305:33: warning: ‘virtual std::string Slic3r::ConfigOption::serialize() const’ was hidden [-Woverloaded-virtual=]
+  305 |     virtual std::string         serialize() const = 0;
+      |                                 ^~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:477:38: note:   by ‘void Slic3r::ConfigOptionSingle<T, NULLABLE>::serialize(Archive&) [with T = unsigned char; bool NULLABLE = false]’
+  477 |         template<class Archive> void serialize(Archive & ar) { ar(this->value); }
+      |                                      ^~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp: In instantiation of ‘class Slic3r::ConfigOptionSingle<Slic3r::FloatOrPercent, false>’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:554:43:   required from ‘void Slic3r::ConfigOptionVector<T>::set(const std::vector<const Slic3r::ConfigOption*>&) [with T = Slic3r::FloatOrPercent]’
+  554 |                 this->values.emplace_back(static_cast<const ConfigOptionSingle<T>*>(opt)->value);
+      |                                           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:543:10:   required from here
+  543 |     void set(const std::vector<const ConfigOption*> &rhs) override
+      |          ^~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:305:33: warning: ‘virtual std::string Slic3r::ConfigOption::serialize() const’ was hidden [-Woverloaded-virtual=]
+  305 |     virtual std::string         serialize() const = 0;
+      |                                 ^~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:477:38: note:   by ‘void Slic3r::ConfigOptionSingle<T, NULLABLE>::serialize(Archive&) [with T = Slic3r::FloatOrPercent; bool NULLABLE = false]’
+  477 |         template<class Archive> void serialize(Archive & ar) { ar(this->value); }
+      |                                      ^~~~~~~~~
+make[1]: *** [CMakeFiles/Makefile2:1538: src/libslic3r/CMakeFiles/libslic3r.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
