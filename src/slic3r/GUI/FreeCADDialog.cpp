@@ -44,7 +44,11 @@
 // and so boost/process has a line 'typedef int int'instead of 'typedef int pid_t' that makes it crash
 // note: don't put it in a header, as it can create problems. Here it's safe enough to be used, as it's just applied for the process.hpp file and this source code.
 #define pid_t pid_t
-#include <boost/process.hpp>
+#define BOOST_PROCESS_VERSION 1
+#include <boost/process/v1/child.hpp>
+#include <boost/process/v1/io.hpp>
+#include <boost/process/v1/pipe.hpp>
+#include <boost/process/v1/async.hpp>
 
 #include <cstdlib>   // getenv()
 

@@ -28,7 +28,10 @@
 #else
 // POSIX
 #include <sstream>
-#include <boost/process.hpp>
+#define BOOST_PROCESS_VERSION 1
+#include <boost/process/v1/child.hpp>
+#include <boost/process/v1/io.hpp>
+#include <boost/process/v1/pipe.hpp>
 #include <unistd.h>     //readlink
 #endif
 
