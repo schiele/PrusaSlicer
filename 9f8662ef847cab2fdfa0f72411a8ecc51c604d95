@@ -130,3 +130,4 @@ BUILD: version_2.9.2-8-g3dc9a4fca8
 system: rolling
 date: Thu May  8 09:08:38 PM CEST 2025
 tasks: configure_deps build_deps configure build install
+SUCCESS
