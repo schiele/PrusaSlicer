@@ -50,4 +50,4 @@ SUCCESS
 BUILD: version_2.9.2-13-g7b9c55e023
 system: rolling
 date: Thu May  8 07:16:57 PM CEST 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
