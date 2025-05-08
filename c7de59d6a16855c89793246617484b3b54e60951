@@ -2,3 +2,29 @@ BUILD: 2.7.61.2-8-gc5964dc11d
 system: rolling
 date: Thu May  8 09:14:38 PM CEST 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Config.hpp:1064:10:   required from here
+ 1064 |     bool overriden_by(const ConfigOption *rhs, int32_t idx = -1) const override {
+      |          ^~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Config.hpp:1071:28: warning: comparison of integer expressions of different signedness: ‘int32_t’ {aka ‘int’} and ‘size_t’ {aka ‘long unsigned int’} [-Wsign-compare]
+ 1071 |         if (idx < 0 || idx >= size()) {
+      |                        ~~~~^~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Config.hpp: In instantiation of ‘bool Slic3r::ConfigOptionVector<T>::apply_override(const Slic3r::ConfigOption*, int32_t) [with T = int; int32_t = int]’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Config.hpp:1089:10:   required from here
+ 1089 |     bool apply_override(const ConfigOption *rhs, int32_t idx = -1) override {
+      |          ^~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Config.hpp:1097:29: warning: comparison of integer expressions of different signedness: ‘int32_t’ {aka ‘int’} and ‘size_t’ {aka ‘long unsigned int’} [-Wsign-compare]
+ 1097 |         if (idx >= 0 && idx < this->size()) {
+      |                         ~~~~^~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Config.hpp:1110:31: warning: comparison of integer expressions of different signedness: ‘int’ and ‘size_t’ {aka ‘long unsigned int’} [-Wsign-compare]
+ 1110 |             for (int i = 0; i < this->size(); ++i) {
+      |                             ~~^~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/GCode/SeamPlacer.cpp: In member function ‘void Slic3r::SeamPlacer::align_seam_points(const Slic3r::PrintObject*, const Slic3r::SeamPlacerImpl::SeamComparator&)’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/GCode/SeamPlacer.cpp:1596:42: warning: ‘nearest_pt_idx’ may be used uninitialized [-Wmaybe-uninitialized]
+ 1596 |                     perimeter.seam_index = nearest_pt_idx;
+      |                     ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/GCode/SeamPlacer.cpp:1561:24: note: ‘nearest_pt_idx’ was declared here
+ 1561 |                 size_t nearest_pt_idx;
+      |                        ^~~~~~~~~~~~~~
+make[1]: *** [CMakeFiles/Makefile2:1339: src/libslic3r/CMakeFiles/libslic3r.dir/all] Error 2
+make: *** [Makefile:156: all] Error 2
