@@ -30,3 +30,6 @@ make[1]: *** [CMakeFiles/Makefile2:1339: src/libslic3r/CMakeFiles/libslic3r.dir/
 make: *** [Makefile:156: all] Error 2
 ======================================================================
 BUILD: 2.7.61.2-10-g0cec026223
+system: rolling
+date: Thu May  8 09:23:38 PM CEST 2025
+tasks:[incomplete]
