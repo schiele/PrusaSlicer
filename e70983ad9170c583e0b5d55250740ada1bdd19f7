@@ -46,3 +46,5 @@ system: rolling
 date: Sat May  3 10:38:56 PM CEST 2025
 tasks: configure_deps build_deps configure build install
 SUCCESS
+======================================================================
+BUILD: version_2.9.2-13-g7b9c55e023
