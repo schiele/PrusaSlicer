@@ -62,4 +62,4 @@ SUCCESS
 BUILD: version_2.9.2-13-gbf836cc20a
 system: rolling
 date: Thu May  8 09:00:03 PM CEST 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
