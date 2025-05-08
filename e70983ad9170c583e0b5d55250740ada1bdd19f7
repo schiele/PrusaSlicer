@@ -56,4 +56,4 @@ SUCCESS
 BUILD: version_2.9.2-13-gc5a3738d39
 system: rolling
 date: Thu May  8 07:18:26 PM CEST 2025
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
