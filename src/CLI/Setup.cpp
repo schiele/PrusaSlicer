@@ -212,11 +212,6 @@ static bool setup_common()
     save_main_thread_id();
 
 #ifdef __WXGTK__
-    // On Linux, wxGTK has no support for Wayland, and the app crashes on
-    // startup if gtk3 is used. This env var has to be set explicitly to
-    // instruct the window manager to fall back to X server mode.
-    ::setenv("GDK_BACKEND", "x11", /* replace */ true);
-
     // https://github.com/prusa3d/PrusaSlicer/issues/12969
     ::setenv("WEBKIT_DISABLE_COMPOSITING_MODE", "1", /* replace */ false);
     ::setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1", /* replace */ false);
