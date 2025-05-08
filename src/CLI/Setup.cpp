@@ -234,11 +234,6 @@ static bool setup_common()
     save_main_thread_id();
 
 #ifdef __WXGTK__
-    // On Linux, wxGTK has no support for Wayland, and the app crashes on
-    // startup if gtk3 is used. This env var has to be set explicitly to
-    // instruct the window manager to fall back to X server mode.
-    ::setenv("GDK_BACKEND", "x11", /* replace */ true);
-
     // WebKit2GTK's DMA-BUF renderer uses GBM EGL for compositing.
     // Disable it when it will fail:
     //   1. No GPU at all (VMs, RDP, headless) - no DRI render nodes
