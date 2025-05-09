@@ -168,4 +168,4 @@ SUCCESS
 BUILD: 2.7.61.2-6-gfe2ce34974
 system: rolling
 date: Fri May  9 09:44:22 AM CEST 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
