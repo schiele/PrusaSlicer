@@ -7,4 +7,4 @@ SUCCESS
 BUILD: 2.7.61.2-6-g2a1608d091
 system: rolling
 date: Fri May  9 08:58:37 AM CEST 2025
-tasks: configure_deps build_deps configure build[incomplete]
+tasks: configure_deps build_deps configure build[failed]
