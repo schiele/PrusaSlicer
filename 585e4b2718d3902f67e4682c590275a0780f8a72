@@ -160,3 +160,6 @@ make[1]: *** [CMakeFiles/Makefile2:1609: src/slic3r/CMakeFiles/libslic3r_gui.dir
 make: *** [Makefile:156: all] Error 2
 ======================================================================
 BUILD: 2.7.61.2-11-g5d5eaa61e1
+system: rolling
+date: Fri May  9 09:37:07 AM CEST 2025
+tasks:[incomplete]
