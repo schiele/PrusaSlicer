@@ -96,3 +96,5 @@ FAILED:
       |                             ~~^~~~~~~~~~~~~~
 make[1]: *** [CMakeFiles/Makefile2:1609: src/slic3r/CMakeFiles/libslic3r_gui.dir/all] Error 2
 make: *** [Makefile:156: all] Error 2
+======================================================================
+BUILD: 2.7.61.2-8-g71082f95c0
