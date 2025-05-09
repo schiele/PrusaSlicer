@@ -69,4 +69,4 @@ make: *** [Makefile:156: all] Error 2
 BUILD: 2.7.61.2-8-gf85f922ca7
 system: rolling
 date: Fri May  9 09:27:51 AM CEST 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
