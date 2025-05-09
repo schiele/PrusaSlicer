@@ -38,4 +38,4 @@ make: *** [Makefile:156: all] Error 2
 BUILD: 2.7.61.2-7-g1c77eae450
 system: rolling
 date: Fri May  9 09:20:52 AM CEST 2025
-tasks:[incomplete]
+tasks: configure_deps[incomplete]
