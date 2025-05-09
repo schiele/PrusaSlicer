@@ -131,4 +131,4 @@ make: *** [Makefile:156: all] Error 2
 BUILD: 2.7.61.2-10-gcffc5c2854
 system: rolling
 date: Fri May  9 09:33:40 AM CEST 2025
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
