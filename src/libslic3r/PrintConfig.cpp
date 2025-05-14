@@ -433,6 +433,7 @@ void PrintConfigDef::init_common_params()
     // defautl to none : only set if loaded. only write our version
     def->set_default_value(new ConfigOptionStringVersion());
     def->cli = ConfigOptionDef::nocli;
+    def->can_phony = true;
 
     def = this->add("printer_technology", coEnum);
     def->label = L("Printer technology");
@@ -4706,8 +4707,8 @@ void PrintConfigDef::init_fff_params()
     def->label = L("Max perimeter count for holes");
     def->category = OptionCategory::perimeter;
     def->tooltip = L("This option sets the number of perimeters to have over holes."
-                   " Note that if a hole-perimeter fuse with the contour, then it will go around like a contour perimeter.."
-                   "\nIf disabled, holes will have the same number of perimeters as contour."
+                   " Note that if a hole-perimeter fuse with the contour, then it will go around like a contour perimeter."
+                   "\nIf disabled, holes will have the same number of perimeters as contour. Cannot be enabled at the same time as Arachne generator."
                    "\nNote that Slic3r may increase this number automatically when it detects "
                    "sloping surfaces which benefit from a higher number of perimeters "
                    "if the Extra Perimeters option is enabled.");
@@ -4904,6 +4905,22 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvancedE | comPrusa;
     def->set_default_value(new ConfigOptionFloat(0.1));
 
+    def = this->add("raft_contact_distance_type", coEnum);
+    def->label = L("Type");
+    def->full_label = L("Raft contact distance type");
+    def->category = OptionCategory::support;
+    def->tooltip = L("How to compute the vertical z-distance.\n"
+        "From filament: it uses the nearest bit of the filament. When a bridge is extruded, it goes below the current plane.\n"
+        "From plane: it uses the plane-z. Same as 'from filament' if no 'bridge' is extruded.\n"
+        "None: No z-offset. Useful for Soluble supports.\n");
+    def->set_enum<SupportZDistanceType>({
+        { "filament", L("From filament") },
+        { "plane",    L("From plane") },
+        { "none",     L("None (soluble)") }
+    });
+    def->mode = comAdvancedE | comSuSi;
+    def->set_default_value(new ConfigOptionEnum<SupportZDistanceType>(zdPlane));
+
     def = this->add("raft_expansion", coFloat);
     def->label = L("Raft expansion");
     def->category = OptionCategory::support;
@@ -5041,7 +5058,7 @@ void PrintConfigDef::init_fff_params()
     def->min = 0;
     def->precision = 6;
     def->mode = comExpert | comSuSi;
-    def->set_default_value(new ConfigOptionFloatOrPercent(10, true));
+    def->set_default_value(new ConfigOptionFloatOrPercent(0, false));
 
     def = this->add("resolution_internal", coFloat);
     def->label = L("Internal resolution");
@@ -5797,6 +5814,7 @@ void PrintConfigDef::init_fff_params()
 
     def = this->add("start_gcode", coString);
     def->label = L("Start G-code");
+    def->category = OptionCategory::customgcode;
     def->tooltip = L("This start procedure is inserted at the beginning, possibly prepended by "
                      "temperature-changing commands and others. See 'autoemit_temperature_commands' and 'start_gcode_manual'.");
     def->multiline = true;
@@ -9079,7 +9097,7 @@ void _handle_legacy(std::unordered_map<t_config_option_key, std::pair<t_config_o
                 case coFloatsOrPercents: {
                     for (size_t idx = 0; idx < default_opt->size(); idx++) {
                         if (std::abs(default_opt->get_float(idx)) > std::numeric_limits<int>::max() / 2) {
-                            default_opt->set(def->default_value.get(), idx);
+                            default_opt->set(*def->default_value, idx);
                             default_opt->set_enabled(false, idx);
                         }
                     }
@@ -10035,8 +10053,9 @@ std::unordered_set<std::string> prusa_export_to_remove_keys = {
 "printer_custom_variables",
 "printhost_client_cert",
 "printhost_client_cert_password",
-"raft_layer_height",
+"raft_contact_distance_type",
 "raft_interface_layer_height",
+"raft_layer_height",
 "region_gcode",
 "remaining_times_type",
 "resolution_internal",
