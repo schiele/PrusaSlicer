@@ -1725,6 +1725,16 @@ void PrintConfigDef::init_fff_params()
     def->mode = comExpert | comPrusa;
     def->set_default_value(new ConfigOptionBool(false));
 
+    def = this->add("extra_perimeters_below_area", coFloatOrPercent);
+    def->label = L("Extra perimeters on small areas");
+    def->category = OptionCategory::perimeter;
+    def->tooltip = L("After aying all the perimeters, if there is an area smaler (in mm²) than this value, then fill it with more perimeters."
+                    "\nUseful if you want to fortify a small cylinder while not messing with the larger main object."
+                    "\nCan be a percentage of the perimeter width (squared)."
+                    "\nSet zero to disable.");
+    def->mode = comAdvancedE | comSuSi;
+    def->set_default_value(new ConfigOptionFloatOrPercent(0,false));
+
     def = this->add("extra_perimeters_on_overhangs", coBool);
     def->label = L("Extra perimeters on overhangs (Experimental)");
     def->category = OptionCategory::perimeter;
@@ -9907,6 +9917,7 @@ std::unordered_set<std::string> prusa_export_to_remove_keys = {
 "external_perimeters_hole",
 "external_perimeters_nothole",
 "external_perimeters_vase",
+"extra_perimeters_below_area",
 "extra_perimeters_odd_layers",
 "extruder_extrusion_multiplier_speed",
 "extruder_fan_offset",
@@ -10719,8 +10730,9 @@ void DynamicPrintConfig::normalize_fdm()
             // this->opt<ConfigOptionBool>("exact_last_layer_height", true)->value = false;
             this->opt<ConfigOptionBool>("infill_dense", true)->value = false;
             this->opt<ConfigOptionBool>("extra_perimeters", true)->value = false;
-            this->opt<ConfigOptionBool>("extra_perimeters_on_overhangs", true)->value = false;
+            this->opt<ConfigOptionFloatOrPercent>("extra_perimeters_below_area")->value = 0;
             this->opt<ConfigOptionBool>("extra_perimeters_odd_layers", true)->value = false;
+            this->opt<ConfigOptionBool>("extra_perimeters_on_overhangs", true)->value = false;
             this->opt<ConfigOptionBool>("overhangs_reverse", true)->value = false; 
             this->opt<ConfigOptionBool>("perimeter_reverse", true)->value = false; 
         }
@@ -11361,7 +11373,7 @@ std::string validate(const FullPrintConfig& cfg)
             return "Spiral vase mode is not compatible with support material";
         if (cfg.infill_dense)
             return "Spiral vase mode can only print hollow objects and have no top surface, so you don't need any dense infill";
-        if (cfg.extra_perimeters || cfg.extra_perimeters_on_overhangs || cfg.extra_perimeters_odd_layers)
+        if (cfg.extra_perimeters || cfg.extra_perimeters_below_area.value > 0 || cfg.extra_perimeters_on_overhangs || cfg.extra_perimeters_odd_layers)
             return "Can't make more than one perimeter when spiral vase mode is enabled";
         if (cfg.overhangs_reverse)
             return "Can't reverse the direction of the overhangs every layer when spiral vase mode is enabled";

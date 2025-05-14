@@ -38,6 +38,7 @@ group:Quality
 	line:Extra perimeters
 		setting:label$On overhangs:label_width$8:extra_perimeters_on_overhangs
 		setting:label_width$10:extra_perimeters_odd_layers
+		setting:label$Below area:label_width$8:extra_perimeters_below_area
 	end_line
 	line:Overlapping external perimeter
 		setting:label$_:thin_perimeters

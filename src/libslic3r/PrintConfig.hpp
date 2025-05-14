@@ -899,6 +899,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBool,                 external_perimeters_nothole))
     ((ConfigOptionBool,                 external_perimeters_vase))
     ((ConfigOptionBool,                 extra_perimeters))
+    ((ConfigOptionFloatOrPercent,       extra_perimeters_below_area))
     ((ConfigOptionBool,                 extra_perimeters_odd_layers))
     ((ConfigOptionBool,                 extra_perimeters_on_overhangs))
     ((ConfigOptionBool,                 only_one_perimeter_first_layer))

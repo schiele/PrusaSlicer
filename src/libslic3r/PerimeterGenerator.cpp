@@ -3198,7 +3198,70 @@ ProcessSurfaceResult PerimeterGenerator::process_arachne(const Parameters &param
         params.get_perimeter_spacing(), params.get_perimeter_width(), loop_number, coord_t(0),
         params.layer->height, params.config, params.print_config);
     std::vector<Arachne::VariableWidthLines> perimeters = wallToolPaths.getToolPaths();
-    
+    ExPolygons infill_contour = union_ex(wallToolPaths.getInnerContour());
+
+    // append the first shell from only_one_perimeter_top into perimeters (from orca)
+    if (!out_shell.empty()) {
+        // Combine outer shells
+        size_t inset_offset = 0;
+        // update inset indexes
+        for (auto &p : out_shell) {
+            for (auto &l : p) {
+                if (l.inset_idx + 1 > inset_offset) {
+                    inset_offset = l.inset_idx + 1;
+                }
+            }
+        }
+        for (auto &p : perimeters) {
+            for (auto &l : p) { l.inset_idx += inset_offset; }
+        }
+        // append
+        perimeters.insert(perimeters.begin(), out_shell.begin(), out_shell.end());
+    }
+
+    // add extra perimeters on small areas
+    if (params.config.extra_perimeters_below_area.value > 0) {
+        double area_mm2 = params.config.extra_perimeters_below_area.percent ?
+            sqr(params.config.extra_perimeters_below_area.get_abs_value((coordf_t) params.get_perimeter_width())) :
+            scale_d(scale_d(params.config.extra_perimeters_below_area.value));
+        // gather small areas
+        ExPolygons small_polygons;
+        ExPolygons last_onion = union_ex(wallToolPaths.getInnerContour());
+        for (ExPolygon &next : last_onion) {
+            if (next.area() < area_mm2) {
+                small_polygons.push_back(std::move(next));
+            }
+        }
+        // create them
+        if (!small_polygons.empty()) {
+            infill_contour = diff_ex(infill_contour, small_polygons);
+            Polygons small_polygons_p = to_polygons(small_polygons);
+            Arachne::WallToolPaths wallToolPaths(small_polygons_p, params.get_ext_perimeter_spacing(),
+                                                 params.get_ext_perimeter_width(), params.get_perimeter_spacing(),
+                                                 params.get_perimeter_width(), 9999, coord_t(0), params.layer->height,
+                                                 params.config, params.print_config);
+            std::vector<Arachne::VariableWidthLines> perimeters_extra = wallToolPaths.getToolPaths();
+            append(infill_contour, union_ex(wallToolPaths.getInnerContour()));
+            // update inset indexes
+            size_t inset_offset = 0;
+            for (auto &p : perimeters) {
+                for (auto &l : p) {
+                    if (l.inset_idx + 1 > inset_offset) {
+                        inset_offset = l.inset_idx + 1;
+                    }
+                }
+            }
+            for (auto &p : perimeters_extra) {
+                for (auto &l : p) {
+                    l.inset_idx += inset_offset;
+                }
+            }
+            // append
+            append(perimeters, perimeters_extra);
+        }
+    }
+
+
 #if _DEBUG
     for (auto perimeter : perimeters) {
         for (Arachne::ExtrusionLine &extrusion : perimeter) {
@@ -3238,23 +3301,6 @@ ProcessSurfaceResult PerimeterGenerator::process_arachne(const Parameters &param
                 ++it_extrusion;
             }
         }
-    }
-
-    // only_one_perimeter_top, from orca
-    if (!out_shell.empty()) {
-        // Combine outer shells
-        size_t inset_offset = 0;
-        for (auto &p : out_shell) {
-            for (auto &l : p) {
-                if (l.inset_idx + 1 > inset_offset) {
-                    inset_offset = l.inset_idx + 1;
-                }
-            }
-        }
-        for (auto &p : perimeters) {
-            for (auto &l : p) { l.inset_idx += inset_offset; }
-        }
-        perimeters.insert(perimeters.begin(), out_shell.begin(), out_shell.end());
     }
 
     loop_number = int(perimeters.size());
@@ -3419,12 +3465,13 @@ ProcessSurfaceResult PerimeterGenerator::process_arachne(const Parameters &param
         loops.append(extrusion_coll);
     }
 
-    ExPolygons    infill_contour = union_ex(wallToolPaths.getInnerContour());
     const coord_t spacing = (perimeters.size() == 1) ? params.ext_perimeter_spacing2 : params.get_perimeter_spacing();
-    if (offset_ex(infill_contour, -float(spacing / 2.)).empty())
-        infill_contour.clear(); // Infill region is too small, so let's filter it out.
-
-    result.inner_perimeter = infill_contour;
+    if (offset_ex(infill_contour, -float(spacing / 2.)).empty()) {
+        // Infill region is too small, so let's filter it out.
+        result.gap_srf = infill_contour;
+    } else {
+        result.inner_perimeter = infill_contour;
+    }
 
     return result;
 }
@@ -4481,6 +4528,9 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
     std::vector<ExPolygonAsynch> last_asynch;
     bool last_asynch_initialized = false;
 
+    // infill area saved while continuing to add perimeter elsewhere.
+    ExPolygons saved_infill;
+
     if (contour_count > 0 || holes_count > 0) {
 
         //increase surface for milling_post-process
@@ -4919,6 +4969,32 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                     holes_count++; //TODO: only increase the ones that are needed (or just use 2.7)
                     contours.emplace_back();
                     holes.emplace_back();
+                } else if (params.config.extra_perimeters_below_area.value > 0) {
+                    // don't mess with asynch contour/hole number, just fill small areas.
+                    last_asynch.clear();
+                    double area_mm2 = params.config.extra_perimeters_below_area.percent ?
+                        sqr(params.config.extra_perimeters_below_area.get_abs_value(
+                            (coordf_t) params.get_perimeter_width())) :
+                        scale_d(scale_d(params.config.extra_perimeters_below_area.value));
+                    // gather small areas
+                    ExPolygons small_expolygons;
+                    for (ExPolygon &next : next_onion) {
+                        if (next.area() < area_mm2) {
+                            small_expolygons.push_back(std::move(next));
+                        } else{
+                            saved_infill.push_back(std::move(next));
+                        }
+                    }
+                    next_onion = std::move(small_expolygons);
+                    // if nothing left, stop it.
+                    if (next_onion.empty()) {
+                        break;
+                    } else {
+                        contour_count++;
+                        holes_count++;
+                        contours.emplace_back();
+                        holes.emplace_back();
+                    }
                 } else {
                     // If perimeter_idx > loop_number, we were looking just for gaps.
                     break;
@@ -5409,6 +5485,7 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
             }
         }
     }
+    append(results.inner_perimeter, saved_infill);
 
     return results;
 }
