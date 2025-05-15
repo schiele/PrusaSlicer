@@ -74,6 +74,108 @@ struct Parameters
     Polygons lower_slices_bridge_flow_small;
     Polygons lower_slices_bridge_flow_big;
 
+    struct ClipExpoly
+    {
+        ExPolygons expolys;
+        BoundingBoxes bboxes;
+        void compute_bb();
+        ExPolygons intersections(const ExPolygons &to_clip) const;
+        ExPolygons intersections(coord_t offset, const ExPolygons &to_clip) const;
+    };
+    // encoded value of a setting or of a group of them.
+    struct SettingsValue
+    {
+        std::vector<const ConfigOption*> options;
+        std::vector<FloatOrPercent> values;
+        SettingsValue() {};
+        bool operator ==(const SettingsValue& rhs) const
+        {
+            return values == rhs.values;
+        }
+        bool operator !=(const SettingsValue& rhs) const
+        {
+            return values != rhs.values;
+        }
+        bool operator <(const SettingsValue& rhs) const
+        {
+            if (values.size() != rhs.values.size()) {
+                assert(false);
+                return values.size() < rhs.values.size();
+            }
+            for (size_t i = 0; i < values.size(); i++) {
+                if (values[i] != rhs.values[i]) {
+                    return values[i] < rhs.values[i];
+                }
+            }
+            return false;
+        }
+        static inline FloatOrPercent NONE{0, false};
+        const FloatOrPercent &get_value(const ConfigOption *opt = nullptr) const {
+            assert(options.size() == values.size());
+            if (opt == nullptr && values.size() >= 1) {
+                return values.front();
+            }
+            for (size_t i = 0; i < options.size(); i++) {
+                if(opt == options[i]) return values[i];
+            }
+            assert(false);
+            return NONE;
+        }
+        bool is_percent(const ConfigOption* opt = nullptr) const {
+            return get_value(opt).percent;
+        }
+        double get_float(const ConfigOption* opt = nullptr) const {
+            return get_value(opt).value;
+        }
+        double get_abs_value(double ratio, const ConfigOption* opt = nullptr) const {
+            const FloatOrPercent &val = get_value(opt);
+            return val.percent ? val.value * ratio : val.value;
+        }
+        int32_t get_int(const ConfigOption* opt = nullptr) const {
+            return int32_t(get_value(opt).value);
+        }
+        bool get_bool(const ConfigOption* opt = nullptr) const {
+            return get_value(opt).value != 0;
+        }
+        bool empty() const { return values.empty(); }
+        static inline SettingsValue create(std::vector<const ConfigOption *> default_options,
+                                           std::vector<const ConfigOption *> options) {
+            SettingsValue instance;
+            instance.options = std::move(default_options);
+            for (const ConfigOption *opt : options) {
+                instance.values.push_back(opt->is_percent() ? FloatOrPercent{opt->get_float(), true} :
+                                                             FloatOrPercent{opt->get_float(), false});
+            }
+            return instance;
+        }
+        static inline SettingsValue create(const PrintRegionConfig &defaut_config,
+                                           const PrintRegionConfig &config,
+                                           t_config_option_keys opt_keys) {
+            std::vector<const ConfigOption*> default_options;
+            std::vector<const ConfigOption*> options;
+            for (const t_config_option_key &opt_key : opt_keys) {
+                default_options.push_back(defaut_config.option(opt_key));
+                options.push_back(config.option(opt_key));
+            }
+            return create(default_options, options);
+        }
+    };
+    // region-specific parameters
+    // ptr from this->config storage to ptr from a LayerRegion & combined areas for that value
+    // if only one value in the inner map, then it means it's hte same value for evrything.
+    std::map<const ConfigOption*, std::map<SettingsValue, ClipExpoly>> key_areas;
+    bool has_many_config(const ConfigOption *opt) const {
+        auto it = key_areas.find(opt);
+        return it != key_areas.end() && it->second.size() > 1;
+    }
+
+    const std::map<SettingsValue, ClipExpoly> get_areas(const ConfigOption *opt) const {
+        assert(key_areas.find(opt) != key_areas.end());
+        return key_areas.at(opt);
+    }
+
+    void segregate_regions(const ExPolygon &my_srf, const std::set<LayerRegion*> regions);
+
     Parameters(Layer                   *layer,
                Flow                     perimeter_flow,
                Flow                     ext_perimeter_flow,
@@ -190,6 +292,8 @@ public:
     const ExPolygons            *lower_slices;
     const SurfaceCollection     *slices;
     const ExPolygons            *upper_slices;
+    //const Surface               *surface;
+    BoundingBox                 surface_bbox;
     Parameters             params;
     std::function<void()>        throw_if_canceled = []() {};
     // Outputs:
@@ -267,7 +371,8 @@ private:
                             const ExPolygons &orig_polygons,
                             ExPolygons &      top_fills,
                             ExPolygons &      non_top_polygons,
-                            ExPolygons &      fill_clip);
+                            ExPolygons &      fill_clip
+    );
 
 };
 

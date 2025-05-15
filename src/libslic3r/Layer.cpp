@@ -776,10 +776,12 @@ void Layer::make_perimeters()
                     }
 
                 if (layer_region_ids.size() == 1) {  // optimization
-                    (*layerm)->make_perimeters((*layerm)->slices(), perimeter_and_gapfill_ranges, fill_expolygons, fill_expolygons_ranges);
+                    (*layerm)->make_perimeters((*layerm)->slices(), {} , perimeter_and_gapfill_ranges, fill_expolygons,
+                                               fill_expolygons_ranges);
                     this->sort_perimeters_into_islands((*layerm)->slices(), region_id, perimeter_and_gapfill_ranges, std::move(fill_expolygons), fill_expolygons_ranges, layer_region_ids);
                 } else {
                     SurfaceCollection new_slices;
+                    std::set<LayerRegion*> regions;
                     // Use the region with highest infill rate, as the make_perimeters() function below decides on the gap fill based on the infill existence.
                     uint32_t     region_id_config = layer_region_ids.front();
                     LayerRegion* layerm_config = m_regions[region_id_config];
@@ -787,6 +789,7 @@ void Layer::make_perimeters()
                         // Merge slices (surfaces) according to number of extra perimeters.
                         for (uint32_t region_id : layer_region_ids) {
                             LayerRegion &layerm = *m_regions[region_id];
+                            regions.insert(&layerm);
                             for (const Surface &surface : layerm.slices())
                                 surfaces_to_merge.emplace_back(&surface);
                             if (layerm.region().config().fill_density > layerm_config->region().config().fill_density) {
@@ -800,10 +803,10 @@ void Layer::make_perimeters()
                             const Surface &first = *surfaces_to_merge[i];
                             size_t extra_perimeters = first.extra_perimeters;
                             for (; j < surfaces_to_merge.size() && surfaces_to_merge[j]->extra_perimeters == extra_perimeters; ++ j) ;
-                            if (i + 1 == j)
+                            if (i + 1 == j) {
                                 // Nothing to merge, just copy.
                                 new_slices.surfaces.emplace_back(*surfaces_to_merge[i]);
-                            else {
+                            } else {
                                 surfaces_to_merge_temp.assign(surfaces_to_merge.begin() + i, surfaces_to_merge.begin() + j);
                                 new_slices.append(offset_ex(surfaces_to_merge_temp, ClipperSafetyOffset), first);
                             }
@@ -813,7 +816,7 @@ void Layer::make_perimeters()
                     // make perimeters
                     assert(fill_expolygons_ranges.empty()); // merill test
                     this->m_object->print()->throw_if_canceled();
-                    layerm_config->make_perimeters(new_slices, perimeter_and_gapfill_ranges, fill_expolygons, fill_expolygons_ranges);
+                    layerm_config->make_perimeters(new_slices, regions, perimeter_and_gapfill_ranges, fill_expolygons, fill_expolygons_ranges);
 
                     //// TODO: review if it's not useless or creates bugs.
                     //// assign fill_expolygons to each LayerRegion

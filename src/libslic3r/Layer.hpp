@@ -166,6 +166,9 @@ public:
     void    make_perimeters(
         // Input slices for which the perimeters, gap fills and fill expolygons are to be generated.
         const SurfaceCollection                                &slices,
+        // all regions merged into us for creating perimeters.
+        // can be used to apply some configurations only on specific areas.
+        const std::set<LayerRegion*>                           &regions,
         // Ranges of perimeter extrusions and gap fill extrusions per suface, referencing
         // newly created extrusions stored at this LayerRegion.
         std::vector<std::pair<ExtrusionRange, ExtrusionRange>> &perimeter_and_gapfill_ranges,
