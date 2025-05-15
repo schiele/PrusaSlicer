@@ -4414,6 +4414,13 @@ void grow_contour_only(std::vector<ExPolygonAsynch> &unmoveable_holes, coordf_t 
                                                         ClipperLib::JoinType::jtMiter),
                                         (round_peri ? min_round_spacing : 3));
         //we shrunk -> new peri can appear, holes can disapear, but there is already none.
+        if (ok_contours.empty()) {
+            // can't grow.
+            unmoveable_holes.erase(unmoveable_holes.begin() + idx_unmoveable);
+            idx_unmoveable--;
+            unmoveable_holes_size--;
+            continue;
+        }
         for (const Polygon &p : ok_contours) assert(p.is_counter_clockwise());
         //grow holes to right size
         assert(-unmoveable_hole.offset_holes_inner + spacing/2 - overlap_spacing > 0);
@@ -4430,7 +4437,12 @@ void grow_contour_only(std::vector<ExPolygonAsynch> &unmoveable_holes, coordf_t 
         offsetted_holes = union_(offsetted_holes);
         for (const Polygon &p : offsetted_holes) assert(p.is_counter_clockwise());
 
-        for (Polygon simple_contour : ok_contours) {
+        assert(!ok_contours.empty());
+        auto my_type = unmoveable_hole.type;
+        auto my_offset_holes_inner = unmoveable_hole.offset_holes_inner;
+        auto my_offset_holes_outer = unmoveable_hole.offset_holes_outer;
+        {
+            Polygon &simple_contour = ok_contours[0];
             // remove holes
             ExPolygons test_expoly = diff_ex(Polygons{simple_contour}, offsetted_holes);
             if (overlap_spacing != 0) {
@@ -4441,20 +4453,47 @@ void grow_contour_only(std::vector<ExPolygonAsynch> &unmoveable_holes, coordf_t 
                 ExPolygons new_unmoveable_hole = diff_ex(Polygons{test_expoly[0].contour}, original_holes);
                 // diff with smaller holes, so it has to be only one contour.
                 assert(new_unmoveable_hole.size() == 1);
-                expoly                               = new_unmoveable_hole[0];
+                expoly = new_unmoveable_hole[0];
                 unmoveable_hole.offset_contour_inner = -spacing / 2;
                 unmoveable_hole.offset_contour_outer = spacing / 2;
             } else {
                 // a hole cut it, or clear it.
                 for (ExPolygon &new_expoly : test_expoly) {
                     ExPolygons new_unmoveable_holes = diff_ex(Polygons{new_expoly.contour}, original_holes);
-                    for(ExPolygon & new_unmoveable_hole : new_unmoveable_holes)
-                        unmoveable_holes.push_back({unmoveable_hole.type, new_unmoveable_hole, -spacing / 2, spacing / 2,
-                                                unmoveable_hole.offset_holes_inner, unmoveable_hole.offset_holes_outer});
+                    for (ExPolygon &new_unmoveable_hole : new_unmoveable_holes)
+                        unmoveable_holes.push_back({my_type, new_unmoveable_hole, -spacing / 2,
+                                                    spacing / 2, my_offset_holes_inner,
+                                                    my_offset_holes_outer});
                 }
                 unmoveable_holes.erase(unmoveable_holes.begin() + idx_unmoveable);
                 idx_unmoveable--;
                 unmoveable_holes_size--;
+            }
+        }
+        // expoly and unmoveable_hole are now invalidated.
+        // add the others
+        for (size_t idx_contour = 1; idx_contour < ok_contours.size(); idx_contour++) {
+            Polygon &simple_contour = ok_contours[idx_contour];
+            // remove holes
+            ExPolygons test_expoly = diff_ex(Polygons{simple_contour}, offsetted_holes);
+            if (overlap_spacing != 0) {
+                test_expoly = offset_ex(test_expoly, overlap_spacing);
+            }
+            if (test_expoly.size() == 1) {
+                // no merge, then i can use the right hole size
+                ExPolygons new_unmoveable_hole = diff_ex(Polygons{test_expoly[0].contour}, original_holes);
+                // diff with smaller holes, so it has to be only one contour.
+                assert(new_unmoveable_hole.size() == 1);
+                unmoveable_holes.push_back({my_type, new_unmoveable_hole[0], -spacing / 2, spacing / 2,
+                                            my_offset_holes_inner, my_offset_holes_outer});
+            } else {
+                // a hole cut it, or clear it.
+                for (ExPolygon &new_expoly : test_expoly) {
+                    ExPolygons new_unmoveable_holes = diff_ex(Polygons{new_expoly.contour}, original_holes);
+                    for (ExPolygon &new_unmoveable_hole : new_unmoveable_holes)
+                        unmoveable_holes.push_back({my_type, new_unmoveable_hole, -spacing / 2,
+                                                    spacing / 2, my_offset_holes_inner, my_offset_holes_outer});
+                }
             }
         }
         //we shrink perimeter, so it doesn't create holes, so we don't have anythign to add to next_onion.
