@@ -277,7 +277,7 @@ static std::vector<std::vector<ExPolygons>> slices_to_regions(
                     auto         &slices_dst = slices_by_region[layer_range.volume_regions.front().region->print_object_region_id()];
                     for (; z_idx < zs.size() && zs[z_idx] < layer_range.layer_height_range.second; ++z_idx) {
                         slices_dst[z_idx] = std::move(slices_src.slices[z_idx]);
-                        ensure_valid(slices_dst[z_idx], std::max(scale_t(print_config.resolution.value), SCALED_EPSILON));
+                        ensure_valid(slices_dst[z_idx], SCALED_EPSILON);
                     }
                 }
             } else {
@@ -427,7 +427,7 @@ static std::vector<std::vector<ExPolygons>> slices_to_regions(
                                                                         }
                                                                         // union with the smaller polygons, to avoid offset2_ex artifacts
                                                                         smaller_worse_expolys = union_ex(medium_size_worse_expolys, smaller_worse_expolys);
-                                                                        ensure_valid(smaller_worse_expolys, std::max(scale_t(print_config.resolution.value), SCALED_EPSILON));
+                                                                        ensure_valid(smaller_worse_expolys);
                                                                         // TODO: now, be sure 'best_poly' is wide enough.
                                                                         // If not, then remove a bit more material from smaller_worse_expolys
                                                                     }
@@ -490,7 +490,7 @@ static std::vector<std::vector<ExPolygons>> slices_to_regions(
                         // do the gap closing for the master (it's a simple one, use the max_slice_closing_radius
                         // instead of doing it separatly for each region, as this would be very complicated).
                         clip_master = offset2_ex(clip_master, scale_d(max_slice_closing_radius), -scale_d(max_slice_closing_radius));
-                        ensure_valid(clip_master, std::max(scale_t(print_config.resolution.value), SCALED_EPSILON));
+                        ensure_valid(clip_master);
 
                         // // for when slice_closing_radius will be in region
                         // // can redo the grow to allow a region to go into its neighbor without the neighbor growing.
@@ -515,7 +515,7 @@ static std::vector<std::vector<ExPolygons>> slices_to_regions(
                                     // we now have our final poly for this region
                                     // FIXME: this may have make it grows outside of a modifier box, but parent_slice.expolygons is already modified.
                                     //        test if you can create the issue & then resolve it.
-                                    ensure_valid(region_expolys, std::max(scale_t(print_config.resolution.value), SCALED_EPSILON));
+                                    ensure_valid(region_expolys);
                                     // // for when slice_closing_radius will be in region
                                     // // to verify there is no holes from different max_slice_closing_radius
                                     //unclip_master = diff_ex(unclip_master, region_expolys);
@@ -549,7 +549,7 @@ static std::vector<std::vector<ExPolygons>> slices_to_regions(
                             }
                         if (merged)
                             expolygons = closing_ex(expolygons, float(scale_(EPSILON)));
-                        ensure_valid(expolygons, std::max(scale_t(print_config.resolution.value), SCALED_EPSILON));
+                        ensure_valid(expolygons);
                         slices_by_region[temp_slices[i].region_id][z_idx] = std::move(expolygons);
                         i = j;
                     }
@@ -1548,8 +1548,7 @@ void PrintObject::slice_volumes()
     for (size_t region_id = 0; region_id < region_slices.size(); ++ region_id) {
         std::vector<ExPolygons> &by_layer = region_slices[region_id];
         for (size_t layer_id = 0; layer_id < by_layer.size(); ++ layer_id) {
-            ensure_valid(by_layer[layer_id], std::max(scale_t(m_print->config().resolution), SCALED_EPSILON));
-            assert_valid(by_layer[layer_id]);
+            ensure_valid(by_layer[layer_id]);
             m_layers[layer_id]->regions()[region_id]->m_slices.append(std::move(by_layer[layer_id]), stPosInternal | stDensSparse);
             for(auto &srf : m_layers[layer_id]->regions()[region_id]->m_slices) srf.expolygon.assert_valid();
         }
@@ -1668,8 +1667,7 @@ void PrintObject::slice_volumes()
                             //smoothing
                             expolygons = _smooth_curves(expolygons, layer->regions().front()->region().config());
                         }
-                        ensure_valid(expolygons, scaled_resolution);
-                        assert_valid(expolygons);
+                        ensure_valid(expolygons);
                         layerm->m_slices.set(std::move(expolygons), stPosInternal | stDensSparse);
                     } else {
                         bool same_curve_smoothing = true;
@@ -1711,7 +1709,7 @@ void PrintObject::slice_volumes()
                                 // clip with other region areas
                                 slices = diff_ex(slices, other_base_slices);
                                 //store
-                                ensure_valid(slices, scaled_resolution);
+                                ensure_valid(slices);
                                 layerm->m_slices.set(std::move(slices), stPosInternal | stDensSparse);
                             }
                         }
@@ -1764,7 +1762,7 @@ void PrintObject::slice_volumes()
                                 // clip with other region areas
                                 slices = diff_ex(slices, other_base_slices);
                                 //store
-                                ensure_valid(slices, scaled_resolution);
+                                ensure_valid(slices);
                                 layerm->m_slices.set(std::move(slices), stPosInternal | stDensSparse);
                             }
                         }
