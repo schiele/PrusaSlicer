@@ -13,4 +13,4 @@ SUCCESS
 BUILD: 2.7.61.3-5-g7b17772dd4
 system: rolling
 date: Sat May 17 11:00:35 AM CEST 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
