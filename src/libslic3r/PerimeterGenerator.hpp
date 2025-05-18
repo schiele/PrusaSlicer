@@ -372,7 +372,9 @@ private:
                             ExPolygons &      top_fills,
                             ExPolygons &      non_top_polygons,
                             ExPolygons &      fill_clip,
-                            int nb_peri_to_print
+                            int nb_peri_to_print,
+                            coordf_t min_width,
+                            bool use_old_algorithm_for_min_width
     );
 
 };
