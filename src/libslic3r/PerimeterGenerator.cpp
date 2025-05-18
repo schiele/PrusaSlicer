@@ -3760,7 +3760,7 @@ void PerimeterGenerator::process(// Input:
             // FIXME: can remove thinalls from support. you need to take them back, but they are computed in // ...
             coord_t offset_unprintable = scale_t(this->params.overhang_flow.nozzle_diameter() *
                                                  ( 1 - params.config.thin_perimeters.get_abs_value(0.5)));
-            if (params.config.thin_walls.value) {
+            if (params.config.thin_walls.value || params.has_many_config(&params.config.thin_walls)) {
                 // not ideal...
                 coord_t min_width = scale_t(params.config.thin_walls_min_width.get_abs_value(params.ext_perimeter_flow.nozzle_diameter()));
                 offset_unprintable = std::min(offset_unprintable, min_width / 2);
@@ -4879,55 +4879,67 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                 }
                 
                 bool special_area = contour_count == 0 || holes_count == 0;
-                if (special_area && (params.config.thin_walls.value || params.spiral_vase)) {
+                if (special_area && (params.config.thin_walls.value  || params.has_many_config(&params.config.thin_walls) || params.spiral_vase)) {
                     area_used = next_onion;
                     for(auto& expolycontainer : last_asynch)
                         area_used.push_back(expolycontainer.expoly);
                     all_next_onion = &area_used;
                 }
-                // look for thin walls
-                if (params.config.thin_walls) {
 
+                // un-hysteresis for thin walls
+                if (params.config.thin_walls || params.has_many_config(&params.config.thin_walls)) {
                     // detect edge case where a curve can be split in multiple small chunks.
-                    if (allow_perimeter_anti_hysteresis && !special_area && next_onion.size() > last.size()) {
-                         // don't go too far, it's not possible to print thin wall after that
-                        std::vector<float> variations = { -.025f, .025f, -.05f, .05f, -.075f, .1f, .15f};
-                        const coordf_t good_spacing    = params.get_ext_perimeter_width() / 2;
-                        const coordf_t overlap_spacing = (1 - thin_perimeter) * params.get_ext_perimeter_spacing() / 2;
+                    if (allow_perimeter_anti_hysteresis && !special_area &&
+                        next_onion.size() > last.size()) {
+                        // don't go too far, it's not possible to print thin wall after that
+                        std::vector<float> variations = {-.025f, .025f, -.05f, .05f, -.075f, .1f, .15f};
+                        const coordf_t good_spacing = params.get_ext_perimeter_width() / 2;
+                        const coordf_t overlap_spacing = (1 - thin_perimeter) * params.get_ext_perimeter_spacing() /
+                            2;
                         for (size_t idx_variations = 0;
                              next_onion.size() > last.size() && idx_variations < variations.size();
                              idx_variations++) {
-                            const coordf_t spacing_change = params.get_ext_perimeter_spacing() * variations[idx_variations];
-                            //don't go over 100% overlap
+                            const coordf_t spacing_change = params.get_ext_perimeter_spacing() *
+                                variations[idx_variations];
+                            // don't go over 100% overlap
                             if (overlap_spacing + spacing_change < 1) {
                                 continue;
                             }
-                            //use a sightly bigger spacing to try to drastically improve the split, that can lead to very thick gapfill
-                            ExPolygons next_onion_secondTry = offset2_ex(
-                                last,
-                                -(float)(good_spacing + overlap_spacing + spacing_change - 1),
-                                +(float)(overlap_spacing + spacing_change) - 1);
-                            if (next_onion.size() > next_onion_secondTry.size() * 1.2 && next_onion.size() > next_onion_secondTry.size() + 2) {
+                            // use a sightly bigger spacing to try to drastically improve the split, that can lead to
+                            // very thick gapfill
+                            ExPolygons next_onion_secondTry = offset2_ex(last,
+                                                                         -(float) (good_spacing + overlap_spacing +
+                                                                                   spacing_change - 1),
+                                                                         +(float) (overlap_spacing + spacing_change) -
+                                                                             1);
+                            if (next_onion.size() > next_onion_secondTry.size() * 1.2 &&
+                                next_onion.size() > next_onion_secondTry.size() + 2) {
                                 next_onion = next_onion_secondTry;
                             }
-                            
                         }
                     }
+                }
+
+                // look for thin walls
+                for (auto const &[thin_walls_config, areas] : params.get_areas(&params.config.thin_walls)) {
+                  if (thin_walls_config.get_bool()) {
+                    ExPolygons last_good_areas = areas.intersections(last);
 
                     // the following offset2 ensures almost nothing in @thin_walls is narrower than $min_width
                     // (actually, something larger than that still may exist due to mitering or other causes)
-                    coord_t min_width = scale_t(params.config.thin_walls_min_width.get_abs_value(params.ext_perimeter_flow.nozzle_diameter()));
+                    //coord_t min_width = scale_t(params.config.thin_walls_min_width.get_abs_value(params.ext_perimeter_flow.nozzle_diameter()));
+                    coord_t min_width = scale_t(thin_walls_config.get_abs_value(params.ext_perimeter_flow.nozzle_diameter(), &params.config.thin_walls_min_width));
 
                     ExPolygons no_thin_zone = offset_ex(*all_next_onion, double(params.get_ext_perimeter_width() / 2), jtSquare);
                     // medial axis requires non-overlapping geometry
-                    const ExPolygons thin_zones = diff_ex(last, no_thin_zone, ApplySafetyOffset::Yes);
+                    const ExPolygons thin_zones = diff_ex(last_good_areas, no_thin_zone, ApplySafetyOffset::Yes);
                     //don't use offset2_ex, because we don't want to merge the zones that have been separated.
                         //a very little bit of overlap can be created here with other thin polygons, but it's more useful than worisome.
                     const ExPolygons half_thins = remove_point_too_close(offset_ex(thin_zones, double(-min_width / 2)),
                                                                    params.get_ext_perimeter_width() / 20);
                     //we push the bits removed and put them into what we will use as our anchor
                     if (half_thins.size() > 0) {
-                        no_thin_zone = diff_ex(last, offset_ex(half_thins, double(min_width / 2 - SCALED_EPSILON)), ApplySafetyOffset::Yes);
+                        no_thin_zone = diff_ex(last_good_areas, offset_ex(half_thins, double(min_width / 2 - SCALED_EPSILON)), ApplySafetyOffset::Yes);
                         no_thin_zone = offset2_ex(no_thin_zone, -params.get_ext_perimeter_width() / 20, params.get_ext_perimeter_width() / 20);
                         remove_point_too_close(no_thin_zone);
                     }
@@ -4944,7 +4956,8 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                             continue;
                         }
                         thins.push_back(thin[0]);
-                        const coord_t thin_walls_overlap = scale_t(params.config.thin_walls_overlap.get_abs_value(params.ext_perimeter_flow.nozzle_diameter()));
+                        //const coord_t thin_walls_overlap = scale_t(params.config.thin_walls_overlap.get_abs_value(params.ext_perimeter_flow.nozzle_diameter()));
+                        const coord_t thin_walls_overlap = scale_t(thin_walls_config.get_abs_value(params.ext_perimeter_flow.nozzle_diameter(), &params.config.thin_walls_overlap));
                         const ExPolygons full_thin_with_overlap = offset_ex(half_thin,
                                                                             double(min_width / 2) + (float) (thin_walls_overlap),
                                                                             jtSquare);
@@ -5004,6 +5017,7 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                         //mask
                         next_onion = intersection_ex(next_onion, last);
                     }
+                  }
                 }
                 if (params.spiral_vase && all_next_onion->size() > 1) {
                     assert(contour_count > 0);
@@ -5095,7 +5109,7 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                 assert_check_ExPolygonAsynch(*touse);
                 // if no hole/contour : use the object shape, not the perimeter "end" with overlap.
                 bool special_area = contour_count == 0 || holes_count == 0;
-                if (special_area && (params.config.thin_walls || params.spiral_vase)) {
+                if (special_area && (params.config.thin_walls || params.has_many_config(&params.config.thin_walls) || params.spiral_vase)) {
                     area_used = next_onion;
                     for (auto &expolycontainer : *touse) area_used.push_back(expolycontainer.expoly);
                     all_next_onion = &area_used;
@@ -6616,6 +6630,7 @@ static inline std::vector<t_config_option_keys> availables_key ={
     {"extra_perimeters_odd_layers"},
     {"only_one_perimeter_top", "min_width_top_surface", "only_one_perimeter_top_other_algo"},
     {"extra_perimeters_on_overhangs"},
+    {"thin_walls", "thin_walls_min_width", "thin_walls_overlap"},
 };
 void Parameters::segregate_regions(const ExPolygon &my_srf, const std::set<LayerRegion*> lregions) {
     this->key_areas.clear();
