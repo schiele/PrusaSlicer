@@ -2955,7 +2955,7 @@ std::tuple<std::vector<ExtrusionPaths>, ExPolygons, ExPolygons> generate_extra_p
                     ExPolygons shrinked = intersection_ex(offset_ex(prev, -0.3 * overhang_scaled_spacing), expanded_overhang_to_cover);
                     if (!shrinked.empty())
                         extrusion_paths_append(overhang_region, reconnect_polylines(perimeter, overhang_scaled_spacing, scaled_resolution),
-                                               ExtrusionAttributes{ ExtrusionRole::OverhangPerimeter, params.overhang_flow }, false);
+                                               ExtrusionAttributes{ ExtrusionRole::OverhangPerimeter, params.overhang_flow, OverhangAttributes{1, 2, 0} }, false);
 
                     Polylines  fills;
                     ExPolygons gap = shrinked.empty() ? offset_ex(prev, overhang_scaled_spacing * 0.5) : shrinked;
@@ -2966,12 +2966,12 @@ std::tuple<std::vector<ExtrusionPaths>, ExPolygons, ExPolygons> generate_extra_p
                     if (!fills.empty()) {
                         fills = intersection_pl(fills, shrinked_overhang_to_cover);
                         extrusion_paths_append(overhang_region, reconnect_polylines(fills, overhang_scaled_spacing, scaled_resolution),
-                                               ExtrusionAttributes{ ExtrusionRole::OverhangPerimeter, params.overhang_flow }, false);
+                                               ExtrusionAttributes{ ExtrusionRole::OverhangPerimeter, params.overhang_flow, OverhangAttributes{1, 2, 0} }, false);
                     }
                     break;
                 } else {
                     extrusion_paths_append(overhang_region, reconnect_polylines(perimeter, overhang_scaled_spacing, scaled_resolution),
-                                           ExtrusionAttributes{ExtrusionRole::OverhangPerimeter, params.overhang_flow }, false);
+                                           ExtrusionAttributes{ExtrusionRole::OverhangPerimeter, params.overhang_flow, OverhangAttributes{1, 2, 0} }, false);
                 }
 
                 if (intersection(perimeter_polygon, real_overhang).empty()) { continuation_loops--; }
@@ -3166,26 +3166,6 @@ ProcessSurfaceResult PerimeterGenerator::process_arachne(const Parameters &param
 
             if (!result.top_fills.empty()) {
                 // Then get the inner part that needs more walls
-                // reduce the not-top fill to the bound for arachne (as arachne doesn't use the centerline but the boundary)
-                // note: you can also diff_ex(offset_ex(result.top_fills, this->perimeter_spacing / 2), wallToolPaths.getInnerContour());  this should have similar results
-                last = intersection_ex(offset_ex(non_top_polygons, -params.get_perimeter_spacing() / 2), wallToolPaths.getInnerContour());
-                //{
-                //    static int i = 0;
-                //    i++;
-                //    std::stringstream stri;
-                //    stri << params.layer->id() << "_M_" << i << "_only_one_peri"
-                //         << ".svg";
-                //    SVG svg(stri.str());
-                //    //svg.draw(to_polylines(old_last), "green");
-                //    //svg.draw(to_polylines(offset_ex(old_last, -this->ext_perimeter_spacing / 2)), "lime");
-                //    //svg.draw(to_polylines(old_top), "blue");
-                //    svg.draw(to_polylines(result.top_fills), "cyan");
-                //    svg.draw(to_polylines(result.fill_clip), "pink");
-                //    svg.draw(to_polylines(wallToolPaths.getInnerContour()), "orange");
-                //    svg.draw(to_polylines(non_top_polygons), "red");
-                //    svg.draw(to_polylines(last), "brown");
-                //    svg.Close();
-                //}
                 loop_number--;
             } else {
                 // Give up the outer shell because we don't have any meaningful top surface
@@ -3696,7 +3676,7 @@ void PerimeterGenerator::process(// Input:
     bool overhang_speed_enabled = params.config.overhangs_width_speed.is_enabled();
     const bool overhang_flow_enabled = params.config.overhangs_width.is_enabled();
     const bool overhang_dynamic_enabled = params.config.overhangs_dynamic_speed.is_enabled();
-    const bool overhang_extra_enabled = params.config.extra_perimeters_on_overhangs;
+    const bool overhang_extra_enabled = params.config.extra_perimeters_on_overhangs || params.has_many_config(&params.config.extra_perimeters_on_overhangs);
     if (this->lower_slices != NULL && (overhang_speed_enabled || overhang_flow_enabled || overhang_dynamic_enabled || overhang_extra_enabled)) {
         // We consider overhang any part where the entire nozzle diameter is not supported by the
         // lower layer, so we take lower slices and offset them by overhangs_width of the nozzle diameter used 
@@ -3798,7 +3778,16 @@ void PerimeterGenerator::process(// Input:
                 }
             }
             if (overhang_extra_enabled) {
-                params.lower_slices_bridge = to_polygons(*simplified);
+                if (params.has_many_config(&params.config.extra_perimeters_on_overhangs)) {
+                    for (auto const &[opt_values, areas] : params.get_areas(&params.config.extra_perimeters_on_overhangs)) {
+                        if (!opt_values.get_bool(&params.config.extra_perimeters_on_overhangs)) {
+                            assert(params.lower_slices_bridge.empty());
+                            params.lower_slices_bridge = union_(*simplified,areas.expolys);
+                        }
+                    }
+                } else {
+                    params.lower_slices_bridge = to_polygons(*simplified);
+                }
             }
         }
     }
@@ -4006,16 +3995,33 @@ void PerimeterGenerator::process(// Input:
             overhang_extra_enabled &&
             params.config.perimeters > 0 && params.layer->id() > params.object_config.raft_layers) {
 
-            // remove infill/peri encroaching
-
+            const ExPolygons *infill_area = polyWithoutOverlap.empty() ? &infill_exp : &polyWithoutOverlap;
+            ExPolygons infill_areas_without_no_extra_overhangs;
+            if (params.has_many_config(&params.config.extra_perimeters_on_overhangs)) {
+                for (auto const &[opt_values, areas] : params.get_areas(&params.config.extra_perimeters_on_overhangs)) {
+                    if (!opt_values.get_bool(&params.config.extra_perimeters_on_overhangs)) {
+                        infill_areas_without_no_extra_overhangs = diff_ex(*infill_area, areas.expolys);
+                    }
+                }
+                infill_area = &infill_areas_without_no_extra_overhangs;
+            }
 
             // Generate extra perimeters on overhang areas, and cut them to these parts only, to save print time and material
             auto [extra_perimeters, filled_area, unfilled_area] = generate_extra_perimeters_over_overhangs(surface.expolygon,
-                                                                                            polyWithoutOverlap.empty() ? infill_exp : polyWithoutOverlap,
+                                                                                            *infill_area,
                                                                                             params,
                                                                                             std::min(nb_loop_holes, nb_loop_contour) + 1,
                                                                                             scaled_resolution_infill);
             if (!extra_perimeters.empty()) {
+
+                if (params.has_many_config(&params.config.extra_perimeters_on_overhangs)) {
+                    for (auto const &[opt_values, areas] : params.get_areas(&params.config.extra_perimeters_on_overhangs)) {
+                        if (!opt_values.get_bool(&params.config.extra_perimeters_on_overhangs)) {
+                            unfilled_area = union_ex(unfilled_area, areas.expolys);
+                        }
+                    }
+                }
+
                 //put these new overhangs into their own unsortable collection.
                 ExtrusionEntityCollection this_islands_perimeters(false, false);
                 // put extra perimeter as first printed
@@ -4048,7 +4054,6 @@ void PerimeterGenerator::process(// Input:
                     for (auto *peri : loops->entities()) assert(!peri->empty());
                     // clip infill area
                     // TODO: 2.7 test if ok for infill_peri_overlap -> NOT OK FIXME
-                    auto infill_exp_bef = infill_exp;
                     if (infill_peri_overlap != 0) {
                         polyWithoutOverlap = diff_ex(polyWithoutOverlap, filled_area);
                         infill_exp = intersection_ex(infill_exp, offset_ex(unfilled_area, infill_peri_overlap));
@@ -6543,6 +6548,7 @@ static inline std::vector<t_config_option_keys> availables_key ={
     {"extra_perimeters_below_area"}, 
     {"extra_perimeters_odd_layers"},
 //    {"setting1", "setting_linked"},
+    {"extra_perimeters_on_overhangs"},
 };
 void Parameters::segregate_regions(const ExPolygon &my_srf, const std::set<LayerRegion*> lregions) {
     this->key_areas.clear();
