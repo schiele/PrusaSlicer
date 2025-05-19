@@ -86,6 +86,7 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
         && config->opt_bool("infill_dense") == false
         && config->opt_bool("extra_perimeters") == false
         && config->option("extra_perimeters_below_area")->get_float() == 0
+        && config->opt_int("extra_perimeters_count") == 0
         && config->opt_bool("extra_perimeters_odd_layers") == false
         && config->opt_bool("extra_perimeters_on_overhangs") == false
         && config->opt_bool("overhangs_reverse") == false
@@ -137,6 +138,8 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
                 new_conf.set_key_value("extra_perimeters", new ConfigOptionBool(false));
             else if (this->local_config->get().optptr("extra_perimeters_below_area"))
                 new_conf.set_key_value("extra_perimeters_below_area", new ConfigOptionFloatOrPercent(0, false));
+            else if (this->local_config->get().optptr("extra_perimeters_count"))
+                new_conf.set_key_value("extra_perimeters_count", new ConfigOptionInt(0));
             else if (this->local_config->get().optptr("extra_perimeters_odd_layers"))
                 new_conf.set_key_value("extra_perimeters_odd_layers", new ConfigOptionBool(false));
             else if (this->local_config->get().optptr("extra_perimeters_on_overhangs"))
@@ -166,6 +169,7 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
             new_conf.set_key_value("infill_dense", new ConfigOptionBool(false));
             new_conf.set_key_value("extra_perimeters", new ConfigOptionBool(false));
             new_conf.set_key_value("extra_perimeters_below_area", new ConfigOptionFloatOrPercent(0, false));
+            new_conf.set_key_value("extra_perimeters_count", new ConfigOptionInt(0));
             new_conf.set_key_value("extra_perimeters_odd_layers", new ConfigOptionBool(false));
             new_conf.set_key_value("extra_perimeters_on_overhangs", new ConfigOptionBool(false));
             new_conf.set_key_value("overhangs_reverse", new ConfigOptionBool(false));
@@ -350,7 +354,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig* config)
 {
     bool have_perimeters = config->opt_int("perimeters") > 0;
     for (auto el : {
-        "extra_perimeters", "extra_perimeters_below_area", "extra_perimeters_odd_layers", "extra_perimeters_on_overhangs",
+        "extra_perimeters", "extra_perimeters_below_area", "extra_perimeters_count", "extra_perimeters_odd_layers", "extra_perimeters_on_overhangs",
         "external_perimeters_first", "external_perimeter_extrusion_width", "external_perimeter_extrusion_spacing","external_perimeter_extrusion_change_odd_layers",
         "overhangs",
         "seam_position","staggered_inner_seams",

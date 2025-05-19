@@ -1715,7 +1715,7 @@ void PrintConfigDef::init_fff_params()
 
     def = this->add("extra_perimeters", coBool);
     def->label = L("filling horizontal gaps on slopes");
-    def->full_label = L("Extra perimeters (do nothing)");
+    def->full_label = L("Add perimeters on slope (do nothing)");
     def->category = OptionCategory::perimeter;
     def->tooltip = L("Add more perimeters when needed for avoiding gaps in sloping walls. "
         "Slic3r keeps adding perimeters, until more than 70% of the loop immediately above "
@@ -1734,6 +1734,13 @@ void PrintConfigDef::init_fff_params()
                     "\nSet zero to disable.");
     def->mode = comAdvancedE | comSuSi;
     def->set_default_value(new ConfigOptionFloatOrPercent(0,false));
+
+    def = this->add("extra_perimeters_count", coInt);
+    def->label = L("Extra perimeters");
+    def->category = OptionCategory::perimeter;
+    def->tooltip = L("To be used in modifiers, as long as periemeter contour & hole count split the perimeters.");
+    def->mode = comAdvancedE | comSuSi;
+    def->set_default_value(new ConfigOptionInt(0));
 
     def = this->add("extra_perimeters_on_overhangs", coBool);
     def->label = L("Extra perimeters on overhangs (Experimental)");
@@ -9918,6 +9925,7 @@ std::unordered_set<std::string> prusa_export_to_remove_keys = {
 "external_perimeters_nothole",
 "external_perimeters_vase",
 "extra_perimeters_below_area",
+"extra_perimeters_count",
 "extra_perimeters_odd_layers",
 "extruder_extrusion_multiplier_speed",
 "extruder_fan_offset",
@@ -10731,6 +10739,7 @@ void DynamicPrintConfig::normalize_fdm()
             this->opt<ConfigOptionBool>("infill_dense", true)->value = false;
             this->opt<ConfigOptionBool>("extra_perimeters", true)->value = false;
             this->opt<ConfigOptionFloatOrPercent>("extra_perimeters_below_area")->value = 0;
+            this->opt<ConfigOptionInt>("extra_perimeters_count")->value = 0;
             this->opt<ConfigOptionBool>("extra_perimeters_odd_layers", true)->value = false;
             this->opt<ConfigOptionBool>("extra_perimeters_on_overhangs", true)->value = false;
             this->opt<ConfigOptionBool>("overhangs_reverse", true)->value = false; 
@@ -11373,7 +11382,7 @@ std::string validate(const FullPrintConfig& cfg)
             return "Spiral vase mode is not compatible with support material";
         if (cfg.infill_dense)
             return "Spiral vase mode can only print hollow objects and have no top surface, so you don't need any dense infill";
-        if (cfg.extra_perimeters || cfg.extra_perimeters_below_area.value > 0 || cfg.extra_perimeters_on_overhangs || cfg.extra_perimeters_odd_layers)
+        if (cfg.extra_perimeters || cfg.extra_perimeters_below_area.value > 0 || cfg.extra_perimeters_count.value > 0 || cfg.extra_perimeters_on_overhangs || cfg.extra_perimeters_odd_layers)
             return "Can't make more than one perimeter when spiral vase mode is enabled";
         if (cfg.overhangs_reverse)
             return "Can't reverse the direction of the overhangs every layer when spiral vase mode is enabled";

@@ -493,6 +493,7 @@ static std::vector<std::string> s_Preset_print_options {
         "ensure_vertical_shell_thickness",
         "extra_perimeters",
         "extra_perimeters_below_area",
+        "extra_perimeters_count",
         "extra_perimeters_odd_layers",
         "extra_perimeters_on_overhangs",
         "avoid_crossing_curled_overhangs",
