@@ -1,4 +1,4 @@
 BUILD: version_2.9.2-16-gd71bac512d
 system: rolling
 date: Wed May 21 05:52:17 PM CEST 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
