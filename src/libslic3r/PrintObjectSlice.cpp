@@ -430,7 +430,7 @@ static std::vector<std::vector<ExPolygons>> slices_to_regions(
                                     // we now have our final poly for this region
                                     // FIXME: this may have make it grows outside of a modifier box, but parent_slice.expolygons is already modified.
                                     //        test if you can create the issue & then resolve it.
-                                    ensure_valid(region_expolys, std::max(scale_t(print_config.resolution.value), SCALED_EPSILON));
+                                    ensure_valid(union_safety_offset_ex(region_expolys));
                                     // // for when slice_closing_radius will be in region
                                     // // to verify there is no holes from different max_slice_closing_radius
                                     //unclip_master = diff_ex(unclip_master, region_expolys);

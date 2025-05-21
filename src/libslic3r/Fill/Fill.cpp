@@ -509,15 +509,18 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
 
     // merge polygons and ensure no fill overlap.
     {
-        const coord_t resolution = std::max(SCALED_EPSILON, scale_t(layer.object()->print()->config().resolution_internal.value));
         ExPolygons all_expolygons;
         for (SurfaceFill &fill : surface_fills) {
+            const coord_t resolution = std::min(fill.params.flow.scaled_width() / 16, 
+                std::max(SCALED_EPSILON, scale_t(layer.object()->print()->config().resolution_internal.value)));
             assert_valid(fill.expolygons);
             // note: Bridges are processed first (see SurfaceFill::operator<())
             if (!fill.expolygons.empty()) {
                 if (fill.expolygons.size() > 1) {
                     // ensure it's fused (should be union_safety_offset_ex, but something in slicing set bridges area farther apart than normal).
                     fill.expolygons = offset2_ex(fill.expolygons, fill.params.flow.scaled_width() / 4, -fill.params.flow.scaled_width() / 4);
+                    // need safety thing or there is self-interscting things (may use offset_remove_narrow instead of offset2_ex)
+                    fill.expolygons = union_safety_offset_ex(fill.expolygons);
                     ensure_valid(fill.expolygons, resolution);
                 }
                 if (fill.params.priority > 0) {
@@ -637,9 +640,12 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                 fill.params.pattern = ipEnsuring;
             }
     }*/
-
-    for (auto &srf : surface_fills) {
-        assert_valid(srf.expolygons);
+    //union with safety offset to avoid separation from the appends of different surface with same settings.
+    for (auto &surface_fill : surface_fills) {
+        surface_fill.expolygons = union_safety_offset_ex(surface_fill.expolygons);
+        assert_valid(surface_fill.expolygons);
+        //simplify (also, it's possible rn that some point are below EPSILON distance).
+        //ensure_valid(surface_fill.expolygons, surface_fill.params.fill_resolution);
     }
 
     return surface_fills;
@@ -1042,12 +1048,9 @@ void Layer::make_fills(FillAdaptive::Octree* adaptive_fill_octree, FillAdaptive:
         //params.resolution        = resolution;
         //params.use_arachne       = (perimeter_generator == PerimeterGeneratorType::Arachne && surface_fill.params.pattern == ipConcentric) || surface_fill.params.pattern == ipEnsuring;
         //params.layer_height      = layerm->layer()->height;
-        surface_fill.params.fill_resolution = std::max(SCALED_EPSILON, scale_t(this->object()->print()->config().resolution_internal.value));
+        surface_fill.params.fill_resolution = std::min(surface_fill.params.flow.scaled_width() / 16, 
+            std::max(SCALED_EPSILON, scale_t(this->object()->print()->config().resolution_internal.value)));
 
-        //union with safety offset to avoid separation from the appends of different surface with same settings.
-        surface_fill.expolygons = union_safety_offset_ex(surface_fill.expolygons);
-        //simplify (also, it's possible rn that some point are below EPSILON distance).
-        ensure_valid(surface_fill.expolygons, surface_fill.params.fill_resolution);
 
         //store default values, before modification.
         bool dont_adjust = surface_fill.params.dont_adjust;

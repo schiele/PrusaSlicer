@@ -3092,7 +3092,11 @@ std::tuple<std::vector<ExtrusionPaths>, ExPolygons, ExPolygons> generate_extra_p
 
     inset_overhang_area_left_unfilled = union_ex(inset_overhang_area_left_unfilled);
     
-    return {extra_perims, ensure_valid(diff_ex(inset_overhang_area, inset_overhang_area_left_unfilled), coord_t(scaled_resolution)), ensure_valid(union_ex(inset_anchors, inset_overhang_area_left_unfilled), coord_t(scaled_resolution))};
+    return {extra_perims,
+            ensure_valid(
+                diff_ex(inset_overhang_area, inset_overhang_area_left_unfilled) /*, coord_t(scaled_resolution)*/),
+            ensure_valid(
+                union_ex(inset_anchors, inset_overhang_area_left_unfilled) /*, coord_t(scaled_resolution)*/)};
 }
 
 #ifdef ARACHNE_DEBUG
@@ -3829,7 +3833,11 @@ void PerimeterGenerator::process(// Input:
 
         // simplify infill contours according to resolution
         Polygons not_filled_p;
-        coord_t scaled_resolution_infill = scale_t(std::max(params.print_config.resolution.value, params.print_config.resolution_internal / 4));
+        coord_t scaled_resolution_infill =
+            std::min(params.get_solid_infill_spacing() / 16,
+                     std::max(SCALED_EPSILON,
+                              scale_t(std::max(params.print_config.resolution_internal.value,
+                                               params.print_config.resolution.value))));
         for (const ExPolygon& ex : surface_process_result.inner_perimeter)
             ex.simplify_p(scaled_resolution_infill, not_filled_p);
         ExPolygons not_filled_exp = union_ex(not_filled_p);
@@ -3852,7 +3860,7 @@ void PerimeterGenerator::process(// Input:
             //    ex.simplify_p(scale_t(std::max(params.print_config.resolution.value, params.print_config.resolution_internal / 4)), &not_filled_p);
             //gap_fill_exps = union_ex(not_filled_p);
             gap_fill_exps = surface_process_result.gap_srf;
-            ensure_valid(gap_fill_exps, scale_t(std::max(params.print_config.resolution.value, params.print_config.resolution_internal / 4)));
+            ensure_valid(gap_fill_exps, scaled_resolution_infill);
             gap_fill_exps = offset_ex(gap_fill_exps, -infill_peri_overlap);
             infill_exp = diff_ex(infill_exp, gap_fill_exps);
         }
@@ -3997,8 +4005,9 @@ void PerimeterGenerator::process(// Input:
          //       svg.Close();
          //   }
         // append infill areas to fill_surfaces
-        append(fill_surfaces, ensure_valid(std::move(infill_exp), scaled_resolution_infill));
-        append(fill_no_overlap, ensure_valid(std::move(polyWithoutOverlap), scaled_resolution_infill));
+        coord_t scaled_resolution = get_resolution(0, false, &surface);
+        append(fill_surfaces, ensure_valid(std::move(infill_exp), scaled_resolution));
+        append(fill_no_overlap, ensure_valid(std::move(polyWithoutOverlap), scaled_resolution));
         
 #ifdef _DEBUGINFO
             loops->visit(LoopAssertVisitor());
