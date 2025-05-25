@@ -757,7 +757,7 @@ GCodeGenerator::GCodeGenerator() :
     m_layer_index(-1), 
     m_layer(nullptr),
     m_object_layer_over_raft(false),
-    m_volumetric_speed(0),
+    m_volumetric_speed_mm3_per_s(),
     m_last_extrusion_role(GCodeExtrusionRole::None),
     m_last_width(0.0f),
 #if ENABLE_GCODE_VIEWER_DATA_CHECKING
@@ -908,6 +908,8 @@ namespace DoExport {
             excluded.insert(ExtrusionRole::Mixed);
             excluded.insert(ExtrusionRole::None);
             excluded.insert(ExtrusionRole::WipeTower);
+            bool autospeed_min_thin_flow = config->option("autospeed_min_thin_flow") != nullptr &&
+                config->option("autospeed_min_thin_flow")->is_enabled();
             if (config->option("perimeter_speed") != nullptr && config->get_computed_value("perimeter_speed") != 0)
                 excluded.insert(ExtrusionRole::Perimeter);
             if (config->option("external_perimeter_speed") != nullptr && config->get_computed_value("external_perimeter_speed") != 0)
@@ -916,9 +918,11 @@ namespace DoExport {
                 excluded.insert(ExtrusionRole::OverhangPerimeter);
                 excluded.insert(ExtrusionRole::OverhangExternalPerimeter);
             }
-            if (config->option("gap_fill_speed") != nullptr && config->get_computed_value("gap_fill_speed") != 0)
+            if (autospeed_min_thin_flow ||
+                (config->option("gap_fill_speed") != nullptr && config->get_computed_value("gap_fill_speed") != 0))
                 excluded.insert(ExtrusionRole::GapFill);
-            if (config->option("thin_walls_speed") != nullptr && config->get_computed_value("thin_walls_speed") != 0)
+            if (autospeed_min_thin_flow ||
+                (config->option("thin_walls_speed") != nullptr && config->get_computed_value("thin_walls_speed") != 0))
                 excluded.insert(ExtrusionRole::ThinWall);
             if (config->option("infill_speed") != nullptr && config->get_computed_value("infill_speed") != 0)
                 excluded.insert(ExtrusionRole::InternalInfill);
@@ -938,12 +942,14 @@ namespace DoExport {
                 excluded.insert(ExtrusionRole::Skirt);
         }
         virtual void use(const ExtrusionPath& path) override {
-            if (excluded.find(path.role()) == excluded.end())
+            if (excluded.find(path.role()) == excluded.end()) {
                 min = std::min(min, path.mm3_per_mm());
+            }
         }
         virtual void use(const ExtrusionPath3D& path3D) override {
-            if (excluded.find(path3D.role()) == excluded.end())
+            if (excluded.find(path3D.role()) == excluded.end()) {
                 min = std::min(min, path3D.mm3_per_mm());
+            }
         }
         virtual void use(const ExtrusionMultiPath& multipath) override {
             for (const ExtrusionPath& path : multipath.paths)
@@ -983,62 +989,122 @@ namespace DoExport {
         processor.enable_stealth_time_estimator(silent_time_estimator_enabled);
     }
 
-	static double autospeed_volumetric_limit(const Print &print)
-	{
-        ExtrusionMinMM compute_min_mm3_per_mm{ &print.full_print_config() };
-	    // get the minimum cross-section used in the print
-	    std::vector<double> mm3_per_mm;
-	    for (auto object : print.objects()) {
-	        for (size_t region_id = 0; region_id < object->num_printing_regions(); ++ region_id) {
-	            const PrintRegion &region = object->printing_region(region_id);
-	            for (auto layer : object->layers()) {
-	                const LayerRegion* layerm = layer->regions()[region_id];
-                    if (compute_min_mm3_per_mm.is_compatible({ ExtrusionRole::Perimeter, ExtrusionRole::ExternalPerimeter, ExtrusionRole::OverhangPerimeter, ExtrusionRole::OverhangExternalPerimeter }))
-                        mm3_per_mm.push_back(compute_min_mm3_per_mm.reset_use_get(layerm->perimeters()));
-                    if (compute_min_mm3_per_mm.is_compatible({ ExtrusionRole::InternalInfill, ExtrusionRole::SolidInfill, ExtrusionRole::TopSolidInfill,ExtrusionRole::BridgeInfill,ExtrusionRole::InternalBridgeInfill }))
-                        mm3_per_mm.push_back(compute_min_mm3_per_mm.reset_use_get(layerm->fills()));
-	            }
-	        }
-            if (compute_min_mm3_per_mm.is_compatible({ ExtrusionRole::SupportMaterial, ExtrusionRole::SupportMaterialInterface }))
-	            for (auto layer : object->support_layers())
-                    mm3_per_mm.push_back(compute_min_mm3_per_mm.reset_use_get(layer->support_fills));
-	    }
-        if (compute_min_mm3_per_mm.is_compatible({ ExtrusionRole::Skirt })) {
-            mm3_per_mm.push_back(compute_min_mm3_per_mm.reset_use_get(print.skirt()));
-            if(print.skirt_first_layer())
-                mm3_per_mm.push_back(compute_min_mm3_per_mm.reset_use_get(*print.skirt_first_layer()));
-            mm3_per_mm.push_back(compute_min_mm3_per_mm.reset_use_get(print.brim()));
+    static std::vector<double> autospeed_volumetric_limit(const Print &print, const ToolOrdering& tool_ordering) {
+        std::vector<double> ret;
+        ret.resize(print.config().nozzle_diameter.size(), 0.);
+        if (print.config().max_volumetric_speed.value <= 0) {
+            return ret;
         }
-	    // filter out 0-width segments
-	    mm3_per_mm.erase(std::remove_if(mm3_per_mm.begin(), mm3_per_mm.end(), [](double v) { return v < 0.000001; }), mm3_per_mm.end());
-	    double volumetric_speed = 0.;
-	    if (! mm3_per_mm.empty()) {
-	        // In order to honor max_print_speed we need to find a target volumetric
-	        // speed that we can use throughout the print. So we define this target 
-	        // volumetric speed as the volumetric speed produced by printing the 
-	        // smallest cross-section at the maximum speed: any larger cross-section
-	        // will need slower feedrates.
-            double max_print_speed = print.config().get_computed_value("max_print_speed");
-            volumetric_speed = *std::min_element(mm3_per_mm.begin(), mm3_per_mm.end()) * max_print_speed;
-	        // limit such volumetric speed with max_volumetric_speed if set
-	        if (print.config().max_volumetric_speed.value > 0)
-	            volumetric_speed = std::min(volumetric_speed, print.config().max_volumetric_speed.value);
-	    }
-	    return volumetric_speed;
-	}
+        const double max_print_speed = print.config().get_computed_value("max_print_speed");
+
+        ExtrusionMinMM compute_min_mm3_per_mm(&print.config());
+        // per extruder
+        for (uint16_t extruder_id = 0; extruder_id < print.config().nozzle_diameter.size(); ++extruder_id) {
+            double min_mm3_per_mm = 0;
+            if (print.config().autospeed_min_thin_flow.is_enabled()) {
+                if (print.config().autospeed_min_thin_flow > 0) {
+                    double min_mm3_per_s = print.config().max_volumetric_speed.value;
+                    if (print.config().filament_max_volumetric_speed.get_at(extruder_id) > 0) {
+                        min_mm3_per_s = std::min(min_mm3_per_s, print.config().filament_max_volumetric_speed.get_at(extruder_id));
+                    }
+                    min_mm3_per_mm = std::max(min_mm3_per_mm,
+                                              print.config().autospeed_min_thin_flow.get_abs_value(min_mm3_per_s) /
+                                                  max_print_speed);
+                }
+            }
+            if (min_mm3_per_mm == 0) {
+                // filter out too thin segments & "travel" ones
+                // the minimum min_mm3_per_mm will be computed from the minimum extrusion in the print
+                // get the minimum cross-section used in the print
+                std::set<double> mm3_per_mm;
+                for (auto object : print.objects()) {
+                    for (size_t region_id = 0; region_id < object->num_printing_regions(); ++region_id) {
+                        const PrintRegion &region = object->printing_region(region_id);
+                        for (auto layer : object->layers()) {
+                            const LayerRegion *layerm = layer->regions()[region_id];
+                            const LayerTools *tools_for_layer = tool_ordering.tools_for_layer(layer->print_z);
+                            if (tools_for_layer->perimeter_extruder(layerm->region().config()) == extruder_id &&
+                                compute_min_mm3_per_mm.is_compatible(
+                                    {ExtrusionRole::Perimeter, ExtrusionRole::ExternalPerimeter,
+                                     ExtrusionRole::OverhangPerimeter, ExtrusionRole::OverhangExternalPerimeter})) {
+                                mm3_per_mm.insert(compute_min_mm3_per_mm.reset_use_get(layerm->perimeters()));
+                            }
+                            if (tools_for_layer->infill_extruder(layerm->region().config()) == extruder_id &&
+                                compute_min_mm3_per_mm.is_compatible({ExtrusionRole::InternalInfill})) {
+                                mm3_per_mm.insert(compute_min_mm3_per_mm.reset_use_get(layerm->fills()));
+                            }
+                            if (tools_for_layer->solid_infill_extruder(layerm->region().config()) == extruder_id &&
+                                compute_min_mm3_per_mm.is_compatible(
+                                    {ExtrusionRole::SolidInfill, ExtrusionRole::TopSolidInfill,
+                                     ExtrusionRole::BridgeInfill, ExtrusionRole::InternalBridgeInfill})) {
+                                mm3_per_mm.insert(compute_min_mm3_per_mm.reset_use_get(layerm->fills()));
+                            }
+                        }
+                    }
+                    for (auto layer : object->support_layers()) {
+                        const LayerTools *layer_tools = tool_ordering.tools_for_layer(layer->print_z);
+                        // Soluble?
+                        bool soluble = print.config().filament_soluble.get_at(extruder_id);
+                        uint16_t support_extruder = object->config().support_material_extruder;
+                        support_extruder = support_extruder == 0 ? soluble ? -1 : layer_tools->extruders.front() :
+                                                                   (support_extruder - 1);
+                        uint16_t interface_extruder = object->config().support_material_extruder;
+                        interface_extruder = interface_extruder == 0 ? soluble ? -1 : layer_tools->extruders.front() :
+                                                                   (interface_extruder - 1);
+                        if (support_extruder == extruder_id &&
+                            compute_min_mm3_per_mm.is_compatible({ExtrusionRole::SupportMaterial}))
+                            mm3_per_mm.insert(compute_min_mm3_per_mm.reset_use_get(layer->support_fills));
+                        if (interface_extruder == extruder_id &&
+                            compute_min_mm3_per_mm.is_compatible({ExtrusionRole::SupportMaterialInterface}))
+                            mm3_per_mm.insert(compute_min_mm3_per_mm.reset_use_get(layer->support_fills));
+                    }
+                }
+                // skirt: for all extruders
+                if (compute_min_mm3_per_mm.is_compatible({ExtrusionRole::Skirt})) {
+                    mm3_per_mm.insert(compute_min_mm3_per_mm.reset_use_get(print.skirt()));
+                    if (print.skirt_first_layer())
+                        mm3_per_mm.insert(compute_min_mm3_per_mm.reset_use_get(*print.skirt_first_layer()));
+                    mm3_per_mm.insert(compute_min_mm3_per_mm.reset_use_get(print.brim()));
+                }
+                // filter out max (added whne the collection don't contains any valid extrusions)
+                mm3_per_mm.erase(std::numeric_limits<double>::max());
+
+                // extarct min (if any)
+                auto it = mm3_per_mm.lower_bound(min_mm3_per_mm);
+                if (it != mm3_per_mm.end()) {
+                    min_mm3_per_mm = std::max(*it, 0.000001);
+                }
+            }
+            
+            if (min_mm3_per_mm > 0) {
+                // In order to honor max_print_speed we need to find a target volumetric
+                // speed that we can use throughout the print. So we define this target
+                // volumetric speed as the volumetric speed produced by printing the
+                // smallest cross-section at the maximum speed: any larger cross-section
+                // will need slower feedrates.
+                double volumetric_speed_mm3_per_s = min_mm3_per_mm * max_print_speed;
+                // limit such volumetric speed with max_volumetric_speed if set
+                if (print.config().max_volumetric_speed.value > 0)
+                    volumetric_speed_mm3_per_s = std::min(volumetric_speed_mm3_per_s,
+                                                          print.config().max_volumetric_speed.value);
+                ret[extruder_id] = volumetric_speed_mm3_per_s;
+            }
+        }
+        return ret;
+    }
 
 
-	static void init_ooze_prevention(const Print &print, OozePrevention &ooze_prevention)
-	{
-	    ooze_prevention.enable = print.config().ooze_prevention.value && ! print.config().single_extruder_multi_material;
-	}
+    static void init_ooze_prevention(const Print &print, OozePrevention &ooze_prevention)
+    {
+        ooze_prevention.enable = print.config().ooze_prevention.value && ! print.config().single_extruder_multi_material;
+    }
 
-	// Fill in print_statistics and return formatted string containing filament statistics to be inserted into G-code comment section.
-	static std::string update_print_stats_and_format_filament_stats(
-	    const bool                   has_wipe_tower,
-	    const WipeTowerData         &wipe_tower_data,
+    // Fill in print_statistics and return formatted string containing filament statistics to be inserted into G-code comment section.
+    static std::string update_print_stats_and_format_filament_stats(
+        const bool                   has_wipe_tower,
+        const WipeTowerData         &wipe_tower_data,
         const FullPrintConfig       &config,
-	    const std::vector<Extruder> &extruders,
+        const std::vector<Extruder> &extruders,
         unsigned int                 initial_extruder_id,
         int                          total_toolchanges,
         PrintStatistics              &print_statistics,
@@ -1387,8 +1453,8 @@ void GCodeGenerator::_do_export(Print& print_mod, GCodeOutputStream &file, Thumb
 
     m_enable_cooling_markers = true;
 
-    m_volumetric_speed = DoExport::autospeed_volumetric_limit(print);
-     this->m_throw_if_canceled();
+    m_volumetric_speed_mm3_per_s.clear();
+    this->m_throw_if_canceled();
 
     if (print.config().spiral_vase.value)
         m_spiral_vase = make_unique<SpiralVase>(print.config());
@@ -1547,11 +1613,12 @@ void GCodeGenerator::_do_export(Print& print_mod, GCodeOutputStream &file, Thumb
     } else {
         // Find tool ordering for all the objects at once, and the initial extruder ID.
         // If the tool ordering has been pre-calculated by Print class for wipe tower already, reuse it.
-		tool_ordering = print.tool_ordering();
-		tool_ordering.assign_custom_gcodes(print);
+        tool_ordering = print.tool_ordering();
+        tool_ordering.assign_custom_gcodes(print);
         if (tool_ordering.all_extruders().empty())
             // No object to print was found, cancel the G-code export.
             throw Slic3r::SlicingError(_u8L("No extrusions were generated for objects."));
+        m_volumetric_speed_mm3_per_s = DoExport::autospeed_volumetric_limit(print, tool_ordering);
         has_wipe_tower = print.has_wipe_tower() && tool_ordering.has_wipe_tower();
         initial_extruder_id = (has_wipe_tower && ! print.config().single_extruder_multi_material_priming) ?
             // The priming towers will be skipped.
@@ -1560,7 +1627,7 @@ void GCodeGenerator::_do_export(Print& print_mod, GCodeOutputStream &file, Thumb
             tool_ordering.first_extruder();
         // In non-sequential print, the printing extruders may have been modified by the extruder switches stored in Model::custom_gcode_per_print_z.
         // Therefore initialize the printing extruders from there.
-    	this->set_extruders(tool_ordering.all_extruders());
+        this->set_extruders(tool_ordering.all_extruders());
         if (has_milling)
             m_writer.set_mills(std::vector<uint16_t>() = { 0 });
         // Order object instances using a nearest neighbor search.
@@ -1852,9 +1919,12 @@ void GCodeGenerator::_do_export(Print& print_mod, GCodeOutputStream &file, Thumb
                     if (new_extruder_id == (uint16_t)-1)
                         // Skip this object.
                         continue;
+                    m_volumetric_speed_mm3_per_s = DoExport::autospeed_volumetric_limit(print, tool_ordering);
                     initial_extruder_id = new_extruder_id;
                     final_extruder_id = tool_ordering.last_extruder();
                     assert(final_extruder_id != (uint16_t)-1);
+                } else {
+                    m_volumetric_speed_mm3_per_s = DoExport::autospeed_volumetric_limit(print, tool_ordering);
                 }
                 this->m_throw_if_canceled();
                 this->set_origin(unscale((*print_object_instance_sequential_active)->shift));
@@ -1921,6 +1991,7 @@ void GCodeGenerator::_do_export(Print& print_mod, GCodeOutputStream &file, Thumb
 
                         // complete the tool ordering for this sequence.
                         tool_ordering = ToolOrdering(object, layers_to_print_range, final_extruder_id);
+                        m_volumetric_speed_mm3_per_s = DoExport::autospeed_volumetric_limit(print, tool_ordering);
 
                         if (!layers_to_print_range.empty() && tool_ordering.first_extruder() != uint16_t(-1)) {
                             this->set_origin(unscale((*it_print_object_instance)->shift));
@@ -6460,9 +6531,9 @@ double_t GCodeGenerator::_compute_speed_mm_per_sec(const ExtrusionPath& path, co
         if (comment) *comment = "previous speed";
     }
     const std::string comment_auto_speed = "(from autospeed)";
-    if (m_volumetric_speed != 0. && speed == 0) {
-        //if m_volumetric_speed, use the max size for thinwall & gapfill, to avoid variations
-        double vol_speed = m_volumetric_speed / path.mm3_per_mm();
+    if (speed == 0 && m_writer.tool()->id() >= 0 && m_volumetric_speed_mm3_per_s[m_writer.tool()->id()] != 0.) {
+        //if m_volumetric_speed_mm3_per_s, use the max size for thinwall & gapfill, to avoid variations
+        double vol_speed = m_volumetric_speed_mm3_per_s[m_writer.tool()->id()] / path.mm3_per_mm();
         double max_print_speed = m_config.get_computed_value("max_print_speed");
         if (vol_speed > max_print_speed) {
             vol_speed = max_print_speed;
@@ -6536,10 +6607,10 @@ double_t GCodeGenerator::_compute_speed_mm_per_sec(const ExtrusionPath& path, co
             } else {
                 other_speed = m_config.get_computed_value("overhangs_speed");
             }
-            if (m_volumetric_speed != 0. && other_speed == 0) {
+            if (m_writer.tool()->id() >= 0 && m_volumetric_speed_mm3_per_s[m_writer.tool()->id()] != 0. && other_speed == 0) {
                 // copy/paste
-                // if m_volumetric_speed, use the max size for thinwall & gapfill, to avoid variations
-                double vol_speed = m_volumetric_speed / path.mm3_per_mm();
+                // if m_volumetric_speed_mm3_per_s, use the max size for thinwall & gapfill, to avoid variations
+                double vol_speed = m_volumetric_speed_mm3_per_s[m_writer.tool()->id()] / path.mm3_per_mm();
                 double max_print_speed = m_config.get_computed_value("max_print_speed");
                 if (vol_speed > max_print_speed) {
                     vol_speed = max_print_speed;

@@ -499,7 +499,8 @@ private:
         const Layer* layer;
         coord_t diameter;
     }                                   m_layer_slices_offseted{ {},{},nullptr, 0};
-    double                              m_volumetric_speed;
+    // one per extruder
+    std::vector<double>                 m_volumetric_speed_mm3_per_s;
     // Support for the extrusion role markers. Which marker is active?
     GCodeExtrusionRole                  m_last_extrusion_role;
     // Not know the gapfill role for retract_lift_top

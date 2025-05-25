@@ -675,6 +675,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig* config)
         config->option<ConfigOptionFloatOrPercent>("bridge_speed")->percent || 
         config->option<ConfigOptionFloatOrPercent>("support_material_speed")->percent);
     toggle_field("max_print_speed", config->opt_float("max_volumetric_speed") != 0);
+    toggle_field("autospeed_min_thin_flow", config->opt_float("max_volumetric_speed") != 0);
 }
 
 

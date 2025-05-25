@@ -87,6 +87,7 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver& /* ne
     static std::unordered_set<std::string> steps_gcode = {
         "allow_empty_layers",
         "autoemit_temperature_commands",
+        "autospeed_min_thin_flow",
         "avoid_crossing_perimeters",
         "avoid_crossing_perimeters_max_detour",
         "avoid_crossing_not_first_layer",

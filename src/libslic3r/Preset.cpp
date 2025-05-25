@@ -591,6 +591,7 @@ static std::vector<std::string> s_Preset_print_options {
         "top_solid_infill_speed",
         "travel_speed", "travel_speed_z",
         "max_print_speed",
+        "autospeed_min_thin_flow",
         "max_volumetric_speed",
         // gapfill
         "gap_fill_enabled",

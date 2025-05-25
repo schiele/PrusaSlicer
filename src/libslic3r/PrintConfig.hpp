@@ -1080,6 +1080,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloatOrPercent,      arc_fitting_resolution))
     ((ConfigOptionFloatOrPercent,      arc_fitting_tolerance))
     ((ConfigOptionBool,                autoemit_temperature_commands))
+    ((ConfigOptionFloatOrPercent,      autospeed_min_thin_flow))
     ((ConfigOptionString,              before_layer_gcode))
     ((ConfigOptionString,              between_objects_gcode))
     ((ConfigOptionBool,                binary_gcode))

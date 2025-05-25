@@ -416,7 +416,10 @@ group:sidetext_width$7:Modifiers
 		setting:label_width$8:width$4:small_perimeter_max_length
 	end_line
 group:Autospeed (advanced)
-	setting:max_volumetric_speed
+	line:Volumetric auto-speed
+		setting:label$Max:max_volumetric_speed
+		setting:label$Min for thin extrusions:autospeed_min_thin_flow
+	end_line
 	setting:max_print_speed
 group:Pressure equalizer (experimental)
 	setting:max_volumetric_extrusion_rate_slope_positive
