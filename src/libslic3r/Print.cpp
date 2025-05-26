@@ -1623,9 +1623,8 @@ void Print::_make_skirt_brim() {
             }
         }
         // store brim hull (used for make_skirt... that is made before)
-        // m_first_layer_convex_hull is sued to set the 'first_layer_print_min' placeholder in gcode macros
-        for (Polygon& poly : to_polygons(brim_area))
-            append(m_first_layer_convex_hull.points, std::move(poly.points));
+        // m_first_layer_convex_hull is used to set the 'first_layer_print_min' placeholder in gcode macros
+        append(m_first_layer_convex_hull.points, to_points(brim_area));
         this->finalize_first_layer_convex_hull();
 
         // everything should be extruded ccw, so only chajnge dir if cw is requested

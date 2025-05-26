@@ -1608,7 +1608,6 @@ void Tab::on_value_change(const OptionKeyIdx& opt_key_idx, const boost::any& val
         if (only_one_warning_per_session) {
             only_one_warning_per_session= false;
             assert(opt_key_idx.idx >= 0);
-            assert(opt_key_idx.key.find("max_layer_height") == std::string::npos);
             const std::vector<double> &nozzle_sizes = m_config_base->option<ConfigOptionFloats>("nozzle_diameter")->get_values();
             assert(opt_key_idx.idx < nozzle_sizes.size());
             double max_lh = m_config_base->option("max_layer_height")->is_enabled(opt_key_idx.idx) ?
