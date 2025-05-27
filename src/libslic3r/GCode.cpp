@@ -1304,6 +1304,7 @@ void GCodeGenerator::_do_export(Print& print_mod, GCodeOutputStream &file, Thumb
     // resets analyzer's tracking data
     m_last_height  = 0.f;
     m_last_layer_z = 0.f;
+    m_last_layers_z = 0.;
     m_max_layer_z  = 0.f;
     m_last_width = 0.f;
 #if ENABLE_GCODE_VIEWER_DATA_CHECKING
@@ -1386,7 +1387,7 @@ void GCodeGenerator::_do_export(Print& print_mod, GCodeOutputStream &file, Thumb
     print.set_status(int(0), std::string(L("Generating G-code layer %s / %s")), std::vector<std::string>{ std::to_string(0), std::to_string(layer_count()) }, PrintBase::SlicingStatus::DEFAULT | PrintBase::SlicingStatus::SECONDARY_STATE);
 
     m_enable_cooling_markers = true;
-    m_last_object_layer = nullptr;
+    m_last_object_layers.clear();
 
     m_volumetric_speed = DoExport::autospeed_volumetric_limit(print);
      this->m_throw_if_canceled();
@@ -3373,7 +3374,11 @@ LayerResult GCodeGenerator::process_layer(
         assert(m_new_z_target || is_approx(print_z, m_writer.get_unlifted_position().z(), EPSILON));
     }
     if (object_layer != nullptr) {
-        m_last_object_layer = object_layer;
+        if (!is_approx(m_last_layers_z, object_layer->print_z, EPSILON)) {
+            m_last_object_layers.clear();
+            m_last_layers_z = object_layer->print_z;
+        } 
+        m_last_object_layers.push_back(object_layer);
     }
     m_layer = &layer;
     if (this->line_distancer_is_required(layer_tools.extruders) && this->m_layer != nullptr && this->m_layer->lower_layer != nullptr)
@@ -7747,24 +7752,46 @@ bool GCodeGenerator::can_cross_perimeter(const Polyline& travel, bool offset)
               !(m_config.enforce_retract_first_layer && m_layer_index == 0)) &&
              m_config.fill_density.value > 0) ||
             m_config.avoid_crossing_perimeters) {
-            assert(m_last_object_layer == m_layer || dynamic_cast<const Layer*>(m_layer) ||
-                (dynamic_cast<const SupportLayer*>(m_layer) != nullptr && m_last_object_layer->print_z <= m_layer->print_z + EPSILON));
-            if (!m_last_object_layer) {
+            assert(m_last_object_layers.empty() ||
+                   (m_last_object_layers.back() == m_layer && m_layer != nullptr && dynamic_cast<const SupportLayer *>(m_layer) == nullptr) ||
+                    (dynamic_cast<const SupportLayer *>(m_layer) != nullptr && m_last_layers_z <= m_layer->print_z + EPSILON));
+            if (m_last_object_layers.empty()) {
                 // we didn't see any object yet (we are on the raft)
                 return true;
             }
-            if (m_layer_slices_offseted.layer != m_last_object_layer && m_last_object_layer != nullptr) {
-                m_layer_slices_offseted.layer    = m_last_object_layer;
+
+            assert(m_last_object_layers.back() == m_layer || dynamic_cast<const SupportLayer *>(m_layer));
+            if (!m_last_object_layers.empty() && m_layer_slices_offseted.last_layer != m_last_object_layers.back()) {
+                //note: if printing support, we need all the already printed objects layers.
+                // but if we're printing an object, we only need our island (that is in our layer) and don't need any other layer.
+                // is it worth it to recompute the slices each time ?
+                // TODO: I think it's possible to have the SliceIsland for each layer, and then loop over all of them
+                // only if for SupportLayer
+                m_layer_slices_offseted.last_layer = m_last_object_layers.back();
                 m_layer_slices_offseted.diameter = scale_t(EXTRUDER_CONFIG_WITH_DEFAULT(nozzle_diameter, 0.4)) / 2;
-                ExPolygons slices                = m_last_object_layer->lslices();
-                ExPolygons slices_offsetted = offset_ex(m_last_object_layer->lslices(), -m_layer_slices_offseted.diameter * 1.5f);
-                //also offset in the other side, to avoid a travel that may cross it from the exterior
-                append(slices_offsetted, offset_ex(m_last_object_layer->lslices(), m_layer_slices_offseted.diameter * .5f));
+                ExPolygons slices;
+                ExPolygons slices_offsetted;
+                bool found_our_layer = false;
+                // add all layers slices already printed & our current layer at this z into the slices
+                for (const Layer *layer : m_last_object_layers) {
+                    append(slices, layer->lslices());
+                    append(slices_offsetted, offset_ex(layer->lslices(), -m_layer_slices_offseted.diameter * 1.5f));
+                    // also offset in the other side, to avoid a travel that may cross it from the exterior
+                    append(slices_offsetted, offset_ex(layer->lslices(), m_layer_slices_offseted.diameter * .5f));
+                }
+                slices = union_ex(slices);
+                slices_offsetted = union_ex(slices_offsetted);
                 // remove top surfaces
-                for (const LayerRegion *reg : m_last_object_layer->regions()) {
-                    m_throw_if_canceled();
-                    slices_offsetted = diff_ex(slices_offsetted, to_expolygons(reg->fill_surfaces().filter_by_type_flag(SurfaceType::stPosTop)));
-                    slices           = diff_ex(slices, to_expolygons(reg->fill_surfaces().filter_by_type_flag(SurfaceType::stPosTop)));
+                for (const Layer *layer : m_last_object_layers) {
+                    for (const LayerRegion *reg : layer->regions()) {
+                        m_throw_if_canceled();
+                        slices_offsetted = diff_ex(slices_offsetted,
+                                                   to_expolygons(reg->fill_surfaces().filter_by_type_flag(
+                                                       SurfaceType::stPosTop)));
+                        slices = diff_ex(slices,
+                                         to_expolygons(
+                                             reg->fill_surfaces().filter_by_type_flag(SurfaceType::stPosTop)));
+                    }
                 }
                 // create bb for speeding things up.
                 m_layer_slices_offseted.slices.clear();
@@ -7811,24 +7838,27 @@ bool GCodeGenerator::can_cross_perimeter(const Polyline& travel, bool offset)
                     }
                 }
             }
-        //{
+        //if (is_approx(m_layer_slices_offseted.last_layer->print_z, 22.34, 0.01)) {
         //    static int aodfjiaqsdz = 0;
         //    std::stringstream stri;
-        //    stri << this->m_layer->id() << "_avoid_" <<"_"<<(aodfjiaqsdz++) << ".svg";
+        //    
+        //    stri << this->m_layer->id() << "_avoid_" <<
+        //        (dynamic_cast<const SupportLayer *>(m_layer) != nullptr ? "support": "object")
+        //        <<"_"<<(aodfjiaqsdz++) << ".svg";
         //    SVG svg(stri.str());
         //    svg.draw(m_layer->lslices(), "grey");
-        //    for (auto &entry : offset ? m_layer_slices_offseted.slices_offsetted : m_layer_slices_offseted.slices) {
+        //    for (SliceIsland &entry : offset ? m_layer_slices_offseted.slices_offsetted : m_layer_slices_offseted.slices) {
         //        bool checked  = (travel.size() > 1 && 
-        //            (entry.second.contains(travel.front()) ||
-        //            entry.second.contains(travel.back()) ||
-        //            entry.second.contains(travel.points[travel.size() / 2]) ||
-        //            entry.second.cross(travel) )
+        //            (entry.boundingbox.contains(travel.front()) ||
+        //            entry.boundingbox.contains(travel.back()) ||
+        //            entry.boundingbox.contains(travel.points[travel.size() / 2]) ||
+        //            entry.boundingbox.cross(travel) )
         //            );
-        //        svg.draw((entry.second.polygon().split_at_first_point()), checked?"green":"orange", scale_t(0.03));
+        //        svg.draw((entry.boundingbox.polygon().split_at_first_point()), checked?"green":"orange", scale_t(0.03));
         //        int diff_count =0;
         //        if(checked)
-        //            diff_count = diff_pl(travel, entry.first.contour).size();
-        //        svg.draw(to_polylines(entry.first), diff_count==0?"blue":diff_count==1?"teal":"yellow", scale_t(0.05));
+        //            diff_count = diff_pl(travel, entry.expolygon.contour).size();
+        //        svg.draw(to_polylines(entry.expolygon), diff_count==0?"blue":diff_count==1?"teal":"yellow", scale_t(0.05));
         //    }
         //    svg.draw(travel, "red", scale_t(0.05));
         //    svg.Close();
