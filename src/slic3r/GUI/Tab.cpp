@@ -3472,8 +3472,8 @@ void TabFilament::toggle_options()
         // bool fan_always_on = m_config->opt_bool("fan_always_on", 0);
 
         //get_field("max_fan_speed")->toggle_widget_enable(m_config->opt_float("fan_below_layer_time", 0) > 0);
-        toggle_option("min_print_speed", m_config->opt_float("slowdown_below_layer_time", 0) > 0);
-        toggle_option("max_speed_reduction", m_config->opt_float("slowdown_below_layer_time", 0) > 0);
+        toggle_option("min_print_speed", m_config->opt_float("slowdown_below_layer_time", 0) > 0, 0);
+        toggle_option("max_speed_reduction", m_config->opt_float("slowdown_below_layer_time", 0) > 0, 0);
 
         // hidden 'cooling', it's now deactivated.
              //for (auto el : { "min_fan_speed", "disable_fan_first_layers" })
@@ -3494,8 +3494,8 @@ void TabFilament::toggle_options()
     //if (m_active_page->title() == "Advanced")
     {
         bool multitool_ramming = m_config->opt_bool("filament_multitool_ramming", 0);
-        toggle_option("filament_multitool_ramming_volume", multitool_ramming);
-        toggle_option("filament_multitool_ramming_flow", multitool_ramming);
+        toggle_option("filament_multitool_ramming_volume", multitool_ramming, 0);
+        toggle_option("filament_multitool_ramming_flow", multitool_ramming, 0);
     }
 
     //if (m_active_page->title() == "Filament Overrides")
