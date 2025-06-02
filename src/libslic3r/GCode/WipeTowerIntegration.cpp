@@ -204,7 +204,6 @@ std::string WipeTowerIntegration::post_process_wipe_tower_moves(const WipeTower:
         // only pushed to the output when they differ from last time.
         // WT generator can override this by appending the never_skip_tag
         if (boost::starts_with(line, "G1 ")) {
-            std::string raw_line = line;
             bool never_skip = false;
             auto it = line.find(WipeTower::never_skip_tag());
             if (it != std::string::npos) {
@@ -254,8 +253,6 @@ std::string WipeTowerIntegration::post_process_wipe_tower_moves(const WipeTower:
                 line = oss.str() + line;
                 old_pos = transformed_pos;
             }
-            line += "; raw: ";
-            line += raw_line;
         } else if (boost::starts_with(line, "[toolchange_gcode_from_wipe_tower_generator]")) {
             assert(new_extruder_id == tcr.new_tool);
             const bool needs_toolchange = gcodegen.writer().need_toolchange(new_extruder_id);
