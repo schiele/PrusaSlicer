@@ -2951,11 +2951,16 @@ std::tuple<std::vector<ExtrusionPaths>, ExPolygons, ExPolygons> generate_extra_p
                 perimeter_polygon = union_ex(perimeter_polygon, anchoring);
                 perimeter_polygon = intersection_ex(offset_ex(perimeter_polygon, -overhang_scaled_spacing), expanded_overhang_to_cover);
 
+                //TODO: cut the extrusions to have normal flow in the supported area.
                 if (perimeter_polygon.empty()) { // fill possible gaps of single extrusion width
                     ExPolygons shrinked = intersection_ex(offset_ex(prev, -0.3 * overhang_scaled_spacing), expanded_overhang_to_cover);
                     if (!shrinked.empty())
-                        extrusion_paths_append(overhang_region, reconnect_polylines(perimeter, overhang_scaled_spacing, scaled_resolution),
-                                               ExtrusionAttributes{ ExtrusionRole::OverhangPerimeter, params.overhang_flow, OverhangAttributes{1, 2, 0} }, false);
+                        extrusion_paths_append(overhang_region,
+                                               reconnect_polylines(perimeter, overhang_scaled_spacing,
+                                                                   scaled_resolution),
+                                               ExtrusionAttributes{ExtrusionRole::OverhangPerimeter,
+                                                                   params.overhang_flow, OverhangAttributes{1, 2, 0}},
+                                               false);
 
                     Polylines  fills;
                     ExPolygons gap = shrinked.empty() ? offset_ex(prev, overhang_scaled_spacing * 0.5) : shrinked;
@@ -2965,13 +2970,19 @@ std::tuple<std::vector<ExtrusionPaths>, ExPolygons, ExPolygons> generate_extra_p
                     }
                     if (!fills.empty()) {
                         fills = intersection_pl(fills, shrinked_overhang_to_cover);
-                        extrusion_paths_append(overhang_region, reconnect_polylines(fills, overhang_scaled_spacing, scaled_resolution),
-                                               ExtrusionAttributes{ ExtrusionRole::OverhangPerimeter, params.overhang_flow, OverhangAttributes{1, 2, 0} }, false);
+                        extrusion_paths_append(overhang_region,
+                                               reconnect_polylines(fills, overhang_scaled_spacing, scaled_resolution),
+                                               ExtrusionAttributes{ExtrusionRole::OverhangPerimeter,
+                                                                   params.overhang_flow, OverhangAttributes{1, 2, 0}},
+                                               false);
                     }
                     break;
                 } else {
-                    extrusion_paths_append(overhang_region, reconnect_polylines(perimeter, overhang_scaled_spacing, scaled_resolution),
-                                           ExtrusionAttributes{ExtrusionRole::OverhangPerimeter, params.overhang_flow, OverhangAttributes{1, 2, 0} }, false);
+                    extrusion_paths_append(overhang_region,
+                                           reconnect_polylines(perimeter, overhang_scaled_spacing, scaled_resolution),
+                                           ExtrusionAttributes{ExtrusionRole::OverhangPerimeter, params.overhang_flow,
+                                                               OverhangAttributes{1, 2, 0}},
+                                           false);
                 }
 
                 if (intersection(perimeter_polygon, real_overhang).empty()) { continuation_loops--; }
@@ -3093,7 +3104,11 @@ std::tuple<std::vector<ExtrusionPaths>, ExPolygons, ExPolygons> generate_extra_p
 
     inset_overhang_area_left_unfilled = union_ex(inset_overhang_area_left_unfilled);
     
-    return {extra_perims, ensure_valid(diff_ex(inset_overhang_area, inset_overhang_area_left_unfilled), coord_t(scaled_resolution)), ensure_valid(union_ex(inset_anchors, inset_overhang_area_left_unfilled), coord_t(scaled_resolution))};
+    return {extra_perims,
+            ensure_valid(
+                diff_ex(inset_overhang_area, inset_overhang_area_left_unfilled) /*, coord_t(scaled_resolution)*/),
+            ensure_valid(
+                union_ex(inset_anchors, inset_overhang_area_left_unfilled) /*, coord_t(scaled_resolution)*/)};
 }
 
 #ifdef ARACHNE_DEBUG
@@ -4022,7 +4037,11 @@ void PerimeterGenerator::process(// Input:
 
         // simplify infill contours according to resolution
         Polygons not_filled_p;
-        coord_t scaled_resolution_infill = scale_t(std::max(params.print_config.resolution.value, params.print_config.resolution_internal / 4));
+        coord_t scaled_resolution_infill =
+            std::min(params.get_solid_infill_spacing() / 16,
+                     std::max(SCALED_EPSILON,
+                              scale_t(std::max(params.print_config.resolution_internal.value,
+                                               params.print_config.resolution.value))));
         for (const ExPolygon& ex : surface_process_result.inner_perimeter)
             ex.simplify_p(scaled_resolution_infill, not_filled_p);
         ExPolygons not_filled_exp = union_ex(not_filled_p);
@@ -4045,7 +4064,7 @@ void PerimeterGenerator::process(// Input:
             //    ex.simplify_p(scale_t(std::max(params.print_config.resolution.value, params.print_config.resolution_internal / 4)), &not_filled_p);
             //gap_fill_exps = union_ex(not_filled_p);
             gap_fill_exps = surface_process_result.gap_srf;
-            ensure_valid(gap_fill_exps, scale_t(std::max(params.print_config.resolution.value, params.print_config.resolution_internal / 4)));
+            ensure_valid(gap_fill_exps, scaled_resolution_infill);
             gap_fill_exps = offset_ex(gap_fill_exps, -infill_peri_overlap);
             infill_exp = diff_ex(infill_exp, gap_fill_exps);
         }
@@ -4206,8 +4225,9 @@ void PerimeterGenerator::process(// Input:
          //       svg.Close();
          //   }
         // append infill areas to fill_surfaces
-        append(fill_surfaces, ensure_valid(std::move(infill_exp), scaled_resolution_infill));
-        append(fill_no_overlap, ensure_valid(std::move(polyWithoutOverlap), scaled_resolution_infill));
+        coord_t scaled_resolution = get_resolution(0, false, &surface);
+        append(fill_surfaces, ensure_valid(std::move(infill_exp), scaled_resolution));
+        append(fill_no_overlap, ensure_valid(std::move(polyWithoutOverlap), scaled_resolution));
         
 #ifdef _DEBUGINFO
             loops->visit(LoopAssertVisitor());
@@ -4626,6 +4646,13 @@ void grow_contour_only(std::vector<ExPolygonAsynch> &unmoveable_holes, coordf_t 
                                                         ClipperLib::JoinType::jtMiter),
                                         (round_peri ? min_round_spacing : 3));
         //we shrunk -> new peri can appear, holes can disapear, but there is already none.
+        if (ok_contours.empty()) {
+            // can't grow.
+            unmoveable_holes.erase(unmoveable_holes.begin() + idx_unmoveable);
+            idx_unmoveable--;
+            unmoveable_holes_size--;
+            continue;
+        }
         for (const Polygon &p : ok_contours) assert(p.is_counter_clockwise());
         //grow holes to right size
         assert(-unmoveable_hole.offset_holes_inner + spacing/2 - overlap_spacing > 0);
@@ -4642,7 +4669,12 @@ void grow_contour_only(std::vector<ExPolygonAsynch> &unmoveable_holes, coordf_t 
         offsetted_holes = union_(offsetted_holes);
         for (const Polygon &p : offsetted_holes) assert(p.is_counter_clockwise());
 
-        for (Polygon simple_contour : ok_contours) {
+        assert(!ok_contours.empty());
+        auto my_type = unmoveable_hole.type;
+        auto my_offset_holes_inner = unmoveable_hole.offset_holes_inner;
+        auto my_offset_holes_outer = unmoveable_hole.offset_holes_outer;
+        {
+            Polygon &simple_contour = ok_contours[0];
             // remove holes
             ExPolygons test_expoly = diff_ex(Polygons{simple_contour}, offsetted_holes);
             if (overlap_spacing != 0) {
@@ -4660,13 +4692,40 @@ void grow_contour_only(std::vector<ExPolygonAsynch> &unmoveable_holes, coordf_t 
                 // a hole cut it, or clear it.
                 for (ExPolygon &new_expoly : test_expoly) {
                     ExPolygons new_unmoveable_holes = diff_ex(Polygons{new_expoly.contour}, original_holes);
-                    for(ExPolygon & new_unmoveable_hole : new_unmoveable_holes)
-                        unmoveable_holes.push_back({unmoveable_hole.type, new_unmoveable_hole, -spacing / 2, spacing / 2,
-                                                unmoveable_hole.offset_holes_inner, unmoveable_hole.offset_holes_outer});
+                    for (ExPolygon &new_unmoveable_hole : new_unmoveable_holes)
+                        unmoveable_holes.push_back({my_type, new_unmoveable_hole, -spacing / 2,
+                                                    spacing / 2, my_offset_holes_inner,
+                                                    my_offset_holes_outer});
                 }
                 unmoveable_holes.erase(unmoveable_holes.begin() + idx_unmoveable);
                 idx_unmoveable--;
                 unmoveable_holes_size--;
+            }
+        }
+        // expoly and unmoveable_hole are now invalidated.
+        // add the others
+        for (size_t idx_contour = 1; idx_contour < ok_contours.size(); idx_contour++) {
+            Polygon &simple_contour = ok_contours[idx_contour];
+            // remove holes
+            ExPolygons test_expoly = diff_ex(Polygons{simple_contour}, offsetted_holes);
+            if (overlap_spacing != 0) {
+                test_expoly = offset_ex(test_expoly, overlap_spacing);
+            }
+            if (test_expoly.size() == 1) {
+                // no merge, then i can use the right hole size
+                ExPolygons new_unmoveable_hole = diff_ex(Polygons{test_expoly[0].contour}, original_holes);
+                // diff with smaller holes, so it has to be only one contour.
+                assert(new_unmoveable_hole.size() == 1);
+                unmoveable_holes.push_back({my_type, new_unmoveable_hole[0], -spacing / 2, spacing / 2,
+                                            my_offset_holes_inner, my_offset_holes_outer});
+            } else {
+                // a hole cut it, or clear it.
+                for (ExPolygon &new_expoly : test_expoly) {
+                    ExPolygons new_unmoveable_holes = diff_ex(Polygons{new_expoly.contour}, original_holes);
+                    for (ExPolygon &new_unmoveable_hole : new_unmoveable_holes)
+                        unmoveable_holes.push_back({my_type, new_unmoveable_hole, -spacing / 2,
+                                                    spacing / 2, my_offset_holes_inner, my_offset_holes_outer});
+                }
             }
         }
         //we shrink perimeter, so it doesn't create holes, so we don't have anythign to add to next_onion.
