@@ -791,10 +791,7 @@ void GCodeWriter::_extrude_e(GCodeFormatter &w, double dE)
     bool is_extrude  = std::abs(delta_e) > 0.00000001;
     this->m_de_left += dE - delta_e;
     if (is_extrude) {
-        double delta = w.emit_e(m_extrusion_axis, e_to_write);
-        if((delta < 0.00000000001) & (delta > -0.00000000001)) delta = 0;
-        assert(delta == 0 ); // shoulde be already taken into account by m_tool->extrude
-        this->m_de_left += delta;
+        w.emit_e(m_extrusion_axis, e_to_write);
     }
 }
 
