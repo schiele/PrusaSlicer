@@ -1,4 +1,4 @@
 BUILD: version_2.9.2-19-gbd8f4f10e1
 system: rolling
 date: Thu Jun 26 12:06:06 PM CEST 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
