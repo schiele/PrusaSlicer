@@ -129,14 +129,9 @@ public:
     void remove_point_too_close(const coord_t tolerance);
 
 #ifdef _DEBUGINFO
-    void assert_valid() const override {
-        assert(size() > 2);
-        for (size_t i_pt = 1; i_pt < size(); ++i_pt)
-            release_assert(!points[i_pt - 1].coincides_with_epsilon(points[i_pt]));
-        release_assert(!points.front().coincides_with_epsilon(points.back()));
-    }
+    void assert_valid() const override;
 #else
-    void assert_valid() const {}
+    void assert_valid() const;
 #endif
 
     using iterator = Points::iterator;
