@@ -327,7 +327,7 @@ inline OutputIterator douglas_peucker_int(InputIterator begin, InputIterator end
                                 dist_sq_d = vtemp_d.squaredNorm();
                                 if (normal_dist > std::numeric_limits<int32_t>::max()) {
                                     dist_sq = std::numeric_limits<int64_t>::max();
-                                    release_assert(false);
+                                    assert(false);
                                 } else {
                                     dist_sq = 1 + squared_int_norm(vtemp);
                                     if (dist_sq > max_dist_sq) {
