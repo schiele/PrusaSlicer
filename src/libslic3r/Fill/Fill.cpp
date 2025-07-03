@@ -681,7 +681,8 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
         //ensure_valid(surface_fill.expolygons, surface_fill.params.fill_resolution);
         ensure_valid(surface_fill.expolygons);
         surface_fill.expolygons = simplify_polygons_ex(to_polygons(surface_fill.expolygons));
-        assert_valid(surface_fill.expolygons); //TODO: uncomment when union_safety_offset_ex will be improve
+        ensure_valid(surface_fill.expolygons);
+        //assert_valid(surface_fill.expolygons); //TODO: uncomment when union_safety_offset_ex will be improve
     }
 
     return surface_fills;

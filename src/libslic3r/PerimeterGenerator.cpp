@@ -1576,6 +1576,11 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_extrusions(const Paramet
         if (extrusion->is_zero_length()) {
             continue;
         }
+        // possible, i guess a kind of gap fill ?
+        if (!extrusion->is_closed && extrusion->junctions.front().p == extrusion->junctions.back().p) {
+            //transform to loop
+            extrusion->is_closed = true;
+        }
 
         const bool    is_external = extrusion->inset_idx == 0;
         ExtrusionLoopRole loop_role = ExtrusionLoopRole::elrDefault;
@@ -3391,7 +3396,7 @@ ProcessSurfaceResult PerimeterGenerator::process_arachne(const Parameters &param
     // fuzzify
     if (params.layer->id() > 0 && params.config.fuzzy_skin != FuzzySkinType::None) {
         std::vector<PerimeterGeneratorArachneExtrusion*> closed_loop_extrusions;
-        for (PerimeterGeneratorArachneExtrusion& extrusion : ordered_extrusions)
+        for (PerimeterGeneratorArachneExtrusion &extrusion : ordered_extrusions) {
             if (extrusion.extrusion->inset_idx == 0 || params.config.fuzzy_skin == FuzzySkinType::All) {
                 if (extrusion.extrusion->is_closed && params.config.fuzzy_skin == FuzzySkinType::External) {
                     closed_loop_extrusions.emplace_back(&extrusion);
@@ -3399,6 +3404,7 @@ ProcessSurfaceResult PerimeterGenerator::process_arachne(const Parameters &param
                     extrusion.fuzzify = true;
                 }
             }
+        }
 
         if (params.config.fuzzy_skin == FuzzySkinType::External) {
             ClipperLib_Z::Paths loops_paths;
@@ -5311,7 +5317,7 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
             loops.append(peri_entities);
         }
     } // for each loop of an island
-#if _DEBUG
+#ifdef _DEBUGINFO
     LoopAssertVisitor visitor;
     loops.visit(visitor);
 #endif
@@ -5473,6 +5479,9 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
         }
     }
 
+#ifdef _DEBUGINFO
+    loops.visit(LoopAssertVisitor());
+#endif
     return results;
 }
 
