@@ -38,6 +38,7 @@ public:
     {}
 
     void reset() { this->defined = false; this->min = PointType::Zero(); this->max = PointType::Zero(); }
+    bool empty() const { return min == max; }
     void merge(const PointType &point);
     void merge(const PointsType &points);
     void merge(const BoundingBoxBase<PointType, PointsType> &bb);

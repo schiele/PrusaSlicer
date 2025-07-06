@@ -4356,8 +4356,8 @@ void ObjectList::change_part_type()
         types.emplace_back(ModelVolumeType::SEAM_POSITION_CENTER_Z);
         //names.Add(_L("Seam Position (inside)"));
         //types.emplace_back(ModelVolumeType::SEAM_POSITION_INSIDE_CENTER);
-        //names.Add(_L("Seam Position (inside shape)"));
-        //types.emplace_back(ModelVolumeType::SEAM_POSITION_INSIDE);
+        names.Add(_L("Seam Position (inside shape)"));
+        types.emplace_back(ModelVolumeType::SEAM_POSITION_INSIDE);
         names.Add(_L("Brim Patch"));
         types.emplace_back(ModelVolumeType::BRIM_PATCH);
         names.Add(_L("Brim Blocker"));
