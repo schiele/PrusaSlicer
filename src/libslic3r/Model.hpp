@@ -1298,7 +1298,8 @@ public:
 
     enum class LoadAttribute : int {
         AddDefaultInstances,
-        CheckVersion
+        CheckVersion,
+        UnbakeTransformation
     };
     using LoadAttributes = enum_bitmask<LoadAttribute>;
 

@@ -68,6 +68,8 @@ enum FileType
     FT_STEP,
     FT_AMF,
     FT_3MF,
+    FT_3MF_TRSF, //3mf without baked transformation in mesh
+    FT_3MF_UNKBAKE, //3mf with baked transformation in mesh, and will be unbake
     FT_GCODE,
     FT_MODEL,
     FT_PROJECT,
@@ -291,7 +293,7 @@ public:
     void            freecad_script_dialog();
     void            tiled_canvas_dialog();
     //void            support_tuning(); //have to do multiple, in a submenu
-    void            load_project(wxWindow *parent, wxString& input_file) const;
+    bool            load_project(wxWindow *parent, wxString& input_file) const;
     void            import_model(wxWindow *parent, wxArrayString& input_files) const;
     void            import_model_hueforge(wxWindow* parent, wxString& input_file) const;
     void            import_zip(wxWindow* parent, wxString& input_file) const;

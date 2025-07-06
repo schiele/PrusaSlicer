@@ -163,8 +163,7 @@ Model Model::read_from_file(const std::string& input_file, DynamicPrintConfig* c
     else if (boost::algorithm::iends_with(input_file, ".amf") || boost::algorithm::iends_with(input_file, ".amf.xml"))
         result = load_amf(input_file.c_str(), config, config_substitutions, &model, options & LoadAttribute::CheckVersion);
     else if (boost::algorithm::iends_with(input_file, ".3mf") || boost::algorithm::iends_with(input_file, ".zip"))
-        //FIXME options & LoadAttribute::CheckVersion ? 
-        result = load_3mf(input_file.c_str(), *config, *config_substitutions, &model, false);
+        result = load_3mf(input_file.c_str(), *config, *config_substitutions, &model, options & LoadAttribute::CheckVersion, options & LoadAttribute::UnbakeTransformation);
     else if (boost::algorithm::iends_with(input_file, ".svg"))
         result = load_svg(input_file, model);
     else
@@ -199,7 +198,7 @@ Model Model::read_from_archive(const std::string& input_file, DynamicPrintConfig
 
     bool result = false;
     if (boost::algorithm::iends_with(input_file, ".3mf") || boost::algorithm::iends_with(input_file, ".zip"))
-        result = load_3mf(input_file.c_str(), *config, *config_substitutions, &model, options & LoadAttribute::CheckVersion);
+        result = load_3mf(input_file.c_str(), *config, *config_substitutions, &model, options & LoadAttribute::CheckVersion, options & LoadAttribute::UnbakeTransformation);
     else if (boost::algorithm::iends_with(input_file, ".zip.amf"))
         result = load_amf(input_file.c_str(), config, config_substitutions, &model, options & LoadAttribute::CheckVersion);
     else
