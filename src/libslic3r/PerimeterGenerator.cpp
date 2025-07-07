@@ -6156,15 +6156,17 @@ ExtrusionLoop PerimeterGenerator::_traverse_and_join_loops(const Parameters &   
                 assert(outer_start->polyline.back() == outer_end->polyline.front());
             } else {
                 tosplit.split_at(nearest.outter_best, outer_start->polyline, outer_end->polyline);
-                assert(outer_start->polyline.back() == outer_end->polyline.front());
+                assert(outer_start->polyline.back() == outer_end->polyline.front() || outer_end->empty());
                 if (outer_start->polyline.back() != nearest.outter_best) {
                     if (outer_start->polyline.back().coincides_with_epsilon(nearest.outter_best)) {
                         outer_start->polyline.set_back(nearest.outter_best);
-                        outer_end->polyline.set_front(nearest.outter_best);
+                        if (!outer_end->empty())
+                            outer_end->polyline.set_front(nearest.outter_best);
                     }
                 } else {
                     outer_start->polyline.append(nearest.outter_best);
-                    outer_end->polyline.append_before(nearest.outter_best);
+                    if (!outer_end->empty())
+                        outer_end->polyline.append_before(nearest.outter_best);
                 }
             }
             Polyline to_reduce = outer_start->polyline.to_polyline();
