@@ -1706,7 +1706,8 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_extrusions(const Paramet
         bool has_overhang = false;
         if (params.config.overhangs_speed_enforce.value > 0) {
             for (const ExtrusionPath& path : paths) {
-                if (path.role().is_overhang()) {
+                assert(!path.role().is_overhang() || path.attributes().overhang_attributes);
+                if (path.role().is_overhang() && path.attributes().overhang_attributes->start_distance_from_prev_layer >= 1) {
                     has_overhang = true;
                     break;
                 }
@@ -1716,6 +1717,7 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_extrusions(const Paramet
                 for (ExtrusionPath& path : paths) {
                     assert(path.role().is_perimeter());
                     path.set_role(path.role() | ExtrusionRoleModifier::ERM_Bridge);
+                    path.overhang_attributes_mutable() = OverhangAttributes{1, 2, 0};
                 }
             }
         }
@@ -2566,6 +2568,9 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_arachne(const Parameters &  
         Point mean = (paths.front().first_point() + paths.back().last_point()) / 2;
         paths.front().polyline.set_front(mean);
         paths.back().polyline.set_back(mean);
+    }
+    for (const ExtrusionPath &path : paths) {
+        assert (!path.role().is_overhang() || path.attributes().overhang_attributes);
     }
     return paths;
 }
