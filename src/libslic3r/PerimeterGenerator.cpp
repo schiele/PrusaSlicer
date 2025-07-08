@@ -593,7 +593,8 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_loops_classic(const Para
             bool has_overhang = false;
             if (params.config.overhangs_speed_enforce.value > 0) {
                 for (const ExtrusionPath& path : eloop->paths) {
-                    if (path.role().is_overhang()) {
+                    assert(!path.role().is_overhang() || path.attributes().overhang_attributes);
+                    if (path.role().is_overhang() && path.attributes().overhang_attributes->start_distance_from_prev_layer >= 1) {
                         has_overhang = true;
                         break;
                     }
@@ -601,14 +602,11 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_loops_classic(const Para
                 if (has_overhang || ( count_since_overhang >= 0 && params.config.overhangs_speed_enforce.value > count_since_overhang)) {
                     //enforce
                     for (ExtrusionPath& path : eloop->paths) {
-                        if (path.role() == ExtrusionRole::Perimeter) {
-                            path.set_role(ExtrusionRole::OverhangPerimeter);
-                        } else if (path.role() == ExtrusionRole::ExternalPerimeter) {
-                            path.set_role(ExtrusionRole::OverhangExternalPerimeter);
-                        }
+                        assert(path.role().is_perimeter());
+                        path.set_role(path.role() | ExtrusionRoleModifier::ERM_Bridge);
+                        path.overhang_attributes_mutable() = OverhangAttributes{1, 2, 0};
                     }
                 }
-
             }
 #if _DEBUG
             for(auto ee : coll) if(ee) ee->visit(LoopAssertVisitor());
