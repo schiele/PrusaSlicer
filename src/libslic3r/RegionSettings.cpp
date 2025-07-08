@@ -5,6 +5,7 @@
 #include "RegionSettings.hpp"
 
 #include "Print.hpp"
+#include "ClipperUtils.hpp"
 
 namespace Slic3r {
 

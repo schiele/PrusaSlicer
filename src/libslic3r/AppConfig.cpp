@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 #include <stdexcept>
+#include <regex>
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/filesystem/directory.hpp>

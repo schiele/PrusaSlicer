@@ -20,6 +20,7 @@
 #include <wx/sizer.h>
 #include <wx/statbmp.h>
 #include <wx/stattext.h>
+#include <wx/scrolwin.h>
 
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Utils.hpp"

@@ -16,6 +16,11 @@
 #include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/log/trivial.hpp>
+#include <boost/nowide/fstream.hpp>
+#include <boost/nowide/cstdio.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ini_parser.hpp>
 #include <curl/curl.h>
 #include <curl/curl.h>
 
