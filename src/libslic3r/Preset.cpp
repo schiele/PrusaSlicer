@@ -770,6 +770,7 @@ static std::vector<std::string> s_Preset_print_options {
         "perimeter_loop",
         "perimeter_loop_seam",
         "infill_connection", "infill_connection_solid", "infill_connection_top", "infill_connection_bottom", "infill_connection_bridge",
+        "infill_filled_bottom", "infill_filled_solid", "infill_filled_top",
         "first_layer_infill_speed",
         // thin wall
         "thin_walls",

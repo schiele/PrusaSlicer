@@ -184,8 +184,10 @@ void CalibrationTempDialog::create_geometry(wxCommandEvent& event_args) {
     model.objects[objs_idx[0]]->config.set_key_value("thin_perimeters", new ConfigOptionPercent(100));
     model.objects[objs_idx[0]]->config.set_key_value("layer_height", new ConfigOptionFloat(nozzle_diameter / 2));
     model.objects[objs_idx[0]]->config.set_key_value("fill_density", new ConfigOptionPercent(7));
-    model.objects[objs_idx[0]]->config.set_key_value("solid_fill_pattern", new ConfigOptionEnum<InfillPattern>(ipRectilinearWGapFill));
-    model.objects[objs_idx[0]]->config.set_key_value("top_fill_pattern", new ConfigOptionEnum<InfillPattern>(ipRectilinearWGapFill));
+    model.objects[objs_idx[0]]->config.set_key_value("solid_fill_pattern", new ConfigOptionEnum<InfillPattern>(ipRectilinear));
+    model.objects[objs_idx[0]]->config.set_key_value("infill_filled_solid", new ConfigOptionBool(true));
+    model.objects[objs_idx[0]]->config.set_key_value("top_fill_pattern", new ConfigOptionEnum<InfillPattern>(ipRectilinear));
+    model.objects[objs_idx[0]]->config.set_key_value("infill_filled_bottom", new ConfigOptionBool(true));
     //disable ironing post-process, it only slow down things
     model.objects[objs_idx[0]]->config.set_key_value("ironing", new ConfigOptionBool(false));
 

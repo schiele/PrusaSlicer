@@ -417,18 +417,11 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig* config)
 
     bool have_gap_fill = !have_arachne;
     toggle_field("gap_fill_enabled", have_gap_fill);
+    have_gap_fill &= config->opt_bool("gap_fill_enabled");
     for (auto el : { "gap_fill_last"})
-        toggle_field(el, have_gap_fill && config->opt_bool("gap_fill_enabled"));
-    if (have_gap_fill) {
-        have_gap_fill = config->opt_bool("gap_fill_enabled");
-        for (InfillPattern ip : {config->opt_enum<InfillPattern>("bottom_fill_pattern"),
-                                 config->opt_enum<InfillPattern>("solid_fill_pattern"),
-                                 config->opt_enum<InfillPattern>("top_fill_pattern")}) {
-            if (ip == InfillPattern::ipConcentricGapFill || ip == InfillPattern::ipRectilinearWGapFill ||
-                ip == InfillPattern::ipMonotonicWGapFill) {
-                have_gap_fill = true;
-            }
-        }
+        toggle_field(el, have_gap_fill);
+    if (!have_gap_fill) {
+        have_gap_fill = config->opt_bool("infill_filled_bottom") || config->opt_bool("infill_filled_solid") || config->opt_bool("infill_filled_top");
     }
     for (auto el : { "gap_fill_extension", "gap_fill_max_width", "gap_fill_min_area", "gap_fill_min_length", "gap_fill_min_width" })
         toggle_field(el, have_gap_fill);

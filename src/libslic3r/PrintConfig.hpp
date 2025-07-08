@@ -125,13 +125,13 @@ enum class FuzzySkinType {
 };
 
 enum InfillPattern : uint8_t{
-    ipRectilinear, ipRectilinearWGapFill,
-    ipMonotonic, ipMonotonicWGapFill,
+    ipRectilinear,
+    ipMonotonic,
     ipAlignedRectilinear,
     ipGrid,
     ipTriangles, ipStars, ipCubic,
     ipLine, ipMonotonicLines,
-    ipConcentric, ipConcentricGapFill,
+    ipConcentric,
     ipHoneycomb, ip3DHoneycomb,
     ipGyroid,
     ipHilbertCurve, ipArchimedeanChords, ipOctagramSpiral,
@@ -952,6 +952,9 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBool,                 infill_dense))
     ((ConfigOptionEnum<DenseInfillAlgo>,  infill_dense_algo))
     ((ConfigOptionBool,                 infill_first))
+    ((ConfigOptionBool,                 infill_filled_bottom))
+    ((ConfigOptionBool,                 infill_filled_solid))
+    ((ConfigOptionBool,                 infill_filled_top))
     ((ConfigOptionFloatOrPercent,       internal_bridge_acceleration))
     ((ConfigOptionBool,                 internal_bridge_expansion))
     ((ConfigOptionFloatOrPercent,       internal_bridge_min_width))

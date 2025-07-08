@@ -198,18 +198,21 @@ group:title_width$0:Infill
 	line:_
 		setting:label$Connection length:label_width$25:sidetext_width$7:width$12:infill_anchor_max
 		setting:label$Perimeter anchor:sidetext_width$7:width$12:infill_anchor
-		end_line
+	end_line
 	line:_
 		setting:label_left:label_width$20:label$Solid:solid_fill_pattern
 		setting:label$_:width$18:infill_connection_solid
+		setting:label$Gap Fill:infill_filled_solid
 	end_line
 	line:_
 		setting:tags$Advanced$Expert$Prusa:label_left:label_width$20:label$Top:top_fill_pattern
 		setting:label$_:width$18:infill_connection_top
+		setting:label$Gap Fill:infill_filled_top
 	end_line
 	line:_
 		setting:label_left:label_width$20:label$Bottom:bottom_fill_pattern
 		setting:label$_:width$18:infill_connection_bottom
+		setting:label$Gap Fill:infill_filled_bottom
 	end_line
 	line:_
 		setting:label_left:label_width$20:label$Bridge:bridge_fill_pattern

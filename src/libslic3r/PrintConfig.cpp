@@ -169,10 +169,8 @@ CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(FuzzySkinType)
 
 static const t_config_enum_values s_keys_map_InfillPattern {
     {"rectilinear",         ipRectilinear},
-    {"rectilineargapfill",  ipRectilinearWGapFill},
     {"alignedrectilinear",  ipAlignedRectilinear},
     {"monotonic",           ipMonotonic},
-    {"monotonicgapfill",    ipMonotonicWGapFill},
     {"grid",                ipGrid},
     {"triangles",           ipTriangles},
     {"stars",               ipStars},
@@ -180,7 +178,6 @@ static const t_config_enum_values s_keys_map_InfillPattern {
     {"line",                ipLine},
     {"monotoniclines",      ipMonotonicLines },
     {"concentric",          ipConcentric},
-    {"concentricgapfill",   ipConcentricGapFill},
     {"honeycomb",           ipHoneycomb},
     {"3dhoneycomb",         ip3DHoneycomb},
     {"gyroid",              ipGyroid},
@@ -1530,7 +1527,7 @@ void PrintConfigDef::init_fff_params()
     });
 
     def->mode = comExpert | comSuSi;
-    def->set_default_value(new ConfigOptionEnum<InfillPattern>(ipRectilinearWGapFill));
+    def->set_default_value(new ConfigOptionEnum<InfillPattern>(ipRectilinear));
 
     def = this->add("enforce_full_fill_volume", coBool);
     def->label = L("Enforce 100% fill volume");
@@ -3641,6 +3638,27 @@ void PrintConfigDef::init_fff_params()
     def->is_vector_extruder = true;
     def->can_be_disabled = true;
     def->set_default_value(disable_default_option(new ConfigOptionInts({ 100 })));
+
+    def = this->add("infill_filled_bottom", coBool);
+    def->label = L("GapFill for bottom infill areas");
+    def->category = OptionCategory::infill;
+    def->tooltip = L("On bottom infill areas, add gapfill where the infill pattern can't go.");
+    def->mode = comExpert | comSuSi;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("infill_filled_solid", coBool);
+    def->label = L("GapFill for solid infill areas");
+    def->category = OptionCategory::infill;
+    def->tooltip = L("On solid infill areas, add gapfill where the infill pattern can't go.");
+    def->mode = comExpert | comSuSi;
+    def->set_default_value(new ConfigOptionBool(true));
+
+    def = this->add("infill_filled_top", coBool);
+    def->label = L("GapFill for top infill areas");
+    def->category = OptionCategory::infill;
+    def->tooltip = L("On top infill areas, add gapfill where the infill pattern can't go.");
+    def->mode = comExpert | comSuSi;
+    def->set_default_value(new ConfigOptionBool(false));
 
     def = this->add("infill_first", coBool);
     def->label = L("Infill before perimeters");
@@ -9014,6 +9032,7 @@ void _handle_legacy(std::unordered_map<t_config_option_key, std::pair<t_config_o
         } else if ("near" == value() || "nearest" == value()) {
             value() = "cost";
             // we change the cost
+            //note: modifying dict invalidate opt_key() & value()
             dict["seam_angle_cost"] = {"seam_angle_cost", "50%"};
             dict["seam_travel_cost"] = {"seam_travel_cost", "50%"};
         }
@@ -9027,6 +9046,7 @@ void _handle_legacy(std::unordered_map<t_config_option_key, std::pair<t_config_o
         opt_key() = "overhangs_width_speed";
         if (value() == "1") {
             value() = "50%";
+            //note: modifying dict invalidate opt_key() & value()
             dict["overhangs_width"] = {"overhangs_width", "50%"};
         } else {
             value() = "!50%";
@@ -9097,34 +9117,41 @@ void _handle_legacy(std::unordered_map<t_config_option_key, std::pair<t_config_o
     //}
 
     // In PrusaSlicer 2.3.0-alpha0 the "monotonic" infill was introduced, which was later renamed to "monotonous".
-    for_ech_entry(dict, {"top_fill_pattern", "bottom_fill_pattern", "fill_pattern", "solid_fill_pattern", "bridge_fill_pattern", "support_material_interface_pattern"},
-                  [](Key &opt_key, Val &value) {
+    for_ech_entry(dict,
+                  {"top_fill_pattern", "bottom_fill_pattern", "fill_pattern", "solid_fill_pattern",
+                   "bridge_fill_pattern", "support_material_interface_pattern",
+                   "support_material_top_interface_pattern", "support_material_bottom_interface_pattern"},
+                  [&dict](Key &opt_key, Val &value) {
         // gcode_label_objects used to be a bool (the behavior was nothing or "octoprint"), it is
         // and enum since PrusaSlicer 2.6.2.
         if (value == "monotonous") {
             value = "monotonic";
         }
-    });
-
-    // some changes has occurs between rectilineargapfill and monotonicgapfill. Set them at the right value() for each type
-    for_ech_entry(dict, {"top_fill_pattern", "bottom_fill_pattern"},
-                  [](Key &opt_key, Val &value) {
-        // gcode_label_objects used to be a bool (the behavior was nothing or "octoprint"), it is
-        // and enum since PrusaSlicer 2.6.2.
-        if (value == "rectilineargapfill") {
-            value = "monotonicgapfill";
-        }
-    });
-    for_ech_entry(dict, {"fill_pattern", "support_material_interface_pattern", "support_material_top_interface_pattern", "support_material_bottom_interface_pattern"},
-                  [](Key &opt_key, Val &value) {
-        // gcode_label_objects used to be a bool (the behavior was nothing or "octoprint"), it is
-        // and enum since PrusaSlicer 2.6.2.
+        bool set_gapfill =false;
         if (value == "rectilineargapfill") {
             value = "rectilinear";
-        } else if (value == "monotonicgapfill") {
-            value = "monotonic";
+            set_gapfill = true;
+        }
+        if (value == "monotonicgapfill") {
+            value="monotonic";
+            set_gapfill = true;
+        }
+        if (value == "concentricgapfill") {
+            value="concentric";
+            set_gapfill = true;
+        }
+        if (set_gapfill) {
+            if (opt_key == "bottom_fill_pattern") {
+                //note: modifying dict invalidate opt_key & value
+                dict["infill_filled_bottom"] = {"infill_filled_bottom", "1"};
+            } else if (opt_key == "solid_fill_pattern") {
+                dict["infill_filled_solid"] = {"infill_filled_solid", "1"};
+            } else if (opt_key == "top_fill_pattern") {
+                dict["infill_filled_top"] = {"infill_filled_top", "1"};
+            }
         }
     });
+
     //in ps 2.4, the raft_first_layer_density is now more powerful than the support_material_solid_first_layer, also it always does the perimeter.
     if (has(dict, "support_material_solid_first_layer"s)) {
         opt_key() = "raft_first_layer_density"s;
@@ -10217,6 +10244,9 @@ std::unordered_set<std::string> prusa_export_to_remove_keys = {
 "infill_extrusion_change_odd_layers",
 "infill_extrusion_spacing",
 "infill_fan_speed",
+"infill_filled_bottom",
+"infill_filled_solid",
+"infill_filled_top",
 "init_z_rotate",
 "internal_bridge_acceleration",
 "internal_bridge_expansion",
