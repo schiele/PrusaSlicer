@@ -419,7 +419,7 @@ bool PerimeterGenerator::_enforce_speed_overhangs(ExtrusionPaths &paths, int cou
     // set to overhang speed if any chunk is overhang
     bool has_overhang = false;
     if (!params.has_many_config(&params.config.overhangs_speed_enforce)) {
-        int overhangs_speed_enforce = params.config.overhangs_speed_enforce.get_int();
+        int overhangs_speed_enforce = params.get_solo_config(&params.config.overhangs_speed_enforce).get_int();
         if (overhangs_speed_enforce > 0)
             for (const ExtrusionPath &path : paths) {
                 assert(!path.role().is_overhang() || path.attributes().overhang_attributes);
@@ -3205,13 +3205,15 @@ ProcessSurfaceResult PerimeterGenerator::process_arachne(const Parameters &param
 
     // only_one_perimeter_top, from orca
     std::vector<Arachne::VariableWidthLines> out_shell;
+    bool has_only_one_perimeter_top = false;
     if (loop_number > 0 &&
-        (params.config.only_one_perimeter_top || params.has_many_config(&params.config.only_one_perimeter_top)) &&
+        (params.has_many_config(&params.config.only_one_perimeter_top) ||
+         params.get_solo_config(&params.config.only_one_perimeter_top).get_bool()) &&
         !surface.has_mod_bridge() && this->upper_slices != nullptr) {
         this->throw_if_canceled();
+        has_only_one_perimeter_top = true;
         // Check if current layer has surfaces that are not covered by upper layer (i.e., top surfaces)
         ExPolygons non_top_polygons;
-
         for (auto const &[opt_values, areas] : params.get_areas(&params.config.only_one_perimeter_top)) {
             if (opt_values.get_bool(&params.config.only_one_perimeter_top)) {
                 const ExPolygons *upper_slices = this->upper_slices;
@@ -3353,8 +3355,8 @@ ProcessSurfaceResult PerimeterGenerator::process_arachne(const Parameters &param
     }
 
     // extra_perimeters_below_area
-    if (params.config.extra_perimeters_below_area.value > 0 ||
-        params.has_many_config(&params.config.extra_perimeters_below_area)) {
+    if (params.has_many_config(&params.config.extra_perimeters_below_area) ||
+        params.get_solo_config(&params.config.extra_perimeters_below_area).get_int() > 0) {
         ExPolygons small_polygons;
         for (auto const &[extra_perimeters_below_area, areas] :
              params.get_areas(&params.config.extra_perimeters_below_area)) {
@@ -3842,7 +3844,7 @@ void PerimeterGenerator::process(// Input:
     bool overhang_speed_enabled = params.config.overhangs_width_speed.is_enabled();
     const bool overhang_flow_enabled = params.config.overhangs_width.is_enabled();
     const bool overhang_dynamic_enabled = params.config.overhangs_dynamic_speed.is_enabled();
-    const bool overhang_extra_enabled = params.config.extra_perimeters_on_overhangs || params.has_many_config(&params.config.extra_perimeters_on_overhangs);
+    const bool overhang_extra_enabled = params.has_many_config(&params.config.extra_perimeters_on_overhangs) || params.get_solo_config(&params.config.extra_perimeters_on_overhangs).get_bool();
     if (this->lower_slices != NULL && (overhang_speed_enabled || overhang_flow_enabled || overhang_dynamic_enabled || overhang_extra_enabled)) {
         // We consider overhang any part where the entire nozzle diameter is not supported by the
         // lower layer, so we take lower slices and offset them by overhangs_width of the nozzle diameter used 
@@ -3885,7 +3887,7 @@ void PerimeterGenerator::process(// Input:
             // FIXME: can remove thinalls from support. you need to take them back, but they are computed in // ...
             coord_t offset_unprintable = scale_t(this->params.overhang_flow.nozzle_diameter() *
                                                  ( 1 - params.config.thin_perimeters.get_abs_value(0.5)));
-            if (params.config.thin_walls.value || params.has_many_config(&params.config.thin_walls)) {
+            if (params.has_many_config(&params.config.thin_walls) || params.get_solo_config(&params.config.thin_walls).get_bool()) {
                 // not ideal...
                 coord_t min_width = scale_t(params.config.thin_walls_min_width.get_abs_value(params.ext_perimeter_flow.nozzle_diameter()));
                 offset_unprintable = std::min(offset_unprintable, min_width / 2);
@@ -3978,10 +3980,12 @@ void PerimeterGenerator::process(// Input:
 
     int surface_idx = 0;
     // extra perimeter if on the right layer id and if the setting is for the whole region. (if it's split in multiple regions, then we ned to clip it after textruding current ones)
-    const int extra_odd_perimeter = (params.config.extra_perimeters_odd_layers && params.layer->id() % 2 == 1 &&
-                                             !params.has_many_config(&params.config.extra_perimeters_odd_layers) ?
-                                         1 :
-                                         0);
+    const int extra_odd_perimeter = params.layer->id() % 2 == 1 &&
+            !params.has_many_config(&params.config.extra_perimeters_odd_layers) &&
+            params.get_solo_config(&params.config.extra_perimeters_odd_layers).get_bool() ?
+        1 :
+        0;
+
     for (const Surface& surface : all_surfaces) {
         surface_idx++;
 
@@ -4008,15 +4012,20 @@ void PerimeterGenerator::process(// Input:
             }
         }
 
+        bool has_only_one_perimeter_top = (params.has_many_config(&params.config.only_one_perimeter_top) ||
+                                           params.get_solo_config(&params.config.only_one_perimeter_top).get_bool());
         if ((params.layer->id() == 0 && params.config.only_one_perimeter_first_layer) ||
-            (params.config.only_one_perimeter_top && this->upper_slices == NULL)) {
+            (has_only_one_perimeter_top && this->upper_slices == NULL)) {
             nb_loop_contour = std::min(nb_loop_contour, 1);
             nb_loop_holes = std::min(nb_loop_holes, 1);
         }
 
-        if(params.config.extra_perimeters_count > 0 && !params.has_many_config(&params.config.extra_perimeters_count)){
-            nb_loop_contour += params.config.extra_perimeters_count.value;
-            nb_loop_holes += params.config.extra_perimeters_count.value;
+        if (!params.has_many_config(&params.config.extra_perimeters_count)) {
+            int extra_perimeters_count = params.get_solo_config(&params.config.extra_perimeters_count).get_int();
+            if (extra_perimeters_count > 0) {
+                nb_loop_contour += extra_perimeters_count;
+                nb_loop_holes += extra_perimeters_count;
+            }
         }
 
         // get first index to add extra overhangs.
@@ -4075,7 +4084,7 @@ void PerimeterGenerator::process(// Input:
             coordf_t perimeter_spacing_for_encroach = 0;
             if(params.config.perimeters == 1)
                 perimeter_spacing_for_encroach = params.ext_perimeter_flow.spacing();
-            else if(params.config.only_one_perimeter_top.value)
+            else if (has_only_one_perimeter_top)
                 //note: use the min of the two to avoid overextrusion if only one perimeter top
                 // TODO: only do that if there is a top & a not-top surface
                 perimeter_spacing_for_encroach = std::min(params.perimeter_flow.spacing(), params.ext_perimeter_flow.spacing());
@@ -4967,8 +4976,8 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
 
                 // extra_perimeters_below_area
                 if (perimeter_idx > 0 && !skip_extra_peri &&
-                        params.config.extra_perimeters_below_area.value > 0 ||
-                    params.has_many_config(&params.config.extra_perimeters_below_area)) {
+                    (params.has_many_config(&params.config.extra_perimeters_below_area) ||
+                     params.get_solo_config(&params.config.extra_perimeters_below_area).get_int() > 0)) {
                     ExPolygons small_expolygons;
                     for (auto const &[extra_perimeters_below_area, areas] :
                          params.get_areas(&params.config.extra_perimeters_below_area)) {
@@ -5076,7 +5085,7 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                 }
                 
                 bool special_area = contour_count == 0 || holes_count == 0;
-                if (special_area && (params.config.thin_walls.value  || params.has_many_config(&params.config.thin_walls) || params.spiral_vase)) {
+                if (special_area && (params.has_many_config(&params.config.thin_walls) || params.get_solo_config(&params.config.thin_walls).get_bool() || params.spiral_vase)) {
                     area_used = next_onion;
                     for(auto& expolycontainer : last_asynch)
                         area_used.push_back(expolycontainer.expoly);
@@ -5084,7 +5093,7 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                 }
 
                 // un-hysteresis for thin walls
-                if (params.config.thin_walls || params.has_many_config(&params.config.thin_walls)) {
+                if (params.has_many_config(&params.config.thin_walls) || params.get_solo_config(&params.config.thin_walls).get_bool()) {
                     // detect edge case where a curve can be split in multiple small chunks.
                     if (allow_perimeter_anti_hysteresis && !special_area &&
                         next_onion.size() > last.size()) {
@@ -5306,7 +5315,7 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                 assert_check_ExPolygonAsynch(*touse);
                 // if no hole/contour : use the object shape, not the perimeter "end" with overlap.
                 bool special_area = contour_count == 0 || holes_count == 0;
-                if (special_area && (params.config.thin_walls || params.has_many_config(&params.config.thin_walls) || params.spiral_vase)) {
+                if (special_area && (params.has_many_config(&params.config.thin_walls) || params.get_solo_config(&params.config.thin_walls).get_bool() || params.spiral_vase)) {
                     area_used = next_onion;
                     for (auto &expolycontainer : *touse) area_used.push_back(expolycontainer.expoly);
                     all_next_onion = &area_used;
@@ -5454,8 +5463,8 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
 
             // store surface for top infill if only_one_perimeter_top
             if (perimeter_idx == 0 &&
-                (params.config.only_one_perimeter_top ||
-                 params.has_many_config(&params.config.only_one_perimeter_top)) &&
+                (params.has_many_config(&params.config.only_one_perimeter_top) ||
+                 params.get_solo_config(&params.config.only_one_perimeter_top).get_bool()) &&
                 !surface.has_mod_bridge() && this->upper_slices != nullptr && (contour_count > 1 || holes_count > 1)) {
                 this->throw_if_canceled();
                 // Check if current layer has surfaces that are not covered by upper layer (i.e., top surfaces)
@@ -6846,8 +6855,8 @@ void Parameters::segregate_regions(const ExPolygon &my_srf, const std::set<Layer
             this->key_areas[this->config.option(opt_keys.front())];
         // check if it needs to be added
         bool many_values = false;
+        Parameters::SettingsValue default_value = Parameters::SettingsValue::create(this->config, this->config, opt_keys);
         if (!lregions.empty()) {
-            Parameters::SettingsValue default_value = Parameters::SettingsValue::create(this->config, (*lregions.begin())->region().config(), opt_keys);
             for (const LayerRegion *region : lregions) {
                 if (Parameters::SettingsValue::create(this->config, region->region().config(), opt_keys) != default_value) {
                     many_values = true;
@@ -6892,8 +6901,8 @@ void Parameters::segregate_regions(const ExPolygon &my_srf, const std::set<Layer
             }
             // check if there is really an overlap with many regions
             if (opt_2_areas.size() == 1) {
-                // remove
-                opt_2_areas.clear();
+                //no overlap. don't remove it to use as the defautl, just remove the area
+                opt_2_areas.begin()->second.clear();
             }
             // union the surfaces and un-offset them.
             for (auto &[opt, clip_expolys] : opt_2_areas) {
@@ -6903,7 +6912,7 @@ void Parameters::segregate_regions(const ExPolygon &my_srf, const std::set<Layer
         }
         if (opt_2_areas.empty()) {
             // only one value for evrything
-            opt_2_areas[Parameters::SettingsValue::create(this->config, this->config, opt_keys)] = {};
+            opt_2_areas[default_value] = {};
         }
     }
 }
@@ -6945,6 +6954,10 @@ ExPolygons Parameters::ClipExpoly::intersections(coord_t offset, const ExPolygon
         }
     }
     return intersections;
+}
+void Parameters::ClipExpoly::clear() {
+    expolys.clear();
+    bboxes.clear();
 }
 
 }

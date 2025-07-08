@@ -81,6 +81,7 @@ struct Parameters
         void compute_bb();
         ExPolygons intersections(const ExPolygons &to_clip) const;
         ExPolygons intersections(coord_t offset, const ExPolygons &to_clip) const;
+        void clear();
     };
     // encoded value of a setting or of a group of them.
     struct SettingsValue
@@ -164,6 +165,7 @@ struct Parameters
     // ptr from this->config storage to ptr from a LayerRegion & combined areas for that value
     // if only one value in the inner map, then it means it's hte same value for evrything.
     std::map<const ConfigOption*, std::map<SettingsValue, ClipExpoly>> key_areas;
+
     bool has_many_config(const ConfigOption *opt) const {
         auto it = key_areas.find(opt);
         return it != key_areas.end() && it->second.size() > 1;
@@ -172,6 +174,12 @@ struct Parameters
     const std::map<SettingsValue, ClipExpoly> get_areas(const ConfigOption *opt) const {
         assert(key_areas.find(opt) != key_areas.end());
         return key_areas.at(opt);
+    }
+
+    const SettingsValue& get_solo_config(const ConfigOption *opt) const {
+        auto it = key_areas.find(opt);
+        assert(it != key_areas.end() && it->second.size() == 1);
+        return it->second.begin()->first;
     }
 
     void segregate_regions(const ExPolygon &my_srf, const std::set<LayerRegion*> regions);
