@@ -7280,17 +7280,18 @@ std::string GCodeGenerator::_before_extrude(const ExtrusionPath &path, const std
                 gcode += char('A' + uint8_t(GCodeExtrusionRole::ExternalPerimeter));
             }
             gcode += "\n";
+            gcode += ";extra_type_for_overahng\n";
             m_check_markers++;
         }
         if (m_overhang_fan_override >= 0) {
             gcode += ";_SET_MIN_FAN_SPEED" + std::to_string(int(m_overhang_fan_override)) + "\n";
-        } else {
-            // Send the current extrusion type to Coolingbuffer
-            gcode += ";_EXTRUDETYPE_";
-            gcode += char('A' + uint8_t(grole));
-            gcode += "\n";
-            m_check_markers++;
         }
+        // Send the current extrusion type to Coolingbuffer
+        gcode += ";_EXTRUDETYPE_";
+        gcode += char('A' + uint8_t(grole));
+        gcode += "\n";
+        m_check_markers++;
+        
         // comment to be on the same line as the speed command.
         cooling_marker_setspeed_comments = GCodeGenerator::_cooldown_marker_speed[uint8_t(grole)];
     }
@@ -7309,19 +7310,18 @@ std::string GCodeGenerator::_after_extrude(const ExtrusionPath &path) {
         if (m_overhang_fan_override >= 0) {
             gcode += ";_RESET_MIN_FAN_SPEED\n";
             m_overhang_fan_override = -1.;
-            if (m_last_extrusion_role == GCodeExtrusionRole::OverhangPerimeter) {
-                gcode += ";_EXTRUDE_END\n";
-                m_check_markers--;
-            }
-        } else {
-            // Notify Coolingbuffer that the current extrusion end.
-            assert(m_check_markers > 0);
+        } 
+        // Notify Coolingbuffer that the current extrusion end.
+        assert(m_check_markers > 0);
+        gcode += ";_EXTRUDE_END\n";
+        m_check_markers--;
+
+        if (m_last_extrusion_role == GCodeExtrusionRole::OverhangPerimeter) {
             gcode += ";_EXTRUDE_END\n";
             m_check_markers--;
-            if (m_last_extrusion_role == GCodeExtrusionRole::OverhangPerimeter) {
-                gcode += ";_EXTRUDE_END\n";
-                m_check_markers--;
-            }
+            gcode += ";REMOVEextra_type_for_overahng\n";
+        } else {
+            gcode += ";NOextra_type_for_overahng\n";
         }
         assert(m_check_markers == 0);
     }

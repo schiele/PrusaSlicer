@@ -414,6 +414,78 @@ static void fuzzy_extrusion_line(Arachne::ExtrusionLine &ext_lines, double fuzzy
     }
 }
 
+bool PerimeterGenerator::_enforce_speed_overhangs(ExtrusionPaths &paths, int count_since_overhang) const {
+    static int iInst = 0;
+    // set to overhang speed if any chunk is overhang
+    bool has_overhang = false;
+    if (!params.has_many_config(&params.config.overhangs_speed_enforce)) {
+        int overhangs_speed_enforce = params.config.overhangs_speed_enforce.get_int();
+        if (overhangs_speed_enforce > 0)
+            for (const ExtrusionPath &path : paths) {
+                assert(!path.role().is_overhang() || path.attributes().overhang_attributes);
+                if (path.role().is_overhang() &&
+                    path.attributes().overhang_attributes->start_distance_from_prev_layer >= 1) {
+                    has_overhang = true;
+                    break;
+                }
+            }
+        if (has_overhang ||
+            (count_since_overhang >= 0 && overhangs_speed_enforce > count_since_overhang)) {
+            // enforce
+            for (ExtrusionPath &path : paths) {
+                assert(path.role().is_perimeter());
+                if (!path.role().has(ExtrusionRoleModifier::ERM_Bridge)) {
+                    path.set_role(path.role() | ExtrusionRoleModifier::ERM_Bridge);
+                    path.overhang_attributes_mutable() = OverhangAttributes{1, 2, 0};
+                }
+            }
+        }
+    } else {
+        for (auto const &[overhangs_speed_enforce, areas] : params.get_areas(&params.config.overhangs_speed_enforce)) {
+            if (overhangs_speed_enforce.get_int() > 0) {
+                std::vector<bool> has_overhangs;
+                for (const ExPolygon &area : areas.expolys) {
+                    has_overhangs.push_back(false);
+                }
+                for (const ExtrusionPath &path : paths) {
+                    assert(!path.role().is_overhang() || path.attributes().overhang_attributes);
+                    if (path.role().is_overhang() &&
+                        path.attributes().overhang_attributes->start_distance_from_prev_layer >= 1) {
+                        for (size_t i = 0; i < areas.expolys.size(); i++) {
+                            if (!has_overhangs[i]) {
+                                if (!intersection_pl(path.polyline.to_polyline(), areas.bboxes[i].polygon()).empty() &&
+                                    !intersection_pl(path.polyline.to_polyline(), areas.expolys[i]).empty()) {
+                                    has_overhangs[i] = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                for (size_t i = 0; i < areas.expolys.size(); i++) {
+                    if (has_overhangs[i] ||
+                        (count_since_overhang >= 0 && overhangs_speed_enforce.get_int() > count_since_overhang)) {
+                        // enforce
+                        for (ExtrusionPath &path : paths) {
+                            assert(path.role().is_perimeter());
+                            if (!path.role().has(ExtrusionRoleModifier::ERM_Bridge)) {
+                                if (!intersection_pl(path.polyline.to_polyline(), areas.bboxes[i].polygon()).empty() &&
+                                    !intersection_pl(path.polyline.to_polyline(), areas.expolys[i]).empty()) {
+                                    assert(!path.overhang_attributes_mutable());
+                                    path.set_role(path.role() | ExtrusionRoleModifier::ERM_Bridge);
+                                    path.overhang_attributes_mutable() = OverhangAttributes{1, 2, 0};
+                                    has_overhang = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return has_overhang;
+}
+
 ExtrusionEntityCollection PerimeterGenerator::_traverse_loops_classic(const Parameters &params,
     const PerimeterGeneratorLoops &loops, ThickPolylines &thin_walls, int count_since_overhang /*= -1*/) const
 {
@@ -585,30 +657,15 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_loops_classic(const Para
             }
         } else {
             const PerimeterGeneratorLoop &loop = loops[idx.first];
-            
+
 #if _DEBUG
             for(auto ee : coll) if(ee) ee->visit(LoopAssertVisitor());
             loop.polygon.assert_valid();
 #endif
-            ExtrusionLoop* eloop = static_cast<ExtrusionLoop*>(coll[idx.first]);
-            bool has_overhang = false;
-            if (params.config.overhangs_speed_enforce.value > 0) {
-                for (const ExtrusionPath& path : eloop->paths) {
-                    assert(!path.role().is_overhang() || path.attributes().overhang_attributes);
-                    if (path.role().is_overhang() && path.attributes().overhang_attributes->start_distance_from_prev_layer >= 1) {
-                        has_overhang = true;
-                        break;
-                    }
-                }
-                if (has_overhang || ( count_since_overhang >= 0 && params.config.overhangs_speed_enforce.value > count_since_overhang)) {
-                    //enforce
-                    for (ExtrusionPath& path : eloop->paths) {
-                        assert(path.role().is_perimeter());
-                        path.set_role(path.role() | ExtrusionRoleModifier::ERM_Bridge);
-                        path.overhang_attributes_mutable() = OverhangAttributes{1, 2, 0};
-                    }
-                }
-            }
+            ExtrusionLoop *eloop = static_cast<ExtrusionLoop *>(coll[idx.first]);
+
+            //set to overhang speed if any chunk is overhang
+            bool has_overhang = this->_enforce_speed_overhangs(eloop->paths, count_since_overhang);
 #if _DEBUG
             for(auto ee : coll) if(ee) ee->visit(LoopAssertVisitor());
 #endif
@@ -1702,24 +1759,7 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_extrusions(const Paramet
         }
 
         //set to overhang speed if any chunk is overhang
-        bool has_overhang = false;
-        if (params.config.overhangs_speed_enforce.value > 0) {
-            for (const ExtrusionPath& path : paths) {
-                assert(!path.role().is_overhang() || path.attributes().overhang_attributes);
-                if (path.role().is_overhang() && path.attributes().overhang_attributes->start_distance_from_prev_layer >= 1) {
-                    has_overhang = true;
-                    break;
-                }
-            }
-            if (has_overhang) {
-                //enforce
-                for (ExtrusionPath& path : paths) {
-                    assert(path.role().is_perimeter());
-                    path.set_role(path.role() | ExtrusionRoleModifier::ERM_Bridge);
-                    path.overhang_attributes_mutable() = OverhangAttributes{1, 2, 0};
-                }
-            }
-        }
+        this->_enforce_speed_overhangs(paths, -1);
 
         // Append paths to collection.
         if (!paths.empty()) {
@@ -6794,6 +6834,7 @@ static inline std::vector<t_config_option_keys> availables_key ={
     {"extra_perimeters_on_overhangs"},
     {"only_one_perimeter_top", "min_width_top_surface", "only_one_perimeter_top_other_algo"},
     {"thin_walls", "thin_walls_min_width", "thin_walls_overlap"},
+    {"overhangs_speed_enforce"}
 };
 void Parameters::segregate_regions(const ExPolygon &my_srf, const std::set<LayerRegion*> lregions) {
     this->key_areas.clear();

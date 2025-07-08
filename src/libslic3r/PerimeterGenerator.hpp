@@ -376,6 +376,8 @@ private:
                             coordf_t min_width,
                             bool use_old_algorithm_for_min_width
     );
+    // for overhangs_speed_enforce
+    bool _enforce_speed_overhangs(ExtrusionPaths &paths, int count_since_overhang) const;
 
 };
 
