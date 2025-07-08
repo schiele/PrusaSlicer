@@ -1,4 +1,4 @@
 BUILD: 2.7.61.6-6-g9b43c4f33b
 system: rolling
 date: Tue Jul  8 07:41:32 AM CEST 2025
-tasks: configure_deps build_deps configure build[incomplete]
+tasks: configure_deps build_deps configure build[failed]
