@@ -32,4 +32,4 @@ make: *** [Makefile:156: all] Error 2
 BUILD: 2.7.61.6-7-gc102b68cb6
 system: rolling
 date: Tue Jul  8 03:38:12 PM CEST 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
