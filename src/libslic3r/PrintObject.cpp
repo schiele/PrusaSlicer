@@ -4240,37 +4240,46 @@ PrintObjectConfig PrintObject::object_config_from_model_object(const PrintObject
 }
 
 const std::string                                                    key_extruder { "extruder" };
-static constexpr const std::initializer_list<const std::string_view> keys_extruders { "infill_extruder"sv, "solid_infill_extruder"sv, "perimeter_extruder"sv };
+static const std::vector<std::string> keys_extruders { "infill_extruder", "solid_infill_extruder", "perimeter_extruder" };
 
 static void apply_to_print_region_config(PrintRegionConfig &out, const DynamicPrintConfig &in)
 {
-    // 1) Copy the "extruder key to infill_extruder and perimeter_extruder.
-    auto *opt_extruder = in.opt<ConfigOptionInt>(key_extruder);
-    if (opt_extruder)
-        if (int extruder = opt_extruder->value; extruder != 0) {
-            // Not a default extruder.
-            out.infill_extruder      .value = extruder;
-            out.solid_infill_extruder.value = extruder;
-            out.perimeter_extruder   .value = extruder;
+    const ConfigOptionInt *opt_main_extruder = in.opt<ConfigOptionInt>(key_extruder);
+
+    for (const std::string &key : keys_extruders) {
+        ConfigOptionInt *out_role_extruder = out.opt<ConfigOptionInt>(key);
+
+        // use main extruder if still default
+        if (opt_main_extruder && opt_main_extruder->value != 0 && !out_role_extruder->is_enabled()) {
+            out_role_extruder->value = opt_main_extruder->value;
+            // let out_role_extruder be disbaled -> new main extruder cna still override
         }
-    // 2) Copy the rest of the values.
-    for (auto it = in.cbegin(); it != in.cend(); ++ it)
-        if (it->first != key_extruder)
-            if (ConfigOption* my_opt = out.option(it->first, false); my_opt != nullptr) {
-                if (one_of(it->first, keys_extruders)) {
-                    assert(dynamic_cast<ConfigOptionInt*>(my_opt));
-                    // Ignore "default" extruders.
-                    int extruder = static_cast<const ConfigOptionInt*>(it->second.get())->value;
-                    if (extruder > 0)
-                        static_cast<ConfigOptionInt *>(my_opt)->value = (extruder);
-                } else
-                    my_opt->set(*it->second);
-            }
+
+        const ConfigOptionInt *in_role_extruder = in.opt<ConfigOptionInt>(key);
+        // if in_role_extruder is enabled, then it override
+        if (in_role_extruder && in_role_extruder->is_enabled()) {
+            // copy back the 'in' config's value
+            out_role_extruder->value = in_role_extruder->value;
+            // set out_role_extruder to enabled -> other main extruder can't override
+            out_role_extruder->set_enabled(true);
+        }
+    }
 }
 
-PrintRegionConfig region_config_from_model_volume(const PrintRegionConfig &default_or_parent_region_config, const DynamicPrintConfig *layer_range_config, const ModelVolume &volume, size_t num_extruders)
+PrintRegionConfig region_config_from_model_volume(const PrintRegionConfig &default_or_parent_region_config,
+                                                  const DynamicPrintConfig *layer_range_config,
+                                                  const ModelVolume &volume,
+                                                  size_t num_extruders)
 {
     PrintRegionConfig config = default_or_parent_region_config;
+    //set default if disabled
+    for (const std::string &key : keys_extruders) {
+        ConfigOptionInt *out_role_extruder = config.opt<ConfigOptionInt>(key);
+        if (!out_role_extruder->is_enabled()) {
+            out_role_extruder->value = 1;
+        }
+    }
+    // apply by increasing priority
     if (volume.is_model_part()) {
         // default_or_parent_region_config contains the Print's PrintRegionConfig.
         // Override with ModelObject's PrintRegionConfig values.
@@ -4298,6 +4307,11 @@ PrintRegionConfig region_config_from_model_volume(const PrintRegionConfig &defau
         config.fill_density.value = std::min(config.fill_density.value, 100.);
     if (config.fuzzy_skin.value != FuzzySkinType::None && (config.fuzzy_skin_point_dist.value < 0.01 || config.fuzzy_skin_thickness.value < 0.001))
         config.fuzzy_skin.value = FuzzySkinType::None;
+
+    // not really useful, but good practice.
+    for (const std::string &key : keys_extruders) {
+        config.opt<ConfigOptionInt>(key)->set_enabled(true);
+    }
     return config;
 }
 
