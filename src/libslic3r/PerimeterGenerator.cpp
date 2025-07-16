@@ -593,7 +593,8 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_loops_classic(const Para
             bool has_overhang = false;
             if (params.config.overhangs_speed_enforce.value > 0) {
                 for (const ExtrusionPath& path : eloop->paths) {
-                    if (path.role().is_overhang()) {
+                    assert(!path.role().is_overhang() || path.attributes().overhang_attributes);
+                    if (path.role().is_overhang() && path.attributes().overhang_attributes->start_distance_from_prev_layer >= 1) {
                         has_overhang = true;
                         break;
                     }
@@ -601,14 +602,11 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_loops_classic(const Para
                 if (has_overhang || ( count_since_overhang >= 0 && params.config.overhangs_speed_enforce.value > count_since_overhang)) {
                     //enforce
                     for (ExtrusionPath& path : eloop->paths) {
-                        if (path.role() == ExtrusionRole::Perimeter) {
-                            path.set_role(ExtrusionRole::OverhangPerimeter);
-                        } else if (path.role() == ExtrusionRole::ExternalPerimeter) {
-                            path.set_role(ExtrusionRole::OverhangExternalPerimeter);
-                        }
+                        assert(path.role().is_perimeter());
+                        path.set_role(path.role() | ExtrusionRoleModifier::ERM_Bridge);
+                        path.overhang_attributes_mutable() = OverhangAttributes{1, 2, 0};
                     }
                 }
-
             }
 #if _DEBUG
             for(auto ee : coll) if(ee) ee->visit(LoopAssertVisitor());
@@ -6158,10 +6156,10 @@ ExtrusionLoop PerimeterGenerator::_traverse_and_join_loops(const Parameters &   
             int nearest_idx_outter = outer_start->polyline.find_point(nearest.outter_best, SCALED_EPSILON);
             if (nearest_idx_outter >= 0) {
                 tosplit.split_at_index(nearest_idx_outter, outer_start->polyline, outer_end->polyline);
-                assert(outer_start->polyline.back() == outer_end->polyline.front());
+                assert(outer_end->empty() || outer_start->polyline.back() == outer_end->polyline.front());
             } else {
                 tosplit.split_at(nearest.outter_best, outer_start->polyline, outer_end->polyline);
-                assert(outer_start->polyline.back() == outer_end->polyline.front() || outer_end->empty());
+                assert(outer_end->empty() || outer_start->polyline.back() == outer_end->polyline.front());
                 if (outer_start->polyline.back() != nearest.outter_best) {
                     if (outer_start->polyline.back().coincides_with_epsilon(nearest.outter_best)) {
                         outer_start->polyline.set_back(nearest.outter_best);
@@ -6175,10 +6173,16 @@ ExtrusionLoop PerimeterGenerator::_traverse_and_join_loops(const Parameters &   
                 }
             }
             Polyline to_reduce = outer_start->polyline.to_polyline();
-            if (to_reduce.size()>1 && to_reduce.length() > (params.perimeter_flow.scaled_width() / 10)) to_reduce.clip_end(params.perimeter_flow.scaled_width() / 20);
+            if (to_reduce.size() > 1 && to_reduce.length() > (params.perimeter_flow.scaled_width() / 10)) to_reduce.clip_end(params.perimeter_flow.scaled_width() / 20);
             deletedSection.a = to_reduce.back();
-            to_reduce = outer_end->polyline.to_polyline();
-            if (to_reduce.size()>1 && to_reduce.length() > (params.perimeter_flow.scaled_width() / 10)) to_reduce.clip_start(params.perimeter_flow.scaled_width() / 20);
+            if (!outer_end->empty()) {
+                to_reduce = outer_end->polyline.to_polyline();
+            } else {
+                outer_end = outer_start; // for outer_end_spacing
+                assert(my_loop.paths[nearest.idx_polyline_outter + 1].empty());
+                my_loop.paths.erase(my_loop.paths.begin() + nearest.idx_polyline_outter + 1);
+            }
+            if (to_reduce.size() > 1 && to_reduce.length() > (params.perimeter_flow.scaled_width() / 10)) to_reduce.clip_start(params.perimeter_flow.scaled_width() / 20);
             deletedSection.b = to_reduce.front();
             
             //get the inner loop to connect to us.
