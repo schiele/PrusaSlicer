@@ -125,6 +125,7 @@
 #include "Jobs/NotificationProgressIndicator.hpp"
 #include "Jobs/PlaterWorker.hpp"
 #include "Jobs/BoostThreadWorker.hpp"
+#include "Jobs/OrientJob.hpp"
 #include "../Utils/ASCIIFolding.hpp"
 #include "../Utils/PrintHost.hpp"
 #include "../Utils/FixModelByWin10.hpp"
@@ -2171,6 +2172,7 @@ struct Plater::priv
     bool can_split_to_objects() const;
     bool can_split_to_volumes() const;
     bool can_arrange() const;
+    bool can_orient() const;
     bool can_layers_editing() const;
     bool can_fix_through_winsdk() const;
     bool can_simplify() const;
@@ -4923,6 +4925,15 @@ void Plater::priv::set_project_filename(const wxString& filename)
         wxGetApp().mainframe->add_to_recent_projects(filename);
 }
 
+void Plater::orient()
+{
+    auto &w = get_ui_job_worker();
+    if (w.is_idle()) {
+        p->take_snapshot(_u8L("Orient"));
+        replace_job(w, std::make_unique<OrientJob>());
+    }
+}
+
 void Plater::priv::init_notification_manager()
 {
     if (!notification_manager)
@@ -5259,6 +5270,12 @@ bool Plater::priv::can_split_to_volumes() const
 bool Plater::priv::can_arrange() const
 {
     if (model.objects.empty() || !m_worker.is_idle()) return false;
+    return q->canvas3D()->get_gizmos_manager().get_current_type() == GLGizmosManager::Undefined;
+}
+
+bool Plater::priv::can_orient() const
+{
+    if (model.objects.empty() || !m_worker.is_idle() || get_selection().is_empty() || get_selection().is_wipe_tower()) return false;
     return q->canvas3D()->get_gizmos_manager().get_current_type() == GLGizmosManager::Undefined;
 }
 
@@ -8911,6 +8928,7 @@ bool Plater::can_simplify() const { return p->can_simplify(); }
 bool Plater::can_split_to_objects() const { return p->can_split_to_objects(); }
 bool Plater::can_split_to_volumes() const { return p->can_split_to_volumes(); }
 bool Plater::can_arrange() const { return p->can_arrange(); }
+bool Plater::can_orient() const { return p->can_orient(); }
 bool Plater::can_layers_editing() const { return p->can_layers_editing(); }
 bool Plater::can_paste_from_clipboard() const
 {

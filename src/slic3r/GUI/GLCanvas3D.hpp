@@ -469,6 +469,14 @@ class GLCanvas3D
     };
 
 public:
+
+    struct OrientSettings
+    {
+        float overhang_angle = 60.f;
+        bool  enable_rotation = false;
+        bool  min_area = true;
+    };
+
     enum ECursorType : unsigned char
     {
         Standard,
@@ -490,6 +498,8 @@ public:
         int   strategy = 0;
     };
 */
+
+
 
     enum class ESLAViewType
     {
@@ -579,6 +589,8 @@ private:
     Tooltip m_tooltip;
     bool m_tooltip_enabled{ true };
     Slope m_slope;
+
+    OrientSettings m_orient_settings_fff;
 
     class SLAView
     {
@@ -777,6 +789,15 @@ public:
     GLGizmosManager& get_gizmos_manager() { return m_gizmos; }
 
     void bed_shape_changed();
+
+    OrientSettings& get_orient_settings()
+    {
+        PrinterTechnology ptech = this->current_printer_technology();
+
+        auto* ptr = &this->m_orient_settings_fff;
+
+        return *ptr;
+    }
 
     void set_clipping_plane(unsigned int id, const ClippingPlane& plane) {
         if (id < 2) {
@@ -1095,6 +1116,7 @@ private:
     bool _render_undo_redo_stack(const bool is_undo, float pos_x);
     bool _render_search_list(float pos_x);
     bool _render_arrange_menu(float pos_x);
+    bool _render_orient_menu(float left, float right, float bottom, float top, bool current_bed);
     void _render_thumbnail_internal(ThumbnailData& thumbnail_data, const ThumbnailsParams& thumbnail_params, const GLVolumeCollection& volumes, Camera::EType camera_type);
     // render thumbnail using an off-screen framebuffer
     void _render_thumbnail_framebuffer(ThumbnailData& thumbnail_data, unsigned int w, unsigned int h, const ThumbnailsParams& thumbnail_params, const GLVolumeCollection& volumes, Camera::EType camera_type);
