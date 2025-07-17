@@ -102,7 +102,25 @@ inline const auto &identity3d = identity<3, double>;
 inline coordf_t dot(const Vec2d &v1, const Vec2d &v2) { return v1.x() * v2.x() + v1.y() * v2.y(); }
 inline coordf_t dot(const Vec2d &v) { return v.x() * v.x() + v.y() * v.y(); }
 
-inline bool operator<(const Vec2d &lhs, const Vec2d &rhs) { return lhs.x() < rhs.x() || (lhs.x() == rhs.x() && lhs.y() < rhs.y()); }
+inline bool operator<(const Vec2d &lhs, const Vec2d &rhs) {
+    return lhs.x() < rhs.x() || (lhs.x() == rhs.x() && lhs.y() < rhs.y());
+}
+
+inline bool operator<(const std::vector<Vec2d> &lhs, const std::vector<Vec2d> &rhs) {
+    if (lhs.size() == rhs.size()) {
+        for (size_t i = 0; i < lhs.size(); i++) {
+            if (lhs[i] < rhs[i])
+                return true;
+            if (!(lhs[i] == rhs[i]))
+                return false;
+        }
+    }
+    return lhs.size() < rhs.size();
+}
+inline bool operator<(const Vec3d &lhs, const Vec3d &rhs) {
+    return lhs.x() < rhs.x() ||
+        (lhs.x() == rhs.x() && (lhs.y() < rhs.y() || (lhs.y() == rhs.y() && lhs.z() < rhs.z())));
+}
 
 inline distsqrf_t squared_norm(const Vec2crd &vec) {
     return vec.x()*coordf_t(vec.x()) + vec.y()*coordf_t(vec.y());

@@ -369,6 +369,8 @@ set(SLIC3R_SOURCES
     PNGReadWrite.cpp
     QuadricEdgeCollapse.cpp
     QuadricEdgeCollapse.hpp
+    RegionSettings.cpp
+    RegionSettings.hpp
     Semver.cpp
     ShortEdgeCollapse.cpp
     ShortEdgeCollapse.hpp

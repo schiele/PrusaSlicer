@@ -189,7 +189,7 @@ void LayerRegion::make_perimeters(
         size_t gap_fills_begin = m_thin_fills.size();
         size_t fill_expolygons_begin = fill_expolygons.size();
 
-        params.segregate_regions(surface.expolygon, lregions);
+        params.region_setting.segregate_regions(surface.expolygon, lregions);
 
         PerimeterGenerator::PerimeterGenerator g{params};
         g.throw_if_canceled = [this]() { this->layer()->object()->print()->throw_if_canceled(); };
