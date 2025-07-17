@@ -7,4 +7,4 @@ SUCCESS
 BUILD: version_2.7.2-rc1-2806-g27c196d90b
 system: rolling
 date: Thu Jul 17 01:12:55 PM CEST 2025
-tasks: configure_deps build_deps configure build install[incomplete]
+tasks: configure_deps build_deps configure build install
