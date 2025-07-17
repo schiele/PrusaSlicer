@@ -3048,6 +3048,14 @@ void PrintConfigDef::init_fff_params()
     def->mode = comExpert | comSuSi;
     def->set_default_value(new ConfigOptionPercent(80));
 
+    def = this->add("gap_fill_perimeter", coBool);
+    def->label = L("Allow Periemter inside Gap fill");
+    def->full_label = L("Allow Periemter inside Gap fill");
+    def->category = OptionCategory::perimeter;
+    def->tooltip = L("Allow to create a perimeter inside a gapfill area if it's possible.");
+    def->mode = comExpert | comSuSi;
+    def->set_default_value(new ConfigOptionBool(true));
+
     def = this->add("gap_fill_speed", coFloatOrPercent);
     def->label = L("Gap fill");
     def->full_label = L("Gap fill speed");
@@ -9904,6 +9912,7 @@ std::unordered_set<std::string> prusa_export_to_remove_keys = {
 "gap_fill_min_length",
 "gap_fill_min_width",
 "gap_fill_overlap",
+"gap_fill_perimeter",
 "gcode_filename_illegal_char",
 "gcode_precision_e",
 "gcode_precision_xyz",

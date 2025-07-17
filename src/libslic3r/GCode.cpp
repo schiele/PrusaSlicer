@@ -7066,6 +7066,7 @@ std::string GCodeGenerator::_before_extrude(const ExtrusionPath &path, const std
     assert(grole < GCodeExtrusionRole::Count);
     if (m_enable_cooling_markers) {
         assert(m_check_markers == 0);
+        //if overhang, first set the periemter kind before setting the overhang on top.
         if (grole == GCodeExtrusionRole::OverhangPerimeter) {
             gcode += ";_EXTRUDETYPE_";
             if (path.role() == ExtrusionRole::OverhangPerimeter) {
@@ -7077,14 +7078,15 @@ std::string GCodeGenerator::_before_extrude(const ExtrusionPath &path, const std
             gcode += "\n";
             m_check_markers++;
         }
-        if (m_overhang_fan_override >= 0) {
-            gcode += ";_SET_MIN_FAN_SPEED" + std::to_string(int(m_overhang_fan_override)) + "\n";
-        } else {
+        {
             // Send the current extrusion type to Coolingbuffer
             gcode += ";_EXTRUDETYPE_";
             gcode += char('A' + uint8_t(grole));
             gcode += "\n";
             m_check_markers++;
+        }
+        if (m_overhang_fan_override >= 0) {
+            gcode += ";_SET_MIN_FAN_SPEED" + std::to_string(int(m_overhang_fan_override)) + "\n";
         }
         // comment to be on the same line as the speed command.
         cooling_marker_setspeed_comments = GCodeGenerator::_cooldown_marker_speed[uint8_t(grole)];
@@ -7100,15 +7102,11 @@ std::string GCodeGenerator::_before_extrude(const ExtrusionPath &path, const std
 std::string GCodeGenerator::_after_extrude(const ExtrusionPath &path) {
     std::string gcode;
     if (m_enable_cooling_markers) {
-    
         if (m_overhang_fan_override >= 0) {
             gcode += ";_RESET_MIN_FAN_SPEED\n";
             m_overhang_fan_override = -1.;
-            if (m_last_extrusion_role == GCodeExtrusionRole::OverhangPerimeter) {
-                gcode += ";_EXTRUDE_END\n";
-                m_check_markers--;
-            }
-        } else {
+        }
+        {
             // Notify Coolingbuffer that the current extrusion end.
             assert(m_check_markers > 0);
             gcode += ";_EXTRUDE_END\n";
