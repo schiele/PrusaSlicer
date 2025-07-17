@@ -1,4 +1,4 @@
 BUILD: version_2.7.2-rc1-2807-gf4054f583c
 system: rolling
 date: Thu Jul 17 12:14:57 PM CEST 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
