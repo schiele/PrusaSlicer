@@ -739,9 +739,13 @@ void Layer::make_perimeters()
                             //&& config.only_one_perimeter_top    == other_config.only_one_perimeter_top // can be used in modifiers
                             //&& config.only_one_perimeter_top_other_algo == other_config.only_one_perimeter_top_other_algo // can be used in modifiers with only_one_perimeter_top
                             && config.overhangs_acceleration    == other_config.overhangs_acceleration
-                            && config.overhangs_dynamic_speed   == other_config.overhangs_dynamic_speed
+                            // && config.overhang   == other_config.overhangs
+                            && config.overhangs_dynamic_speed   == other_config.overhangs_dynamic_speed // need regionSettings in gcode
                             && config.overhangs_width_speed     == other_config.overhangs_width_speed
-                            && config.overhangs_width           == other_config.overhangs_width
+                            // && config.overhangs_speed     == other_config.overhangs_speed
+                            && config.overhangs_dynamic_flow   == other_config.overhangs_dynamic_flow // need regionSettings in printobject::calculateoverhangs
+                            // && config.overhangs_width           == other_config.overhangs_width
+                            && config.overhangs_flow_ratio           == other_config.overhangs_flow_ratio // need regionSettings in printobject::calculateoverhangs
                             // && config.overhangs_speed_enforce   == other_config.overhangs_speed_enforce
                             && config.overhangs_reverse         == other_config.overhangs_reverse
                             && config.overhangs_reverse_threshold == other_config.overhangs_reverse_threshold

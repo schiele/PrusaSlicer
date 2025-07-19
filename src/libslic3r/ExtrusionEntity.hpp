@@ -158,6 +158,8 @@ struct OverhangAttributes {
     float start_distance_from_prev_layer;
     float end_distance_from_prev_layer;
     float proximity_to_curled_lines; //value between 0 and 1
+    bool has_full_overhangs_flow = false;
+    bool has_full_overhangs_speed = false;
 };
 
 struct ExtrusionAttributes : ExtrusionFlow

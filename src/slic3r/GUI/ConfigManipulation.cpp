@@ -279,7 +279,7 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
         // Ask only once.
         if (!m_support_material_overhangs_queried) {
             m_support_material_overhangs_queried = true;
-            if (!config->option("overhangs_width_speed")->is_enabled()) {
+            if (!config->option("overhangs")->get_bool()) {
                 wxString msg_text = _(L("Supports work better, if the following feature is enabled:\n"
                     "- overhangs threshold for speed & fan\n"
                     "- overhangs threshold for flow"));
@@ -290,8 +290,8 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
                         auto answer = dialog.ShowModal();
                     if (answer == wxID_YES) {
                         // Enable "detect bridging perimeters".
-                        new_conf.set_key_value("overhangs_width_speed", config->option("overhangs_width_speed")->clone()->set_enabled(true));
-                        new_conf.set_key_value("overhangs_width", config->option("overhangs_width")->clone()->set_enabled(true));
+                        new_conf.set_key_value("overhangs", new ConfigOptionBool(true));
+                        new_conf.set_key_value("overhangs_flow_ratio", config->option("overhangs_flow_ratio")->clone()->set_enabled(true));
                     } else if (answer == wxID_NO) {
                         // Do nothing, leave supports on and "detect bridging perimeters" off.
                     } else if (answer == wxID_CANCEL) {
@@ -359,7 +359,8 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig* config)
         "overhangs",
         "seam_position","staggered_inner_seams",
         "perimeter_speed", "perimeter_reverse", "perimeter_generator",
-        "external_perimeter_speed", "small_perimeter_speed", "overhangs_dynamic_speed",
+        "external_perimeter_speed", "small_perimeter_speed",
+        "overhangs_dynamic_flow", "overhangs_dynamic_speed",
         "small_perimeter_min_length", " small_perimeter_max_length", "spiral_vase",
         "seam_notch_all", "seam_notch_inner", "seam_notch_outer"})
         toggle_field(el, have_perimeters);
@@ -394,10 +395,18 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig* config)
     toggle_field("no_perimeter_unsupported_algo", have_perimeters);
     toggle_field("only_one_perimeter_top", have_perimeters);
     toggle_field("only_one_perimeter_first_layer", config->opt_int("perimeters") > 1);
-    bool have_overhangs_reverse = have_perimeters && !have_arachne && !config->opt_bool("perimeter_reverse");
-    toggle_field("overhangs_reverse", have_overhangs_reverse);
-    toggle_field("overhangs_reverse_threshold", have_overhangs_reverse && config->opt_bool("overhangs_reverse"));
-    toggle_field("overhangs_speed_enforce", have_perimeters && !have_perimeter_loop);
+    bool have_overhangs = have_perimeters &&config->opt_bool("overhangs");
+    bool can_have_overhangs_reverse =  !have_arachne && have_overhangs && !config->opt_bool("perimeter_reverse");
+    toggle_field("overhangs_reverse", can_have_overhangs_reverse);
+    toggle_field("overhangs_reverse_threshold", can_have_overhangs_reverse && config->opt_bool("overhangs_reverse"));
+    toggle_field("overhangs_speed_enforce", have_overhangs && !have_perimeter_loop && have_overhangs);
+    for (auto el : { "overhangs_speed", "overhangs_width_speed", "overhangs_dynamic_speed", "overhangs_flow_ratio" })
+        toggle_field(el, have_overhangs);
+    bool have_overhangs_flow = have_overhangs && config->option("overhangs_flow_ratio")->is_enabled();
+    for (auto el : { "overhangs_width", "overhangs_dynamic_flow" })
+        toggle_field(el, have_overhangs_flow);
+
+
     toggle_field("min_width_top_surface", have_perimeters && config->opt_bool("only_one_perimeter_top"));
     toggle_field("thin_perimeters_all", have_perimeters && config->option("thin_perimeters")->get_float() != 0 && !have_arachne);
     bool have_thin_wall = !have_arachne && have_perimeters;

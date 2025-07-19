@@ -1075,7 +1075,7 @@ void PrintObject::estimate_curled_extrusions()
         }
         if (this->print()->config().avoid_crossing_curled_overhangs ||
             std::any_of(this->print()->m_print_regions.begin(), this->print()->m_print_regions.end(),
-                        [](const PrintRegion *region) { return region->config().overhangs_dynamic_speed.is_enabled(); })) {
+                        [](const PrintRegion *region) { return region->config().overhangs_dynamic_flow.is_enabled() || region->config().overhangs_dynamic_speed.is_enabled(); })) {
             BOOST_LOG_TRIVIAL(debug) << "Estimating areas with curled extrusions - start";
             m_print->set_status(objectstep_2_percent[PrintObjectStep::posEstimateCurledExtrusions], _u8L("Estimating curled extrusions"));
 
@@ -1110,59 +1110,72 @@ void PrintObject::calculate_overhanging_perimeters()
         BOOST_LOG_TRIVIAL(debug) << "Calculating overhanging perimeters - start";
         m_print->set_status(objectstep_2_percent[PrintObjectStep::posCalculateOverhangingPerimeters], _u8L("Calculating overhanging perimeters"));
         std::set<uint16_t>                      extruders;
-        std::unordered_set<const PrintRegion *> regions_with_dynamic_speeds;
+        std::unordered_set<const PrintRegion *> regions_with_dynamic_overhangs;
         for (const PrintRegion *pr : this->print()->m_print_regions) {
-            if (pr->config().overhangs_dynamic_speed.is_enabled()) {
-                regions_with_dynamic_speeds.insert(pr);
+            if (pr->config().overhangs_dynamic_speed.is_enabled() || pr->config().overhangs_dynamic_flow.is_enabled()) {
+                regions_with_dynamic_overhangs.insert(pr);
             }
             extruders.clear();
             pr->collect_object_printing_extruders(*this->print(), extruders);
-            auto cfg = this->print()->config();
+            const PrintConfig &cfg = this->print()->config();
             if (std::any_of(extruders.begin(), extruders.end(),
                             [&cfg](unsigned int extruder_id) { return cfg.overhangs_dynamic_fan_speed.is_enabled(extruder_id); })) {
-                regions_with_dynamic_speeds.insert(pr);
+                regions_with_dynamic_overhangs.insert(pr);
             }
         }
 
-        if (!regions_with_dynamic_speeds.empty()) {
+        if (!regions_with_dynamic_overhangs.empty()) {
             std::unordered_map<size_t, AABBTreeLines::LinesDistancer<CurledLine>> curled_lines;
             std::unordered_map<size_t, AABBTreeLines::LinesDistancer<Linef>>      unscaled_polygons_lines;
-            for (const Layer *l : this->layers()) {
-                curled_lines[l->id()]            = AABBTreeLines::LinesDistancer<CurledLine>{l->curled_lines};
-                unscaled_polygons_lines[l->id()] = AABBTreeLines::LinesDistancer<Linef>{to_unscaled_linesf(l->lslices())};
+            for (const Layer *layer : this->layers()) {
+                curled_lines[layer->id()]            = AABBTreeLines::LinesDistancer<CurledLine>{layer->curled_lines};
+                unscaled_polygons_lines[layer->id()] = AABBTreeLines::LinesDistancer<Linef>{to_unscaled_linesf(layer->lslices())};
             }
             curled_lines[size_t(-1)]            = {};
             unscaled_polygons_lines[size_t(-1)] = {};
 
             Slic3r::parallel_for(size_t(0), m_layers.size(),
-                [this, &curled_lines, &unscaled_polygons_lines, &regions_with_dynamic_speeds]
+                [this, &curled_lines, &unscaled_polygons_lines, &regions_with_dynamic_overhangs]
                 (const size_t layer_idx) {
                 PRINT_OBJECT_TIME_LIMIT_MILLIS(PRINT_OBJECT_TIME_LIMIT_DEFAULT);
-                auto l = m_layers[layer_idx];
+                Layer *layer = m_layers[layer_idx];
                 // first layer: do not split
-                if (l->id() > 0) {
-                    for (LayerRegion *layer_region : l->regions()) {
-                        if (regions_with_dynamic_speeds.find(layer_region->m_region) == regions_with_dynamic_speeds.end()) {
+                if (layer->id() > 0) {
+                    for (LayerRegion *layer_region : layer->regions()) {
+                        if (regions_with_dynamic_overhangs.find(layer_region->m_region) == regions_with_dynamic_overhangs.end()) {
                             continue;
                         }
-                        size_t prev_layer_id = l->lower_layer ? l->lower_layer->id() : size_t(-1);
-                        const double nozzle_diameter_overhangs = layer_region->bridging_flow(frPerimeter).nozzle_diameter();
-                        double max_width = -1;
-                        if (layer_region->region().config().overhangs_width_speed.is_enabled()) {
-                            max_width = layer_region->region().config().overhangs_width_speed.get_abs_value(nozzle_diameter_overhangs);
+                        size_t prev_layer_id = layer->lower_layer ? layer->lower_layer->id() : size_t(-1);
+                        // get avg nozzle diam to have a threshold for splitting
+                        double avg_nzl_diam = 0;
+                        for (const LayerRegion *layer_region : layer_region->perimeters_regions()) {
+                            avg_nzl_diam += layer_region->region().nozzle_dmr_avg(this->print()->config());
                         }
-                        if (layer_region->region().config().overhangs_width.is_enabled() && (max_width < 0 ||
-                            max_width > layer_region->region().config().overhangs_width.get_abs_value(nozzle_diameter_overhangs))) {
-                            max_width = layer_region->region().config().overhangs_width.get_abs_value(nozzle_diameter_overhangs);
-                        }
-                        if (max_width < 0) {
-                            max_width = nozzle_diameter_overhangs;
-                        }
+                        avg_nzl_diam /= layer_region->perimeters_regions().size();
                         layer_region->m_perimeters =
                             ExtrusionProcessor::calculate_and_split_overhanging_extrusions(&layer_region->m_perimeters,
                                                                                            unscaled_polygons_lines[prev_layer_id],
-                                                                                           curled_lines[l->id()],
-                                                                                           max_width);
+                                                                                           curled_lines[layer->id()], avg_nzl_diam);
+
+                        struct PathDynamicFlowVisitor : public ExtrusionVisitorRecursive
+                        {
+                            const PrintConfig *print_config;
+                            const LayerRegion *layer_region;
+                            const Layer* layer;
+                            using ExtrusionVisitorRecursive::use;
+                            void use(ExtrusionPath &path) override {
+                                size_t extruder_id = layer_region->region().extruder(path.role().is_external() ?
+                                                                                       FlowRole::frExternalPerimeter :
+                                                                                       FlowRole::frPerimeter,
+                                                                                   *layer->object()) -
+                                    1;
+                                ExtrusionProcessor::apply_overhang_flow(path, *print_config, *layer_region, extruder_id);
+                            }
+                        } overhangs_flow_visitor;
+                        overhangs_flow_visitor.print_config = &this->print()->config();
+                        overhangs_flow_visitor.layer_region = layer_region;
+                        overhangs_flow_visitor.layer = layer;
+                        layer_region->m_perimeters.visit(overhangs_flow_visitor);
                     }
 #ifdef _DEBUG
                     {
@@ -1175,7 +1188,7 @@ void PrintObject::calculate_overhanging_perimeters()
                             }
                         };
                         OverhangAssertVisitor ov_visitor;
-                        for (auto &reg : l->regions()) {
+                        for (auto &reg : layer->regions()) {
                             reg->perimeters().visit(ov_visitor);
                         }
                     }
@@ -1353,6 +1366,8 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "only_one_perimeter_first_layer"
             || opt_key == "only_one_perimeter_top"
             || opt_key == "only_one_perimeter_top_other_algo"
+            || opt_key == "overhangs"
+            || opt_key == "overhangs_dynamic_flow"
             || opt_key == "overhangs_dynamic_speed"
             || opt_key == "overhangs_reverse"
             || opt_key == "overhangs_reverse_threshold"

@@ -68,7 +68,7 @@ struct Parameters
     coord_t       get_min_round_spacing() const { return min_round_spacing; }
 
     // cached parameters
-    Polygons lower_slices_bridge;
+    Polygons lower_slices_bridge_for_extra_overhangs;
     Polygons lower_slices_bridge_dynamic;
     Polygons lower_slices_bridge_speed_small;
     Polygons lower_slices_bridge_speed_big;
@@ -244,6 +244,7 @@ private:
     {
         bool is_external;
         bool is_loop;
+        bool has_dynamic;
         size_t layer_height_count;
         Point first_point;
         Point last_point;

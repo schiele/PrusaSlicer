@@ -70,10 +70,13 @@ Flow LayerRegion::bridging_flow(FlowRole role, BridgeType force_type) const
     const PrintRegion       &region         = this->region();
     const PrintRegionConfig &region_config  = region.config();
     const PrintObject       &print_object   = *this->layer()->object();
+    const bool is_perimeter = role == frExternalPerimeter || role == frPerimeter;
     // Here this->extruder(role) - 1 may underflow to MAX_INT, but then the get_at() will follback to zero'th element, so everything is all right.
-    float nozzle_diameter = float(print_object.print()->config().nozzle_diameter.get_at(region.extruder(role, *this->layer()->object()) - 1));
+    const float nozzle_diameter = float(print_object.print()->config().nozzle_diameter.get_at(region.extruder(role, *this->layer()->object()) - 1));
     double diameter = 0;
-    BridgeType bridge_type = force_type == BridgeType::btNone ? region_config.bridge_type : force_type;
+    BridgeType bridge_type = force_type == BridgeType::btNone ?
+        (is_perimeter ? region_config.overhangs_type : region_config.bridge_type) :
+        force_type;
     if (bridge_type == BridgeType::btFromFlow ) {
         Flow reference_flow = flow(role);
         diameter = sqrt(4 * reference_flow.mm3_per_mm() / PI);
@@ -85,7 +88,13 @@ Flow LayerRegion::bridging_flow(FlowRole role, BridgeType force_type) const
         // Applies default bridge spacing.
         diameter =  nozzle_diameter;
     }
-    return Flow::bridging_flow(float(sqrt(force_type == BridgeType::btNone ? region_config.bridge_flow_ratio.get_abs_value(1.) : 0.95f) * diameter) , nozzle_diameter);
+    assert(!is_perimeter || (region_config.overhangs.get_bool() && region_config.overhangs_flow_ratio.is_enabled()));
+    return Flow::bridging_flow(float(sqrt(force_type == BridgeType::btNone ?
+                                              (is_perimeter ? region_config.overhangs_flow_ratio.get_abs_value(1.) :
+                                                              region_config.bridge_flow_ratio.get_abs_value(1.)) :
+                                              0.95f) *
+                                     diameter),
+                               nozzle_diameter);
     /* else {
         // The same way as other slicers: Use normal extrusions. Apply bridge_flow_ratio while maintaining the original spacing.
         return this->flow(role).with_flow_ratio(region_config.bridge_flow_ratio, overlap_percent);
@@ -128,8 +137,10 @@ void LayerRegion::make_perimeters(
     // Ranges of fill areas above per input slice.
     std::vector<ExPolygonRange>                            &fill_expolygons_ranges)
 {
-    m_perimeters.clear();
-    m_thin_fills.clear();
+    this->m_perimeters.clear();
+    this->m_thin_fills.clear();
+    this->m_perimeters_regions = lregions;
+    assert(this->m_perimeters_regions.empty() || this->m_perimeters_regions.find(this) != this->m_perimeters_regions.end());
 
     perimeter_and_gapfill_ranges.reserve(perimeter_and_gapfill_ranges.size() + slices.size());
     // There may be more expolygons produced per slice, thus this reserve is conservative.
@@ -144,12 +155,15 @@ void LayerRegion::make_perimeters(
         (this->layer()->id() >= size_t(region_config.bottom_solid_layers.value) &&
          this->layer()->print_z >= region_config.bottom_solid_min_thickness - EPSILON);
 
+    Flow bridging_flow = (region_config.overhangs.get_bool() && region_config.overhangs_flow_ratio.is_enabled()) ?
+        this->bridging_flow(frExternalPerimeter) :
+        this->flow(frPerimeter);
     //this is a factory, the content will be copied into the PerimeterGenerator
     PerimeterGenerator::Parameters params(
         this->layer(),
         this->flow(frPerimeter),
         this->flow(frExternalPerimeter),
-        this->bridging_flow(frPerimeter),
+        bridging_flow,
         this->flow(frSolidInfill),
         region_config,
         this->layer()->object()->config(),
@@ -189,7 +203,7 @@ void LayerRegion::make_perimeters(
         size_t gap_fills_begin = m_thin_fills.size();
         size_t fill_expolygons_begin = fill_expolygons.size();
 
-        params.region_setting.segregate_regions(surface.expolygon, lregions);
+        params.region_setting.segregate_regions(surface.expolygon, this->m_perimeters_regions);
 
         PerimeterGenerator::PerimeterGenerator g{params};
         g.throw_if_canceled = [this]() { this->layer()->object()->print()->throw_if_canceled(); };
