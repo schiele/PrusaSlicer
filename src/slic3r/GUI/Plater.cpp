@@ -2245,6 +2245,7 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
         "brim_width", "brim_width_interior","brim_separation",
         "complete_objects",
         "parallel_objects_step",
+        "parallel_objects_step_max_z",
         "complete_objects_sort",
         "complete_objects_one_skirt",
         "brim_per_object",

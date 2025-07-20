@@ -610,6 +610,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig* config)
         "complete_objects_sort"})
         toggle_field(el, have_sequential_printing);
     toggle_field("parallel_objects_step", !config->opt_bool("complete_objects"));
+    toggle_field("parallel_objects_step_max_z", config->opt_float("parallel_objects_step") > 0);
 
     bool have_ooze_prevention = config->opt_bool("ooze_prevention");
     toggle_field("standby_temperature_delta", have_ooze_prevention);

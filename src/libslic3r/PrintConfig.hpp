@@ -1273,6 +1273,7 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionInts,                 chamber_temperature))
     ((ConfigOptionBool,                 complete_objects))
     ((ConfigOptionFloat,                parallel_objects_step))
+    ((ConfigOptionFloat,                parallel_objects_step_max_z))
     ((ConfigOptionBool,                 complete_objects_one_skirt))
     ((ConfigOptionBool,                 complete_objects_one_brim))
     ((ConfigOptionEnum<CompleteObjectSort>, complete_objects_sort))

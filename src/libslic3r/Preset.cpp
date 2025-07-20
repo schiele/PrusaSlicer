@@ -687,6 +687,7 @@ static std::vector<std::string> s_Preset_print_options {
         "print_custom_variables",
         "complete_objects",
         "parallel_objects_step",
+        "parallel_objects_step_max_z",
         "complete_objects_one_skirt",
         "complete_objects_sort",
         "extruder_clearance_radius", 

@@ -1211,6 +1211,14 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvancedE | comSuSi;
     def->set_default_value(new ConfigOptionFloat(0));
 
+    def = this->add("parallel_objects_step_max_z", coFloat);
+    def->label = L("Max height for parallel printing step");
+    def->category = OptionCategory::output;
+    def->tooltip = L("If the nozzle print higher than taht, the print is switched back to normal printing. Allow to quicly print the first layer per object if these need quick printing.");
+    def->sidetext = L("mm");
+    def->mode = comAdvancedE | comSuSi;
+    def->set_default_value(new ConfigOptionFloat(0));
+
     def = this->add("complete_objects_one_skirt", coBool);
     def->label = L("Allow only one skirt loop");
     def->category = OptionCategory::output;
@@ -4784,7 +4792,6 @@ void PrintConfigDef::init_fff_params()
     def->tooltip = L("Like Perimeter width but spacing is the distance between two perimeter lines (as they overlap a bit, it's not the same)."
         "\nYou can set either 'Spacing', or 'Width'; the other will be calculated, using the perimeter 'Overlap' percentages and default layer height.");
     def->sidetext = L("mm or %");
-    def->aliases = { "perimeters_extrusion_width" };
     def->ratio_over = "nozzle_diameter";
     def->min = 0;
     def->max = 1000;
@@ -10284,9 +10291,11 @@ std::unordered_set<std::string> prusa_export_to_remove_keys = {
 "overhangs_bridge_upper_layers",
 "overhangs_reverse_threshold",
 "overhangs_reverse",
+"overhangs_spacing",
 "overhangs_speed_enforce",
 "overhangs_width_speed",
 "parallel_objects_step",
+"parallel_objects_step_max_z",
 "perimeter_bonding",
 "perimeter_extrusion_change_odd_layers",
 "perimeter_extrusion_spacing",

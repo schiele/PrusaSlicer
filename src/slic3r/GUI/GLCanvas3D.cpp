@@ -2729,7 +2729,9 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
         unsigned int extruders_count = (unsigned int)m_config->option<ConfigOptionFloats>("nozzle_diameter")->size();
 
         const bool wt = m_config->option("wipe_tower")->get_bool();
-        const bool co = m_config->option("complete_objects")->get_bool() || m_config->option("parallel_objects_step")->get_float() > 0;
+        const bool co = m_config->option("complete_objects")->get_bool() ||
+            (m_config->option("parallel_objects_step")->get_float() > 0 &&
+             m_config->option("parallel_objects_step_max_z")->get_float() == 0);
 
         if (extruders_count > 1 && wt && !co) {
             // can't get these one from wipe_tower_data, as these use the platter's config, not the print one.
