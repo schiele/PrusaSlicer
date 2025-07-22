@@ -4496,9 +4496,9 @@ void PrintConfigDef::init_fff_params()
     def = this->add("overhangs_bridge_upper_layers", coInt);
     def->label = L("Consider upper bridges");
     def->category = OptionCategory::slicing;
-    def->tooltip = L("Don't put overhangs if the area will filled in next layer by bridges."
-                    "\nIf disabled, accept all upper layers."
-                    "\nSet to 0 to only consider our layer bridges.");
+    def->tooltip = L("Don't put overhangs in the area if it will be filled in next layer(s) by bridges."
+                    "\nIf set to 0, it will look all layers."
+                    "\nIf disabled, the current layer will still add overhangs, even if there's a bridge on top, reducing the bridge length.");
     def->sidetext = L("layers");
     def->min = 0;
     def->can_be_disabled = true;
