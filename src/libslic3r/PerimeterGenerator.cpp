@@ -594,7 +594,8 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_loops_classic(const Para
             bool has_overhang = false;
             if (params.config.overhangs_speed_enforce.value > 0) {
                 for (const ExtrusionPath& path : eloop->paths) {
-                    if (path.role().is_overhang()) {
+                    assert(!path.role().is_overhang() || path.attributes().overhang_attributes);
+                    if (path.role().is_overhang() && path.attributes().overhang_attributes->start_distance_from_prev_layer >= 1) {
                         has_overhang = true;
                         break;
                     }
@@ -602,14 +603,11 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_loops_classic(const Para
                 if (has_overhang || ( count_since_overhang >= 0 && params.config.overhangs_speed_enforce.value > count_since_overhang)) {
                     //enforce
                     for (ExtrusionPath& path : eloop->paths) {
-                        if (path.role() == ExtrusionRole::Perimeter) {
-                            path.set_role(ExtrusionRole::OverhangPerimeter);
-                        } else if (path.role() == ExtrusionRole::ExternalPerimeter) {
-                            path.set_role(ExtrusionRole::OverhangExternalPerimeter);
-                        }
+                        assert(path.role().is_perimeter());
+                        path.set_role(path.role() | ExtrusionRoleModifier::ERM_Bridge);
+                        path.overhang_attributes_mutable() = OverhangAttributes{1, 2, 0};
                     }
                 }
-
             }
 #if _DEBUG
             for(auto ee : coll) if(ee) ee->visit(LoopAssertVisitor());
@@ -1577,6 +1575,11 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_extrusions(const Paramet
         if (extrusion->is_zero_length()) {
             continue;
         }
+        // possible, i guess a kind of gap fill ?
+        if (!extrusion->is_closed && extrusion->junctions.front().p == extrusion->junctions.back().p) {
+            //transform to loop
+            extrusion->is_closed = true;
+        }
 
         const bool    is_external = extrusion->inset_idx == 0;
         ExtrusionLoopRole loop_role = ExtrusionLoopRole::elrDefault;
@@ -1702,7 +1705,8 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_extrusions(const Paramet
         bool has_overhang = false;
         if (params.config.overhangs_speed_enforce.value > 0) {
             for (const ExtrusionPath& path : paths) {
-                if (path.role().is_overhang()) {
+                assert(!path.role().is_overhang() || path.attributes().overhang_attributes);
+                if (path.role().is_overhang() && path.attributes().overhang_attributes->start_distance_from_prev_layer >= 1) {
                     has_overhang = true;
                     break;
                 }
@@ -1712,6 +1716,7 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_extrusions(const Paramet
                 for (ExtrusionPath& path : paths) {
                     assert(path.role().is_perimeter());
                     path.set_role(path.role() | ExtrusionRoleModifier::ERM_Bridge);
+                    path.overhang_attributes_mutable() = OverhangAttributes{1, 2, 0};
                 }
             }
         }
@@ -2562,6 +2567,9 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_arachne(const Parameters &  
         Point mean = (paths.front().first_point() + paths.back().last_point()) / 2;
         paths.front().polyline.set_front(mean);
         paths.back().polyline.set_back(mean);
+    }
+    for (const ExtrusionPath &path : paths) {
+        assert (!path.role().is_overhang() || path.attributes().overhang_attributes);
     }
     return paths;
 }
@@ -3549,7 +3557,7 @@ ProcessSurfaceResult PerimeterGenerator::process_arachne(const Parameters &param
     // fuzzify
     if (params.layer->id() > 0 && params.config.fuzzy_skin != FuzzySkinType::None) {
         std::vector<PerimeterGeneratorArachneExtrusion*> closed_loop_extrusions;
-        for (PerimeterGeneratorArachneExtrusion& extrusion : ordered_extrusions)
+        for (PerimeterGeneratorArachneExtrusion &extrusion : ordered_extrusions) {
             if (extrusion.extrusion->inset_idx == 0 || params.config.fuzzy_skin == FuzzySkinType::All) {
                 if (extrusion.extrusion->is_closed && params.config.fuzzy_skin == FuzzySkinType::External) {
                     closed_loop_extrusions.emplace_back(&extrusion);
@@ -3557,6 +3565,7 @@ ProcessSurfaceResult PerimeterGenerator::process_arachne(const Parameters &param
                     extrusion.fuzzify = true;
                 }
             }
+        }
 
         if (params.config.fuzzy_skin == FuzzySkinType::External) {
             ClipperLib_Z::Paths loops_paths;
@@ -5677,7 +5686,7 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
             loops.append(peri_entities);
         }
     } // if contour & hole
-#if _DEBUG
+#ifdef _DEBUGINFO
     LoopAssertVisitor visitor;
     loops.visit(visitor);
 #endif
@@ -5842,6 +5851,9 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
     }
     append(results.inner_perimeter, saved_infill);
 
+#ifdef _DEBUGINFO
+    loops.visit(LoopAssertVisitor());
+#endif
     return results;
 }
 
@@ -6519,15 +6531,17 @@ ExtrusionLoop PerimeterGenerator::_traverse_and_join_loops(const Parameters &   
                 assert(outer_start->polyline.back() == outer_end->polyline.front());
             } else {
                 tosplit.split_at(nearest.outter_best, outer_start->polyline, outer_end->polyline);
-                assert(outer_start->polyline.back() == outer_end->polyline.front());
+                assert(outer_start->polyline.back() == outer_end->polyline.front() || outer_end->empty());
                 if (outer_start->polyline.back() != nearest.outter_best) {
                     if (outer_start->polyline.back().coincides_with_epsilon(nearest.outter_best)) {
                         outer_start->polyline.set_back(nearest.outter_best);
-                        outer_end->polyline.set_front(nearest.outter_best);
+                        if (!outer_end->empty())
+                            outer_end->polyline.set_front(nearest.outter_best);
                     }
                 } else {
                     outer_start->polyline.append(nearest.outter_best);
-                    outer_end->polyline.append_before(nearest.outter_best);
+                    if (!outer_end->empty())
+                        outer_end->polyline.append_before(nearest.outter_best);
                 }
             }
             Polyline to_reduce = outer_start->polyline.to_polyline();
