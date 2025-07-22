@@ -309,9 +309,8 @@ namespace ClipperUtils {
                                 // the intersection point is a corner of the bbox
                                 assert(in_bbox(intersections.front()) && count_sides(bb_sides(intersections.front())) == 2);
                                 // add the corner if it isn't here yet (it shouldn't)
-                                assert(out.back() != intersections.front());
-                                if (out.back() != intersections.front()) {
-                                    assert(out.empty() || out.back() != intersections.front());
+                                assert(!out.empty() && out.back() != intersections.front());
+                                if (out.empty() || out.back() != intersections.front()) {
                                     out.push_back(intersections.front());
                                 }
                             }
@@ -329,9 +328,17 @@ namespace ClipperUtils {
                             if (intersect_side != bb_path.back() && count_sides(intersect_side) == 1) {
                                 // we need only one corner to go to intersect_side
                                 assert((side_sides[bb_path.back()] & intersect_side) != 0);
+                                if ((side_sides[bb_path.back()] & intersect_side) == 0) {
+                                    out = src.points;
+                                    return;
+                                }
                                 if ((side_sides[bb_path.back()] & intersect_side) != 0) {
                                     Point pt_corner = get_corner[intersect_side + bb_path.back()](bbox);
-                                    if (pt_corner == out.back()) {
+                                    if (!get_corner[intersect_side + bb_path.back()]) {
+                                        out = src.points;
+                                        return;
+                                    }
+                                    if (!out.empty() && pt_corner == out.back()) {
                                         out.pop_back();
                                     } else {
                                         assert(out.empty() || out.back() != pt_corner);
@@ -340,8 +347,11 @@ namespace ClipperUtils {
                                 }
                             }
                             // go in bb
-                            assert(out.empty() || out.back() != pt_in_bb);
-                            out.push_back(pt_in_bb);
+                            if (out.empty() || out.back() != pt_in_bb) {
+                                out.push_back(pt_in_bb);
+                            } else {
+                                // going back into the bbox by the same point, ignore it.
+                            }
                             bb_path.clear();
                         } else {
                             bb_path.clear();
@@ -368,8 +378,12 @@ namespace ClipperUtils {
                             assert(intersections.front() == src[prev_i] || in_bbox(src[i]));
                             assert((bb_sides(src[prev_i]) & bb_sides(src[i])) != 0);
                             // no need to add src[prev_i] to out, it has been added before or will be at the end.
-                            // can't use sides_this becasue in the case that in_bbox(src[i])
+                            // can't use sides_this because in the case that in_bbox(src[i])
                             bb_path.push_back(bb_sides(src[prev_i]) & bb_sides(src[i]));
+                            if (count_sides(bb_path.back()) == 2) {
+                                // both in corner, unlucky, choose one side
+                                bb_path.back() = bb_path.back() & (int(Side::Bottom) | int(Side::Top));
+                            }
                         } else {
                             // intersection between a point inside and me outside
                             assert(bb_sides(src[prev_i]) == 0);
@@ -418,6 +432,11 @@ namespace ClipperUtils {
                             // get both points
                             intersections.clear();
                             bb_polygon.intersections(Line(src[prev_i], src[i]), &intersections);
+                            if (intersections.size() == 1) {
+                                // hit a corner, unlucky
+                                assert(bb_polygon.find_point(pt_in_bb) >= 0);
+                                intersections.push_back(intersections.front());
+                            }
                             assert(intersections.size() == 2);
                             if (src[i].distance_to_square(intersections.front()) < src[i].distance_to_square(intersections.back())) {
                                 // the order need to be src[prev_i] -> front -> back -> src[i]
@@ -437,19 +456,31 @@ namespace ClipperUtils {
                             out.push_back(intersections.front());
                             bb_path.clear();
                             //go out of bb
-                            assert(out.back() != intersections.back());
-                            out.push_back(intersections.back());
+                            if (out.back() != intersections.back()) {
+                                out.push_back(intersections.back());
+                            }
                             bb_path.push_back(bb_sides(intersections.back()));
                             // in unlucky, we are on a corner
                             if (count_sides(bb_path.back()) == 2) {
                                 int front_side = bb_sides(intersections.front());
-                                if ((front_side & bb_path.back()) != 0) {
-                                    bb_path.back() = bb_path.back() & (~front_side);
-                                } else if(count_sides(front_side) == 1){
-                                    bb_path.back() = bb_path.back() & (~side_sides[front_side]);
+                                if (count_sides(front_side) != 2) {
+                                    // only one corner
+                                    if ((front_side & bb_path.back()) != 0) {
+                                        bb_path.back() = bb_path.back() & (~front_side);
+                                    } else if (count_sides(front_side) == 1) {
+                                        bb_path.back() = bb_path.back() & (~side_sides[front_side]);
+                                    } else {
+                                        // diagonal
+                                        bb_path.back() = 15 & (~(previous_side | side_sides[previous_side]));
+                                    }
                                 } else {
-                                    // diagonal
-                                    bb_path.back() = 15 & (~(previous_side | side_sides[previous_side]));
+                                    // both corner
+                                    // choose one
+                                    if ((previous_side & (int(Side::Left) | int(Side::Right))) == 0) {
+                                        bb_path.back() = bb_path.back() & (int(Side::Left) | int(Side::Right));
+                                    } else {
+                                        bb_path.back() = bb_path.back() & (int(Side::Top) | int(Side::Bottom));
+                                    }
                                 }
                             }
                             assert(count_sides(bb_path.back()) == 1);
@@ -459,9 +490,26 @@ namespace ClipperUtils {
                             // filter sides_this to only have one side, next to sides.back()
                             int this_single_side = sides_this & side_sides[bb_path.back()];
                             if (this_single_side == 0) {
-                                // this line just goes from a corner to the opposite side, bypassing the intermediate side, and withotu intersecting the bbox
+                                // this line just goes from a corner to the opposite side, bypassing the intermediate side, and without intersecting the bbox
                                 assert(count_sides(sides(src[prev_i])) == 2);
                                 assert(count_sides(sides_this) == 1);
+                                // prevent crash FIXME
+                                if (!get_corner[sides(src[prev_i])]) {
+#ifdef _DEBUGINFO
+                                    static int iRun=0;
+                                    SVG svg(debug_out_path("get_corner-%d.svg", iRun ++).c_str(), bbox);
+                                    svg.draw(src.split_at_first_point(), "blue", scale_(0.03));
+                                    svg.draw(bbox.polygon().split_at_first_point(), "red", scale_(0.025));
+                                    svg.draw(Polyline(out), "green", scale_(0.02));
+                                    svg.draw(out.front(), "teal", scale_(0.02));
+                                    svg.draw(out.back(), "cyan", scale_(0.02));
+                                    svg.Close();
+                                    throw new std::exception();
+#endif
+                                    assert(false);
+                                    out = src.points;
+                                    return;
+                                }
                                 //add the first corner
                                 Point pt_corner = get_corner[sides(src[prev_i])](bbox);
                                 int first_single_side = sides(src[prev_i]) & side_sides[sides_this];
@@ -589,9 +637,9 @@ namespace ClipperUtils {
         out.pop_back();
 
         // clean a little
-        // note: mayeb shouldn't be done here, as most of the geometry transformation don't do that and let the caller do it.
+        // note: maybe shouldn't be done here, as most of the geometry transformation don't do that and let the caller do it.
         const distsqrf_t max_dist = SCALED_EPSILON * SCALED_EPSILON;
-        for (size_t i = 0, pi = out.size() - 1; i < out.size(); pi = i, ++i) {
+        for (size_t i = 0, pi = out.size() - 1; i < out.size(); pi = std::min(i, out.size() - 1), ++i) {
             if ((out[pi] - out[i]).squaredNorm() < max_dist) {
                 if (in_bbox(out[i])) {
                     out.erase(out.begin() + pi);
