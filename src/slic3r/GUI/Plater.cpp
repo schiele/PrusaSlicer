@@ -3180,7 +3180,7 @@ std::pair<wxString, int> Plater::priv::get_export_file(
     GUI::FileType file_type,
     wxFileDialogBase::ExtraControlCreatorFunction extra_option_factory,
     std::function<void(wxWindow *)> extra_option_reader) {
-    return get_export_file({file_type}, extra_option_factory, extra_option_reader);
+    return get_export_file(std::vector<GUI::FileType>{file_type}, extra_option_factory, extra_option_reader);
 }
 std::pair<wxString, int> Plater::priv::get_export_file(
     std::vector<GUI::FileType> file_types,
