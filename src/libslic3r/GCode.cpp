@@ -3425,13 +3425,19 @@ LayerResult GCodeGenerator::process_layer(
             assert (extruder.id() < m_last_layer_used_filament.size());
             assert (layer_used_filament.size() == m_last_layer_used_filament.size());
             // get new used_filament
-            assert(!print.has_wipe_tower() ||
-                   (!print.wipe_tower_data().used_filament_until_layer.empty() &&
-                    extruder.id() < print.wipe_tower_data().used_filament_until_layer.back().second.size()));
-            const double used_filament = extruder.used_filament() +
-                (print.has_wipe_tower() ?
-                     print.wipe_tower_data().used_filament_until_layer.back().second[extruder.id()] :
-                     0.f);
+            double used_filament = extruder.used_filament();
+            // vector of layer -> {printz, vector of extruders -> used_filament }
+            const std::vector<std::pair<float, std::vector<float>>> &wt_data = print.wipe_tower_data()
+                                                                                   .used_filament_until_layer;
+            if (print.has_wipe_tower() && !wt_data.empty()) {
+                // get our layer from wt_data
+                size_t lidx = 0;
+                for (; lidx < wt_data.size() &&  wt_data[lidx].first + EPSILON < print_z; lidx++) {}
+                // if there is still a wipe tower at our z for this extruder
+                if (lidx < wt_data.size() && extruder.id() < wt_data[lidx].second.size()) {
+                    used_filament += wt_data[lidx].second[extruder.id()];
+                }
+            }
             // compute diff 
             const double layer_filament = used_filament - m_last_layer_used_filament[extruder.id()];
             // store results
