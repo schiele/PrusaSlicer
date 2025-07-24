@@ -540,6 +540,7 @@ private:
 #endif // ENABLE_OPENGL_ES
     GCodeViewer m_gcode_viewer;
 
+    bool still_mouse_down = false;
     RenderTimer m_render_timer;
 
     Selection m_selection;
@@ -559,6 +560,9 @@ private:
     bool m_picking_enabled;
     bool m_moving_enabled;
     bool m_dynamic_background_enabled;
+    bool m_show_position_axle = false;
+    bool m_show_z_axle = false;
+    bool m_show_xy_plane = false;
     bool m_multisample_allowed;
     bool m_moving;
     bool m_tab_down;
@@ -709,6 +713,9 @@ private:
     CameraTarget m_camera_target;
 #endif // ENABLE_SHOW_CAMERA_TARGET
     GLModel m_background;
+    GLModel m_z_axle;
+    double m_z_axle_length;
+    GLModel m_xy_plane;
 
 public:
     GLCanvas3D(wxGLCanvas* canvas, Bed3D& bed);

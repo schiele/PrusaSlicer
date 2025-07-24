@@ -1738,7 +1738,7 @@ void ObjectList::load_generic_subobject(const std::string& type_name, const Mode
         BoundingBoxf3 big_mesh_bb = selection.get_unscaled_instance_bounding_box();
         Vec3d bb_size = big_mesh_bb.max - big_mesh_bb.min;
         big_mesh_bb.min -= bb_size/2;
-        big_mesh_bb.max -= bb_size/2;
+        big_mesh_bb.max += bb_size/2;
         big_mesh_bb.min.z() = -999999999;
         big_mesh_bb.max.z() = 999999999;
         big_mesh_bb.offset(wxGetApp().plater()->canvas3D()->get_size_proportional_to_max_bed_size(0.02));

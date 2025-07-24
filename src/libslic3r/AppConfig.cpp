@@ -387,6 +387,12 @@ void AppConfig::set_defaults()
     if (get("use_free_camera").empty())
         set("use_free_camera", "0");
 
+    if (get("3D_mouse_drag").empty())
+        set("3D_mouse_drag", "0");
+
+    if (get("mouse_middle_target").empty())
+        set("mouse_middle_target", "1");
+
     if (get("reverse_mouse_wheel_zoom").empty())
         set("reverse_mouse_wheel_zoom", "0");
 

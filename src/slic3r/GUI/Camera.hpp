@@ -7,6 +7,7 @@
 
 #include "libslic3r/BoundingBox.hpp"
 #include "3DScene.hpp"
+#include "CoordAxes.hpp"
 #include <array>
 
 namespace Slic3r {
@@ -50,6 +51,7 @@ private:
     std::pair<double, double> m_frustrum_zs;
 
     BoundingBoxf3 m_scene_box;
+    CoordAxes m_axes;
 
 public:
     Camera() { set_default_orientation(); }
@@ -115,6 +117,7 @@ public:
 #if ENABLE_CAMERA_STATISTICS
     void debug_render() const;
 #endif // ENABLE_CAMERA_STATISTICS
+    void render_axes();
 
     // translate the camera in world space
     void translate_world(const Vec3d& displacement) { set_target(m_target + displacement); }

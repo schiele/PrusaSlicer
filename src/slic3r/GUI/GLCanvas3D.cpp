@@ -2023,6 +2023,7 @@ void GLCanvas3D::update_volumes_colors_by_extruder()
 
 void GLCanvas3D::render()
 {
+
     if (m_in_render) {
         // if called recursively, return
         m_dirty = true;
@@ -2108,6 +2109,8 @@ void GLCanvas3D::render()
     _render_background();
     // render bed first as grid lines may be rendred without GL_DEPTH
     _render_bed_axes();
+    if(m_show_position_axle)
+        camera.render_axes();
     if (is_looking_downward)
         _render_bed(camera.get_view_matrix(), camera.get_projection_matrix(), false);
     if(m_show_objects)
@@ -3445,6 +3448,9 @@ void GLCanvas3D::on_key(wxKeyEvent& evt)
                     }
                     m_ctrl_kar_filter.reset_count();
                     m_dirty = true;
+                } else if (keyCode == 'X') {
+                    m_dirty = m_show_position_axle;
+                    m_show_position_axle = false;
                 }
                 else if (m_gizmos.is_enabled() && !m_selection.is_empty()) {
                     translationProcessor.process(evt);
@@ -3496,6 +3502,9 @@ void GLCanvas3D::on_key(wxKeyEvent& evt)
                         m_dirty = true;
 
                     m_ctrl_kar_filter.increase_count();
+                } else if (keyCode == 'X') {
+                    m_dirty = !m_show_position_axle;
+                    m_show_position_axle = true;
                 }
                 else if (m_gizmos.is_enabled() && !m_selection.is_empty()) {
                     auto do_rotate = [this](double angle_z_rad) {
@@ -3630,6 +3639,11 @@ void GLCanvas3D::on_render_timer(wxTimerEvent& evt)
     // right after this event, idle event is fired
     // m_dirty = true; 
     // wxWakeUpIdle(); 
+    if (still_mouse_down && !m_show_z_axle && !m_show_xy_plane) {
+            m_show_z_axle = true;
+            m_show_xy_plane = true;
+            m_dirty = true;
+    }
 }
 
 // can be only called from main thread
@@ -3647,17 +3661,17 @@ void GLCanvas3D::schedule_extra_frame(int miliseconds)
             return;
         }
     } 
-    int remaining_time = m_render_timer.GetInterval();
-    // Timer is not running
-    if (!m_render_timer.IsRunning()) {
-        m_render_timer.StartOnce(miliseconds);
-    // Timer is running - restart only if new period is shorter than remaning period
-    } else {
-        if (miliseconds + 20 < remaining_time) {
-            m_render_timer.Stop(); 
-            m_render_timer.StartOnce(miliseconds);
-        }
-    }
+    //int remaining_time = m_render_timer.GetInterval();
+    //// Timer is not running
+    //if (!m_render_timer.IsRunning()) {
+    //    m_render_timer.StartOnce(miliseconds);
+    //// Timer is running - restart only if new period is shorter than remaning period
+    //} else {
+    //    if (miliseconds + 20 < remaining_time) {
+    //        m_render_timer.Stop(); 
+    //        m_render_timer.StartOnce(miliseconds);
+    //    }
+    //}
 }
 
 #ifndef NDEBUG
@@ -3847,9 +3861,10 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
         m_mouse.set_move_start_threshold_position_2D_as_invalid();
     }
 
-    if (evt.ButtonDown() && wxWindow::FindFocus() != m_canvas)
+    if (evt.ButtonDown() && wxWindow::FindFocus() != m_canvas) {
         // Grab keyboard focus on any mouse click event.
         m_canvas->SetFocus();
+    }
 
     if (evt.Entering()) {
         if (m_mouse.dragging && !evt.LeftIsDown() && !evt.RightIsDown() && !evt.MiddleIsDown()) {
@@ -3986,6 +4001,25 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
                 }
             }
         }
+        if (evt.RightDown() && !wxGetApp().app_config->get_bool("3D_mouse_drag")) {
+            still_mouse_down = true;
+            //const std::chrono::system_clock::time_point time_now = std::chrono::system_clock::now();
+            //if (m_date_mouse_bt_pressed == 0) {
+            //    m_date_mouse_bt_pressed = std::chrono::system_clock::to_time_t(time_now);
+            //    std::cout<<"down "<<m_date_mouse_bt_pressed<<"\n";
+                if (!m_render_timer.IsRunning()) {
+                    m_render_timer.StartOnce(600);
+                }
+            //}
+        }
+        if (evt.MiddleDown() && wxGetApp().app_config->get_bool("mouse_middle_target")) {
+            // set camera target to ray pos at z=0
+            Camera& camera = wxGetApp().plater()->get_camera();
+            camera.set_target(_mouse_to_bed_3d(pos));
+            m_show_z_axle = true;
+            m_show_xy_plane = true;
+            m_dirty = true;
+        }
     }
     else if (evt.Dragging() && evt.LeftIsDown() && !evt.CmdDown() && m_layers_editing.state == LayersEditing::Unknown &&
              m_mouse.drag.move_volume_idx != -1 && m_mouse.is_start_position_3D_defined()) {
@@ -4055,10 +4089,10 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
             if (!m_moving) {
                 if ((any_gizmo_active || evt.CmdDown() || m_hover_volume_idxs.empty()) && m_mouse.is_start_position_3D_defined()) {
                     const Vec3d rot = (Vec3d(pos.x(), pos.y(), 0.0) - m_mouse.drag.start_position_3D) * (PI * TRACKBALLSIZE / 180.0);
-                    if (wxGetApp().app_config->get_bool("use_free_camera"))
+                    if (wxGetApp().app_config->get_bool("use_free_camera")) {
                         // Virtual track ball (similar to the 3DConnexion mouse).
                         wxGetApp().plater()->get_camera().rotate_local_around_target(Vec3d(rot.y(), rot.x(), 0.0));
-                    else {
+                    } else {
                         // Forces camera right vector to be parallel to XY plane in case it has been misaligned using the 3D mouse free rotation.
                         // It is cheaper to call this function right away instead of testing wxGetApp().plater()->get_mouse3d_controller().connected(),
                         // which checks an atomics (flushes CPU caches).
@@ -4073,28 +4107,106 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
                 m_mouse.drag.start_position_3D = Vec3d((double)pos.x(), (double)pos.y(), 0.0);
             }
         }
-        else if (evt.MiddleIsDown() || evt.RightIsDown()) {
-            // If dragging over blank area with right/middle button, pan.
+        else if (evt.RightIsDown() || (evt.MiddleIsDown() && !wxGetApp().app_config->get_bool("mouse_middle_target"))) {
+            // If dragging over blank area with right button, pan.
             if (m_mouse.is_start_position_2D_defined()) {
-                // get point in model space at Z = 0
-                float z = 0.0f;
-                const Vec3d cur_pos = _mouse_to_3d(pos, &z);
-                const Vec3d orig = _mouse_to_3d(m_mouse.drag.start_position_2D, &z);
-                Camera& camera = wxGetApp().plater()->get_camera();
-                if (!wxGetApp().app_config->get_bool("use_free_camera"))
-                    // Forces camera right vector to be parallel to XY plane in case it has been misaligned using the 3D mouse free rotation.
-                    // It is cheaper to call this function right away instead of testing wxGetApp().plater()->get_mouse3d_controller().connected(),
-                    // which checks an atomics (flushes CPU caches).
-                    // See GH issue #3816.
+                    // get point in model space at Z = 0
+                Camera &camera = wxGetApp().plater()->get_camera();
+                if (!wxGetApp().app_config->get_bool("use_free_camera")) {
+                    // Forces camera right vector to be parallel to XY plane in case it has been misaligned using
+                    // the 3D mouse free rotation. It is cheaper to call this function right away instead of
+                    // testing wxGetApp().plater()->get_mouse3d_controller().connected(), which checks an atomics
+                    // (flushes CPU caches). See GH issue #3816.
                     camera.recover_from_free_camera();
+                }
+                if (wxGetApp().app_config->get_bool("3D_mouse_drag")) {
+                    float z = 0.0f;
+                    const Vec3d cur_pos = _mouse_to_3d(pos, &z);
+                    const Vec3d orig = _mouse_to_3d(m_mouse.drag.start_position_2D, &z);
+                    camera.set_target(camera.get_target() + orig - cur_pos);
+                } else {
+                    if (!evt.ShiftDown()) {
+                        m_show_z_axle = true;
+                        m_show_xy_plane = false;
+                        const Vec3d cur_pos = _mouse_to_bed_3d(pos);
+                        const Vec3d orig = _mouse_to_bed_3d(m_mouse.drag.start_position_2D);
+                        Vec3d delta = orig - cur_pos;
+                        delta.z() = 0;
+                        camera.set_target(camera.get_target() + delta);
+                    } else {
+                        m_show_z_axle = false;
+                        m_show_xy_plane = true;
+                        float z = 0.0f;
+                        const Vec3d orig = _mouse_to_3d(m_mouse.drag.start_position_2D, &z);
+                        // Ideally, we should project the into a plane that pass by the _mouse_to_bed_3d(pos)
+                        // and has the vector (0,0,1) and (mouse_ray(mouse_pos) CROSS (0,0,1))
+                        
+                        // Here, reusing the algo for the object x/z pan, the mouse isn't lock to the bed like for XY pan.
+                        // because we're just transfering the 2D pan into the Z component.
+                        const Linef3 ray = mouse_ray(pos);
+                        const Vec3d dir = ray.unit_vector();
+                        // finds the intersection of the mouse ray with the plane parallel to the camera viewport and passing throught the starting position
+                        // use ray-plane intersection see i.e. https://en.wikipedia.org/wiki/Line%E2%80%93plane_intersection algebric form
+                        // in our case plane normal and ray direction are the same (orthogonal view)
+                        // when moving to perspective camera the negative z unit axis of the camera needs to be transformed in world space and used as plane normal
+                        const Vec3d inters = ray.a + (orig/*m_mouse.drag.start_position_3D*/ - ray.a).dot(dir) / dir.squaredNorm() * dir;
+                        // vector from the starting position to the found intersection
+                        const Vec3d inters_vec = inters - orig/*m_mouse.drag.start_position_3D*/;
 
-                camera.set_target(camera.get_target() + orig - cur_pos);
+                        const Vec3d camera_right = camera.get_dir_right();
+                        const Vec3d camera_up = camera.get_dir_up();
+
+                        // finds projection of the vector along the camera axes
+                        const double projection_x = inters_vec.dot(camera_right);
+                        const double projection_z = inters_vec.dot(camera_up);
+                        //const Vec3d cur_pos = _mouse_to_3d(pos, &z);
+                        //Vec3d delta = orig - cur_pos;
+                        //camera.set_target(camera.get_target() + Vec3d(0.,0., delta.z() >= 0 ? delta.norm() : - delta.norm()) );
+                        camera.set_target(camera.get_target() + Vec3d(0.,0., -projection_z) );
+                    }
+                }
                 m_dirty = true;
             }
 
             m_mouse.drag.start_position_2D = pos;
+        } else if (evt.MiddleIsDown() && wxGetApp().app_config->get_bool("mouse_middle_target")) {
+            // If dragging over blank area with middle button, pan z.
+            if (m_mouse.is_start_position_2D_defined()) {
+                Camera &camera = wxGetApp().plater()->get_camera();
+                m_show_z_axle = false;
+                m_show_xy_plane = true;
+                float z = 0.0f;
+                const Vec3d orig = _mouse_to_3d(m_mouse.drag.start_position_2D, &z);
+                // Ideally, we should project the into a plane that pass by the _mouse_to_bed_3d(pos)
+                // and has the vector (0,0,1) and (mouse_ray(mouse_pos) CROSS (0,0,1))
+                        
+                // Here, reusing the algo for the object x/z pan, the mouse isn't lock to the bed like for XY pan.
+                // because we're just transfering the 2D pan into the Z component.
+                const Linef3 ray = mouse_ray(pos);
+                const Vec3d dir = ray.unit_vector();
+                // finds the intersection of the mouse ray with the plane parallel to the camera viewport and passing throught the starting position
+                // use ray-plane intersection see i.e. https://en.wikipedia.org/wiki/Line%E2%80%93plane_intersection algebric form
+                // in our case plane normal and ray direction are the same (orthogonal view)
+                // when moving to perspective camera the negative z unit axis of the camera needs to be transformed in world space and used as plane normal
+                const Vec3d inters = ray.a + (orig/*m_mouse.drag.start_position_3D*/ - ray.a).dot(dir) / dir.squaredNorm() * dir;
+                // vector from the starting position to the found intersection
+                const Vec3d inters_vec = inters - orig/*m_mouse.drag.start_position_3D*/;
+
+                const Vec3d camera_right = camera.get_dir_right();
+                const Vec3d camera_up = camera.get_dir_up();
+
+                // finds projection of the vector along the camera axes
+                const double projection_x = inters_vec.dot(camera_right);
+                const double projection_z = inters_vec.dot(camera_up);
+                //const Vec3d cur_pos = _mouse_to_3d(pos, &z);
+                //Vec3d delta = orig - cur_pos;
+                //camera.set_target(camera.get_target() + Vec3d(0.,0., delta.z() >= 0 ? delta.norm() : - delta.norm()) );
+                camera.set_target(camera.get_target() + Vec3d(0.,0., -projection_z) );
+                m_dirty = true;
+            }
+            m_mouse.drag.start_position_2D = pos;
         }
-    }
+    } 
     else if (evt.LeftUp() || evt.MiddleUp() || evt.RightUp()) {
         m_mouse.position = pos.cast<double>();
 
@@ -4777,6 +4889,10 @@ void GLCanvas3D::mouse_up_cleanup()
     m_mouse.dragging = false;
     m_mouse.ignore_left_up = false;
     m_dirty = true;
+    m_show_z_axle = false;
+    m_show_xy_plane = false;
+    still_mouse_down = false;
+    m_z_axle.reset();
 
     if (m_canvas->HasCapture())
         m_canvas->ReleaseMouse();
@@ -6439,12 +6555,59 @@ void GLCanvas3D::_render_bed(const Transform3d& view_matrix, const Transform3d& 
           && m_gizmos.get_current_type() != GLGizmosManager::Seam
           && m_gizmos.get_current_type() != GLGizmosManager::MmuSegmentation);
 
-    m_bed.render(*this, view_matrix, projection_matrix, bottom, scale_factor, show_texture);
+    double show_xy_plane = 0.;
+    if (m_show_xy_plane) {
+        const Camera& camera = wxGetApp().plater()->get_camera();
+        show_xy_plane = camera.get_target().z();
+    }
+    m_bed.render(*this, view_matrix, projection_matrix, bottom, scale_factor, show_texture, show_xy_plane);
 }
 
 void GLCanvas3D::_render_bed_axes()
 {
-  m_bed.render_axes();
+    m_bed.render_axes();
+    if (m_show_z_axle) {
+        const Camera& camera = wxGetApp().plater()->get_camera();
+        GLShaderProgram *curr_shader = wxGetApp().get_current_shader();
+        GLShaderProgram *shader = wxGetApp().get_shader("gouraud_light");
+        if (shader == nullptr)
+            return;
+
+        if (curr_shader != nullptr)
+            curr_shader->stop_using();
+
+        shader->start_using();
+        shader->set_uniform("emission_factor", 0.25f);
+
+        if (m_show_z_axle) {
+            if (!m_z_axle.is_initialized()) {
+                    // construct an axle that is the right size for our zoom & position
+                    BoundingBoxf3 side_bb(Vec3d(0, 0, 0), Vec3d(10, 10, 10));
+                    const double length_zoom = camera.calc_zoom_to_bounding_box_factor(side_bb);
+                    m_z_axle_length = 17 * (length_zoom / camera.get_zoom());
+                    m_z_axle.init_from(stilized_arrow(16, m_z_axle_length / 300, m_z_axle_length / 50, m_z_axle_length / 300, m_z_axle_length));
+                    m_z_axle.set_color(ColorRGBA::Z());
+            }
+            Transform3d scale_tr = Transform3d::Identity();
+            scale_tr.scale(std::min(1., camera.get_inv_zoom() * 10.));
+
+            Transform3d trafo = camera.get_view_matrix();
+            Vec3d position = camera.get_target();
+            position.z() -= m_z_axle_length / 2;
+            const Transform3d &transform = Geometry::translation_transform(position);
+            const Transform3d &view_matrix = camera.get_view_matrix();
+            const Transform3d matrix = view_matrix * transform;
+            shader->set_uniform("view_model_matrix", matrix);
+            shader->set_uniform("projection_matrix", camera.get_projection_matrix());
+            shader->set_uniform("view_normal_matrix",
+                               (Matrix3d) (view_matrix.matrix().block(0, 0, 3, 3) *
+                                           transform.matrix().block(0, 0, 3, 3).inverse().transpose()));
+            m_z_axle.render();
+        }
+        shader->stop_using();
+        if (curr_shader != nullptr)
+            curr_shader->start_using();
+    }
 }
 
 void GLCanvas3D::_render_bed_for_picking(const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom)
