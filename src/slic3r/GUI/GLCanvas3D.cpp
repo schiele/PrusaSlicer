@@ -3992,8 +3992,10 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
                             // The dragging operation is initiated.
                             m_mouse.drag.move_volume_idx = volume_idx;
                             m_selection.setup_cache();
-                            if (!evt.CmdDown())
+                            if (!evt.CmdDown()) {
                                 m_mouse.drag.start_position_3D = m_mouse.scene_position;
+                                m_mouse.drag.start_position_2D = pos;
+                            }
                             m_sequential_print_clearance_first_displacement = true;
                             m_sequential_print_clearance.start_dragging();
                         }
@@ -4021,15 +4023,16 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
             m_dirty = true;
         }
     }
-    else if (evt.Dragging() && evt.LeftIsDown() && !evt.CmdDown() && m_layers_editing.state == LayersEditing::Unknown &&
+    else if (evt.Dragging() && evt.LeftIsDown() /*&& !evt.CmdDown()*/ && m_layers_editing.state == LayersEditing::Unknown &&
              m_mouse.drag.move_volume_idx != -1 && m_mouse.is_start_position_3D_defined()) {
         if (!m_mouse.drag.move_requires_threshold) {
             m_mouse.dragging = true;
             Vec3d cur_pos = m_mouse.drag.start_position_3D;
+            Vec3d cur_scale(1,1,1);
             // we do not want to translate objects if the user just clicked on an object while pressing shift to remove it from the selection and then drag
             if (m_selection.contains_volume(get_first_hover_volume_idx())) {
                 const Camera& camera = wxGetApp().plater()->get_camera();
-                if (std::abs(camera.get_dir_forward().z()) < EPSILON) {
+                if (!evt.CmdDown() && (std::abs(camera.get_dir_forward().z()) < EPSILON || evt.ShiftDown())) {
                     // side view -> move selected volumes orthogonally to camera view direction
                     const Linef3 ray = mouse_ray(pos);
                     const Vec3d dir = ray.unit_vector();
@@ -4049,9 +4052,27 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
                     const double projection_z = inters_vec.dot(camera_up);
 
                     // apply offset
-                    cur_pos = m_mouse.drag.start_position_3D + projection_x * camera_right + projection_z * camera_up;
-                }
-                else {
+                    if (std::abs(camera.get_dir_forward().z()) < EPSILON) {
+                        cur_pos = m_mouse.drag.start_position_3D + projection_x * camera_right +
+                            projection_z * camera_up;
+                    } else if (evt.ShiftDown()) {
+                        cur_pos = m_mouse.drag.start_position_3D + Vec3d(0,0,projection_z);
+                    }
+                } else if(evt.CmdDown()) {
+                    assert(m_mouse.is_start_position_2D_defined());
+                    if (m_mouse.is_start_position_2D_defined()) {
+                        cur_pos = m_mouse.drag.start_position_3D;
+                        auto val_fit = [](double val)->double {
+                            val /= 100;
+                            if (val > 0) {val -= 1; if(val < 0) val = 0;}
+                            if (val < 0) {val += 1; if(val > 0) val = 0;}
+                            return std::exp(val/2);
+                        };
+                        double xy = val_fit(pos.x() - m_mouse.drag.start_position_2D.x());
+                        double z = val_fit(m_mouse.drag.start_position_2D.y() - pos.y());
+                        cur_scale = Vec3d(xy, xy, z);
+                    }
+                } else {
                     // Generic view
                     // Get new position at the same Z of the initial click point.
                     cur_pos = mouse_ray(pos).intersect_plane(m_mouse.drag.start_position_3D.z());
@@ -4062,6 +4083,9 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
             TransformationType trafo_type;
             trafo_type.set_relative();
             m_selection.translate(cur_pos - m_mouse.drag.start_position_3D, trafo_type);
+            if (cur_scale != Vec3d(1, 1, 1)) {
+                m_selection.scale(cur_scale, trafo_type);
+            }
             if (current_printer_technology() == ptFFF && (fff_print()->config().complete_objects || fff_print()->config().parallel_objects_step > 0))
                 update_sequential_clearance(false);
             wxGetApp().obj_manipul()->set_dirty();
