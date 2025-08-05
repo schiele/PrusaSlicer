@@ -1288,7 +1288,10 @@ public:
 
     // Extensions for color print
     CustomGCode::Info custom_gcode_per_print_z;
-    
+
+    // Properties from loading, can be used to save.
+    bool baked_transformation = true;
+
     // Default constructor assigns a new ID to the model.
     Model() { assert(this->id().valid()); }
     ~Model() { this->clear_objects(); this->clear_materials(); }
