@@ -1446,9 +1446,8 @@ static inline std::tuple<Polygons, Polygons, Polygons, float> detect_overhangs(
     #ifdef SLIC3R_DEBUG
                 ExPolygons enforcers_united = union_ex(enforcer_polygons_src);
     #endif // SLIC3R_DEBUG
-                enforcer_polygons = diff(intersection(layer.lslices(), enforcer_polygons_src),
-                    // Inflate just a tiny bit to avoid intersection of the overhang areas with the object.
-                    expand(lower_layer_polygons, 0.05f * no_interface_offset, SUPPORT_SURFACES_OFFSET_PARAMETERS));
+                //note: don't diff with inflated lower_layer_polygons, or the slopes will be unsupported.
+                enforcer_polygons = intersection(layer.lslices(), enforcer_polygons_src);
     #ifdef SLIC3R_DEBUG
                 SVG::export_expolygons(debug_out_path("support-top-contacts-enforcers-run%d-layer%d-z%f.svg", iRun, layer_id, layer.print_z),
                     { { layer.lslices(),                               { "layer.lslices",              "gray",   0.2f } },
