@@ -7385,6 +7385,11 @@ std::string GCodeGenerator::_after_extrude(const ExtrusionPath &path) {
             gcode += ";_EXTRUDE_END\n";
             m_check_markers--;
         }
+        if (m_last_extrusion_role == GCodeExtrusionRole::OverhangPerimeter) {
+            assert(m_check_markers > 0);
+            gcode += ";_EXTRUDE_END\n";
+            m_check_markers--;
+        }
         assert(m_check_markers == 0);
     }
 
