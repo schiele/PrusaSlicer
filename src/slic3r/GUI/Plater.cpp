@@ -2737,8 +2737,8 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
         const bool type_zip_amf = !type_3mf && std::regex_match(path.string(), pattern_zip_amf);
         const bool type_any_amf = !type_3mf && std::regex_match(path.string(), pattern_any_amf);
         const bool type_prusa = std::regex_match(path.string(), pattern_prusa);
-
         const bool type_step = std::regex_match(path.string(), pattern_step);
+
         if (type_step && !apply_step_import_parameters_to_all &&
             wxGetApp().app_config->get_bool("show_step_import_parameters")) {
 
@@ -2813,18 +2813,6 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
                     this->model.custom_gcode_per_print_z = model.custom_gcode_per_print_z;
                 }
 
-               if (load_model) {
-                     if (type_step) {
-                        double linear_precision = string_to_double_decimal_point(wxGetApp().app_config->get("linear_precision"));
-                        double angle_precision = string_to_double_decimal_point(wxGetApp().app_config->get("angle_precision"));
-                        model = Slic3r::Model::read_from_file(path.string(),
-                                                                 nullptr,
-                                                                 nullptr,
-                                                                 only_if(load_config, Model::LoadAttribute::CheckVersion),
-                                                                 std::make_pair(linear_precision, angle_precision));
-                     }
-                }
-                
                 if (load_config) {
                     if (!config.empty()) {
                         const auto* post_process = config.opt<ConfigOptionStrings>("post_process");
@@ -2867,9 +2855,27 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
                     if(!in_temp && update_dirs)
                         wxGetApp().app_config->update_config_dir(path.parent_path().string());
                 }
-            }
-            else {
-                model = Slic3r::Model::read_from_file(path.string(), nullptr, nullptr, only_if(load_config, Model::LoadAttribute::CheckVersion));
+            } else {
+               
+               if (load_model) {
+                  if (type_step) {
+                  // Do not load config with STEP type
+                        load_config = false;
+                        double linear_precision = string_to_double_decimal_point(wxGetApp().app_config->get("linear_precision"));
+                        double angle_precision = string_to_double_decimal_point(wxGetApp().app_config->get("angle_precision"));
+                        model = Slic3r::Model::read_from_file(path.string(),
+                                                                 nullptr,
+                                                                 nullptr,
+                                                                 only_if(load_config, Model::LoadAttribute::CheckVersion),
+                                                                 std::make_pair(linear_precision, angle_precision));
+                  } else {
+                        model = Slic3r::Model::read_from_file(path.string(),
+                                          nullptr,
+                                          nullptr,
+                                          only_if(load_config, Model::LoadAttribute::CheckVersion));
+                  }
+               }
+               
                 for (auto obj : model.objects) {
                     if (obj->name.empty()) {
                         obj->name = fs::path(obj->input_file).filename().string();
