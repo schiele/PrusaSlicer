@@ -175,6 +175,7 @@ struct SurfaceFillParams : FillParams
         assert(rhs.config != nullptr);
         if (config != nullptr && rhs.config != nullptr) {
             RETURN_COMPARE_NON_EQUAL(config->infill_acceleration);
+            RETURN_COMPARE_NON_EQUAL(config->infill_extruder);
             RETURN_COMPARE_NON_EQUAL(config->infill_speed);
             RETURN_COMPARE_NON_EQUAL(config->solid_infill_acceleration);
             RETURN_COMPARE_NON_EQUAL(config->solid_infill_speed);
@@ -192,6 +193,8 @@ struct SurfaceFillParams : FillParams
             RETURN_COMPARE_NON_EQUAL(config->region_gcode.value)
             RETURN_COMPARE_NON_EQUAL(config->small_area_infill_flow_compensation_model.is_enabled())
             RETURN_COMPARE_NON_EQUAL(config->small_area_infill_flow_compensation_model.value);
+            RETURN_COMPARE_NON_EQUAL(config->solid_infill_extruder);
+            RETURN_COMPARE_NON_EQUAL(config->wipe_into_infill);
             if (this->pattern == ipConcentric || rhs.pattern == ipConcentric) {
                 // arachne if concentric
                 RETURN_COMPARE_NON_EQUAL(config->perimeter_generator.value);
@@ -216,6 +219,7 @@ struct SurfaceFillParams : FillParams
             return false;
         if(config != nullptr && (
             config->infill_acceleration != rhs.config->infill_acceleration
+            || config->infill_extruder != rhs.config->infill_extruder
             || config->infill_speed != rhs.config->infill_speed
             || config->solid_infill_acceleration != rhs.config->solid_infill_acceleration
             || config->solid_infill_speed != rhs.config->solid_infill_speed
@@ -233,6 +237,8 @@ struct SurfaceFillParams : FillParams
             || config->region_gcode != rhs.config->region_gcode
             || config->small_area_infill_flow_compensation_model.is_enabled() != rhs.config->small_area_infill_flow_compensation_model.is_enabled()
             || config->small_area_infill_flow_compensation_model != rhs.config->small_area_infill_flow_compensation_model
+            || config->solid_infill_extruder != rhs.config->solid_infill_extruder
+            || config->wipe_into_infill != rhs.config->wipe_into_infill
             ))
             return false;
         if (config != nullptr && (this->pattern == ipConcentric || rhs.pattern == ipConcentric) &&
