@@ -5111,35 +5111,12 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                     // stay in last boundaries
                     infill_areas = intersection_ex(infill_areas, offset_ex(last, -previous_spacing / 2));
                     append(saved_infill, std::move(infill_areas));
-                    //static int ifbao = 0;
-                    //ExPolygons my_next_onion =
-                    //    offset_ex(last, double(-previous_spacing),
-                    //              (params.use_round_perimeters() ? ClipperLib::JoinType::jtRound :
-                    //                                               ClipperLib::JoinType::jtMiter),
-                    //              (params.use_round_perimeters() ? params.get_min_round_spacing() : 3));
-                    //ExPolygons my_real_next_onion =
-                    //    offset_ex(extra_perimeter_next_onion, double(-previous_spacing),
-                    //              (params.use_round_perimeters() ? ClipperLib::JoinType::jtRound :
-                    //                                               ClipperLib::JoinType::jtMiter),
-                    //              (params.use_round_perimeters() ? params.get_min_round_spacing() : 3));
-                    //coordf_t last_spacing = std::max(contour_count, holes_count) == 1 ?
-                    //                                              params.get_ext_perimeter_spacing() / 2 :
-                    //                                              params.get_perimeter_spacing() / 2;
-                    //ExPolygons  inner_perimeter = offset_ex(saved_infill, -last_spacing);
-                    //SVG::export_expolygons(debug_out_path("extra_supp-%d-%d.svg", params.layer->id(), ifbao++),
-                    //                       {{{surface.expolygon}, SVG::ExPolygonAttributes{"gray"}},
-                    //                        {{extra_perimeter_next_onion},
-                    //                         SVG::ExPolygonAttributes{"yellow", scale_t(0.01)}},
-                    //                        {{my_next_onion}, SVG::ExPolygonAttributes{"red", scale_t(0.008)}},
-                    //                        {{my_real_next_onion}, SVG::ExPolygonAttributes{"green", scale_t(0.06)}},
-                    //                        {{saved_infill}, SVG::ExPolygonAttributes{"pink", scale_t(0.004)}},
-                    //                        {{inner_perimeter}, SVG::ExPolygonAttributes{"purple", scale_t(0.002)}}});
 
-                        last = std::move(extra_perimeter_next_onion);
-                        contour_count++;
-                        holes_count++;
-                        contours.emplace_back();
-                        holes.emplace_back();
+                    last = std::move(extra_perimeter_next_onion);
+                    contour_count++;
+                    holes_count++;
+                    contours.emplace_back();
+                    holes.emplace_back();
                 }
             }
             if (perimeter_idx == 0) {
