@@ -917,7 +917,7 @@ void PrintObject::_max_overhang_threshold() {
                                         }
                                         if (detector.detect_angle()) {
                                             // note: can use to_expolygons on polygons because it's just after a clipper operation, we didn't messed with the order.
-                                            append(new_bridged_area, to_expolygons(detector.coverage()));
+                                            new_bridged_area = union_ex(new_bridged_area, detector.coverage());
                                         }
                                     }
                                 }
