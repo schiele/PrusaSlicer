@@ -196,6 +196,7 @@ static const t_config_enum_values s_keys_map_InfillPattern {
     {"adaptivecubic",       ipAdaptiveCubic},
     {"supportcubic",        ipSupportCubic},
     {"lightning",           ipLightning},
+    {"ensuring",            ipEnsuring},
     {"auto",                ipAuto}
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(InfillPattern)
@@ -1482,6 +1483,7 @@ void PrintConfigDef::init_fff_params()
         " Rectilinear (filled) replaces zig-zag patterns by a single big line & is more efficient for filling little spaces."
         "\nIf you want an 'aligned' pattern, set 90° to the fill angle increment setting.");
     def->set_enum<InfillPattern>({
+        { "ensuring",           L("Ensuring") },
         { "rectilinear",        L("Rectilinear") },
         { "rectilineargapfill", L("Rectilinear (filled)") },
         { "monotonic",          L("Monotonic") },
@@ -1497,7 +1499,7 @@ void PrintConfigDef::init_fff_params()
     });
 
     def->mode = comExpert | comSuSi;
-    def->set_default_value(new ConfigOptionEnum<InfillPattern>(ipRectilinearWGapFill));
+    def->set_default_value(new ConfigOptionEnum<InfillPattern>(ipEnsuring));
 
     def = this->add("enforce_full_fill_volume", coBool);
     def->label = L("Enforce 100% fill volume");
