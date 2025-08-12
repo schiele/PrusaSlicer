@@ -10335,7 +10335,13 @@ std::map<std::string, std::string> PrintConfigDef::to_prusa(t_config_option_key&
     if ("arc_fitting" == opt_key && "bambu" == value) {
         value = "emit_center";
     }
-    
+    if ("wipe_tower_brim_width" == opt_key && value.find("%") != std::string::npos) {
+        const ConfigOptionFloatOrPercent *current_opt = all_conf.option<ConfigOptionFloatOrPercent>(opt_key);
+        assert(current_opt && current_opt->percent);
+        const ConfigOptionFloats *nozzle_diameters = all_conf.option<ConfigOptionFloats>("nozzle_diameter");
+        value = std::to_string(current_opt->get_abs_value(nozzle_diameters->get_at(0)));
+    }
+
     if ("thumbnails" == opt_key) {
     // add format to thumbnails
         const ConfigOptionEnum<GCodeThumbnailsFormat> *format_opt = all_conf.option<ConfigOptionEnum<GCodeThumbnailsFormat>>("thumbnails_format");
