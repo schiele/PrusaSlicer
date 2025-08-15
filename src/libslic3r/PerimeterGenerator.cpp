@@ -3734,8 +3734,8 @@ void PerimeterGenerator::split_top_surfaces(const ExPolygons *lower_slices,
 
     const double fill_nozzle_diameter = params.solid_infill_flow.nozzle_diameter();
 
-    const bool has_gap_fill = params.config.gap_fill_enabled &&
-                        !params.use_arachne;
+    const bool has_gap_fill = !params.use_arachne && (params.region_setting.has_many_config(&params.config.gap_fill_enabled) ||
+                params.region_setting.get_solo_config(&params.config.gap_fill_enabled).get_bool());
 
     // split the polygons with top/not_top
     // get the offset from solid surface anchor*
@@ -5061,7 +5061,6 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
         std::vector<PerimeterGeneratorLoops> contours(contour_count);    // depth => loops
         std::vector<PerimeterGeneratorLoops> holes(holes_count);       // depth => loops
         ThickPolylines thin_walls_thickpolys;
-        ExPolygons no_last_gapfill;
 
         // we loop one time more than needed in order to find gaps after the last perimeter was applied
         for (int perimeter_idx = 0;; ++perimeter_idx) {  // outer loop is 0
@@ -5488,24 +5487,42 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
 
 
                 // look for gaps
-                if (params.config.gap_fill_enabled.value
-                    //check if we are going to have an other perimeter
-                    && (perimeter_idx < std::max(contour_count, holes_count) || has_overhang || all_next_onion->empty() ||
-                        (params.config.gap_fill_last.value && perimeter_idx == std::max(contour_count, holes_count)))) {
-                    // not using safety offset here would "detect" very narrow gaps
-                    // (but still long enough to escape the area threshold) that gap fill
-                    // won't be able to fill but we'd still remove from infill area
-                    no_last_gapfill = offset_ex(*all_next_onion, 0.5f * params.get_perimeter_spacing() + 30,
-                        (params.use_round_perimeters() ? ClipperLib::JoinType::jtRound : ClipperLib::JoinType::jtMiter),
-                        (params.use_round_perimeters() ? params.get_min_round_spacing() : 3));
-                    if (perimeter_idx == 1) {
-                        append(gaps, ensure_valid(diff_ex(
-                            offset_ex(last, -0.5f * params.get_ext_perimeter_spacing() + 30),
-                            no_last_gapfill), resolution));  // safety offset
-                    } else {
-                        append(gaps, ensure_valid(diff_ex(
-                            offset_ex(last, -0.5f * params.get_perimeter_spacing()),
-                            no_last_gapfill), resolution));  // safety offset
+                if (params.region_setting.has_many_config(&params.config.gap_fill_enabled) ||
+                    params.region_setting.get_solo_config(&params.config.gap_fill_enabled).get_bool()) {
+                    // check if we are going to have an other perimeter
+                    if (perimeter_idx < std::max(contour_count, holes_count) || has_overhang ||
+                        all_next_onion->empty() ||
+                        (params.config.gap_fill_last.value && perimeter_idx == std::max(contour_count, holes_count))) {
+                        // not using safety offset here would "detect" very narrow gaps
+                        // (but still long enough to escape the area threshold) that gap fill
+                        // won't be able to fill but we'd still remove from infill area
+                        ExPolygons no_last_gapfill =
+                            offset_ex(*all_next_onion, 0.5f * params.get_perimeter_spacing() + 30,
+                                      (params.use_round_perimeters() ? ClipperLib::JoinType::jtRound :
+                                                                       ClipperLib::JoinType::jtMiter),
+                                      (params.use_round_perimeters() ? params.get_min_round_spacing() : 3));
+                        ExPolygons gapfill;
+                        if (perimeter_idx == 1) {
+                            gapfill = ensure_valid(diff_ex(offset_ex(last,
+                                                                     -0.5f * params.get_ext_perimeter_spacing() + 30),
+                                                           no_last_gapfill),
+                                                   resolution); // safety offset
+                        } else {
+                            gapfill = ensure_valid(diff_ex(offset_ex(last, -0.5f * params.get_perimeter_spacing()),
+                                                           no_last_gapfill),
+                                                   resolution); // safety offset
+                        }
+                        // append gapfill where it's enabled
+                        if (params.region_setting.get_solo_config(&params.config.gap_fill_enabled).get_bool()) {
+                            append(gaps, gapfill);
+                        } else {
+                            for (auto const &[gap_fill_enabled, areas] :
+                                 params.region_setting.get_areas(&params.config.gap_fill_enabled)) {
+                                if (gap_fill_enabled.get_bool()) {
+                                    append(gaps, areas.intersections(gapfill));
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -7039,6 +7056,7 @@ const std::vector<t_config_option_keys> Parameters::perimeter_keys({
     {"thin_walls", "thin_walls_min_width", "thin_walls_overlap"},
     {"overhangs_speed_enforce"},
     {"overhangs", "overhangs_speed", "overhangs_width_speed", "overhangs_flow_ratio", "overhangs_width"},
+    {"gap_fill_enabled"},
     {"gap_fill_no_overhang"},
     });
 

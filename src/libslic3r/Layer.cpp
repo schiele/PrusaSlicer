@@ -718,8 +718,8 @@ void Layer::make_perimeters()
                             //&& config.extra_perimeters_below_area == other_config.extra_perimeters_below_area // can be used in modifiers
                             //&& config.extra_perimeters_odd_layers == other_config.extra_perimeters_odd_layers // can be used in modifiers
                             //&& config.extra_perimeters_on_overhangs == other_config.extra_perimeters_on_overhangs // can be used in modifiers
-                            && config.gap_fill_enabled          == other_config.gap_fill_enabled
-                            && ((config.gap_fill_speed          == other_config.gap_fill_speed) || !config.gap_fill_enabled)
+                            //&& config.gap_fill_enabled          == other_config.gap_fill_enabled
+                            && ((config.gap_fill_speed          == other_config.gap_fill_speed) || (!config.gap_fill_enabled && !other_config.gap_fill_enabled))
                             && config.gap_fill_acceleration     == other_config.gap_fill_acceleration
                             && config.gap_fill_last             == other_config.gap_fill_last
                             && config.gap_fill_flow_match_perimeter == other_config.gap_fill_flow_match_perimeter
