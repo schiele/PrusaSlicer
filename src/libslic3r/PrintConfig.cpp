@@ -3260,6 +3260,13 @@ void PrintConfigDef::init_fff_params()
     def->mode = comExpert | comSuSi;
     def->set_default_value(new ConfigOptionFloatOrPercent{ 0, false });
 
+    def = this->add("gap_fill_no_overhang", coBool);
+    def->label = L("No gap fill on overhang areas");
+    def->category = OptionCategory::perimeter;
+    def->tooltip = L("Prevent gapfill into overhang areas. May create some holes.");
+    def->mode = comExpert | comSuSi;
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("gap_fill_overlap", coPercent);
     def->label = L("Gap fill overlap");
     def->full_label = L("Gap fill overlap");
@@ -10371,6 +10378,7 @@ std::unordered_set<std::string> prusa_export_to_remove_keys = {
 "gap_fill_max_width",
 "gap_fill_min_length",
 "gap_fill_min_width",
+"gap_fill_no_overhang",
 "gap_fill_overlap",
 "gap_fill_perimeter",
 "gcode_filename_illegal_char",

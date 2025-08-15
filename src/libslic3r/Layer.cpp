@@ -728,6 +728,7 @@ void Layer::make_perimeters()
                             && config.gap_fill_min_area         == other_config.gap_fill_min_area
                             && config.gap_fill_min_length         == other_config.gap_fill_min_length
                             && config.gap_fill_min_width         == other_config.gap_fill_min_width
+                            //&& config.gap_fill_no_overhang         == other_config.gap_fill_no_overhang
                             && config.gap_fill_overlap          == other_config.gap_fill_overlap
                             && config.gap_fill_perimeter          == other_config.gap_fill_perimeter
                             && config.infill_dense              == other_config.infill_dense

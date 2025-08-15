@@ -606,6 +606,7 @@ static std::vector<std::string> s_Preset_print_options {
         "gap_fill_min_area",
         "gap_fill_min_length",
         "gap_fill_min_width",
+        "gap_fill_no_overhang",
         "gap_fill_overlap",
         "gap_fill_perimeter",
         "gap_fill_speed",

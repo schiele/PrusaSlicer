@@ -3905,8 +3905,10 @@ void PerimeterGenerator::process(// Input:
         params.region_setting.get_solo_config(&params.config.overhangs).get_bool();
     const bool overhang_extra_enabled = params.region_setting.has_many_config(&params.config.extra_perimeters_on_overhangs) ||
         params.region_setting.get_solo_config(&params.config.extra_perimeters_on_overhangs).get_bool();
+    const bool has_no_gapfill_overhang = (params.region_setting.has_many_config(&params.config.gap_fill_no_overhang) ||
+                params.region_setting.get_solo_config(&params.config.gap_fill_no_overhang).get_bool());
 
-    if (this->lower_slices != NULL && (overhang_extra_enabled || overhang_enabled || params.get_overhang_spacing() > 0)) {
+    if (this->lower_slices != NULL && (overhang_extra_enabled || overhang_enabled || params.get_overhang_spacing() > 0 || has_no_gapfill_overhang)) {
         // We consider overhang any part where the entire nozzle diameter is not supported by the
         // lower layer, so we take lower slices and offset them by overhangs_width of the nozzle diameter used 
         // in the current layer
@@ -3956,7 +3958,7 @@ void PerimeterGenerator::process(// Input:
                 params.lower_slices_bridge_for_extra_overhangs = to_polygons(*simplified);
             }
         }
-        if (params.get_overhang_spacing() > 0) {
+        if (params.get_overhang_spacing() > 0 || has_no_gapfill_overhang) {
             params.overhang_areas.clear();
             coord_t max_offset = 0;
             ExPolygons full_overhangs;
@@ -5684,6 +5686,16 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
         const bool fuzzify_gapfill = params.config.fuzzy_skin == FuzzySkinType::All && params.layer->id() > 0;
         // check for extracting extra perimeters from gapfill
         if (!gaps.empty() && params.config.gap_fill_perimeter.value) {
+            // remove overhangs areas
+            if (params.region_setting.has_many_config(&params.config.gap_fill_no_overhang) ||
+                params.region_setting.get_solo_config(&params.config.gap_fill_no_overhang).get_bool()) {
+                for (auto const &[gap_fill_no_overhang, areas] :
+                        params.region_setting.get_areas(&params.config.gap_fill_no_overhang)) {
+                    if (gap_fill_no_overhang.get_bool()) {
+                        gaps = diff_ex(gaps, areas.intersections(params.overhang_areas));
+                    }
+                }
+            }
             // if needed, add it to the first empty contour list
             const size_t contours_size = contour_count;
             assert(contours.size() == contour_count);
@@ -7027,6 +7039,7 @@ const std::vector<t_config_option_keys> Parameters::perimeter_keys({
     {"thin_walls", "thin_walls_min_width", "thin_walls_overlap"},
     {"overhangs_speed_enforce"},
     {"overhangs", "overhangs_speed", "overhangs_width_speed", "overhangs_flow_ratio", "overhangs_width"},
-});
+    {"gap_fill_no_overhang"},
+    });
 
 }

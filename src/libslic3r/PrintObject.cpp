@@ -1362,6 +1362,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "gap_fill_min_area"
             || opt_key == "gap_fill_min_length"
             || opt_key == "gap_fill_min_width"
+            || opt_key == "gap_fill_no_overhang"
             || opt_key == "min_width_top_surface"
             || opt_key == "only_one_perimeter_first_layer"
             || opt_key == "only_one_perimeter_top"

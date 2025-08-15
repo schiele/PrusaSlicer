@@ -92,6 +92,7 @@ group:sidetext_width$5:Gap Fill
 	line:Gap Fill
 		setting:label$_:gap_fill_enabled
 		setting:width$5:gap_fill_last
+		setting:gap_fill_no_overhang
 	end_line
 	line:Advanced
 		setting:width$5:gap_fill_extension
