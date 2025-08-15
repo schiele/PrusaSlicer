@@ -983,6 +983,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionInt,                  overhangs_bridge_upper_layers))
     ((ConfigOptionGraph,                overhangs_dynamic_flow))
     ((ConfigOptionGraph,                overhangs_dynamic_speed))
+    ((ConfigOptionFloatOrPercent,       overhangs_extrusion_spacing))
     ((ConfigOptionPercent,              overhangs_flow_ratio))
     ((ConfigOptionFloatOrPercent,       overhangs_max_slope))
     ((ConfigOptionBool,                 overhangs_reverse))

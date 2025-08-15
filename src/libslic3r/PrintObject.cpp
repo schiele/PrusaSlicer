@@ -1369,6 +1369,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "overhangs"
             || opt_key == "overhangs_dynamic_flow"
             || opt_key == "overhangs_dynamic_speed"
+            || opt_key == "overhangs_extrusion_spacing"
             || opt_key == "overhangs_reverse"
             || opt_key == "overhangs_reverse_threshold"
             || opt_key == "overhangs_speed_enforce"

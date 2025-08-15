@@ -4631,6 +4631,25 @@ void PrintConfigDef::init_fff_params()
     def->graph_settings->step_y      = 1.;
     def->graph_settings->allowed_types = {GraphData::GraphType::LINEAR, GraphData::GraphType::SQUARE, GraphData::GraphType::SPLINE};
 
+    def = this->add("overhangs_extrusion_spacing", coFloatOrPercent);
+    def->label = L("Overhangs spacing");
+    def->full_label = L("Overhangs extrusion spacing");
+    def->category = OptionCategory::width;
+    def->tooltip = L("Set this to a non-zero value to set a manual extrusion width for perimeters. "
+        "This setting change the distance between two overhang lines, but it not affect the cross-section of the extrusion unlike similar settings"
+        ", the bridge flow is set separately."
+        "If left zero, the distance between two overhang extrusion lines will be the same as that of the (external) perimeters."
+        "If expressed as percentage (for example 105%) it will be computed over (current) nozzle diameter."
+        "You may want to ahve a smaller value than for perimeter to ensure the next overhang can stick to the previous one.");
+    def->sidetext = L("mm or %");
+    def->ratio_over = "nozzle_diameter";
+    def->min = 0;
+    def->max = 1000;
+    def->max_literal = { 10, true };
+    def->precision = 6;
+    def->mode = comAdvancedE | comSuSi;
+    def->set_default_value((new ConfigOptionFloatOrPercent(0, false)));
+
     def = this->add("overhangs_fan_speed", coInts);
     def->label = L("Overhangs Perimeter fan speed");
     def->category = OptionCategory::cooling;
@@ -10409,6 +10428,7 @@ std::unordered_set<std::string> prusa_export_to_remove_keys = {
 "overhangs_bridge_threshold",
 "overhangs_bridge_upper_layers",
 "overhangs_dynamic_flow",
+"overhangs_extrusion_spacing",
 "overhangs_fan_speed",
 "overhangs_flow_ratio",
 "overhangs_max_slope",

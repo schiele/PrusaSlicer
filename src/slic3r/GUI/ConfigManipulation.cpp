@@ -375,7 +375,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig* config)
         toggle_field(el, have_arachne);
     }
     toggle_field("perimeters_hole", !have_arachne);
-    
+    toggle_field("overhangs_extrusion_spacing", !have_arachne);
 
     for (auto el : {"perimeter_loop", "thin_perimeters", "perimeter_round_corners"})
         toggle_field(el, have_perimeters && !have_arachne);

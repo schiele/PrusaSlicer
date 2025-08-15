@@ -752,6 +752,7 @@ void Layer::make_perimeters()
                             && config.perimeter_acceleration    == other_config.perimeter_acceleration
                             && config.perimeter_direction       == other_config.perimeter_direction
                             && config.perimeter_extrusion_width == other_config.perimeter_extrusion_width
+                            && config.overhangs_extrusion_spacing == other_config.overhangs_extrusion_spacing
                             && config.perimeter_generator       == other_config.perimeter_generator
                             && config.perimeter_loop            == other_config.perimeter_loop
                             && config.perimeter_loop_seam       == other_config.perimeter_loop_seam
