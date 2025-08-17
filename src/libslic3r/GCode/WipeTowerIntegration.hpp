@@ -35,13 +35,23 @@ public:
     std::string tool_change(GCodeGenerator &gcodegen, int extruder_id, bool finish_layer);
     std::string finalize(GCodeGenerator &gcodegen);
     std::vector<float> used_filament_length() const;
+    int get_current_layer_idx() const { return m_layer_idx; }
+    double get_last_wipe_tower_print_z() const { return m_last_wipe_tower_print_z; }
 
 private:
     WipeTowerIntegration& operator=(const WipeTowerIntegration&);
-    std::string append_tcr(GCodeGenerator &gcodegen, const WipeTower::ToolChangeResult &tcr, int new_extruder_id, double z = -1.) const;
+    std::string append_tcr(GCodeGenerator &gcodegen, const WipeTower::ToolChangeResult &tcr, int new_extruder_id, double z = -1., bool need_ensure_z = true) const;
 
     // Postprocesses gcode: rotates and moves G1 extrusions and returns result
-    std::string post_process_wipe_tower_moves(const WipeTower::ToolChangeResult& tcr, const Vec2f& translation, float angle) const;
+    std::string post_process_wipe_tower_moves(const WipeTower::ToolChangeResult &tcr,
+                                              const Vec2f &translation,
+                                              float angle,
+                                              //const GCodeFlavor gcode_flavor,
+                                              GCodeGenerator &gcodegen,
+                                              int new_extruder_id
+                                              ) const;
+    std::string deretraction_from_wipe_tower_generator(GCodeGenerator &gcodegen, const WipeTower::ToolChangeResult& tcr, int new_extruder_id) const;
+    std::string toolchange_gcode_from_wipe_tower_generator(GCodeGenerator &gcodegen, const WipeTower::ToolChangeResult& tcr, int new_extruder_id) const;
 
     // Left / right edges of the wipe tower, for the planning of wipe moves.
     const float                                                  m_left;
