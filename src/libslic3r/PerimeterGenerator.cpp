@@ -4982,7 +4982,10 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                     holes.resize(holes_count);
                 }
                 // No region left to be filled in.
-                last.clear();
+                // if the gapfill doesn't fill the empty areas, don't clear last
+                if (params.config.gap_fill_enabled.value && params.config.gap_fill_last.value) {
+                    last.clear();
+                }
                 break;
             } else if (perimeter_idx >= std::max(contour_count, holes_count)) {
                 if (has_overhang) {
