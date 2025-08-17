@@ -195,6 +195,13 @@ struct SurfaceFillParams : FillParams
             RETURN_COMPARE_NON_EQUAL(config->small_area_infill_flow_compensation_model.value);
             RETURN_COMPARE_NON_EQUAL(config->solid_infill_extruder);
             RETURN_COMPARE_NON_EQUAL(config->wipe_into_infill);
+            // print modifier, because region are fused in gode wiew if not.
+            RETURN_COMPARE_NON_EQUAL(config->print_extrusion_multiplier.value);
+            RETURN_COMPARE_NON_EQUAL(config->print_first_layer_temperature.value);
+            RETURN_COMPARE_NON_EQUAL(config->print_retract_length.value);
+            RETURN_COMPARE_NON_EQUAL(config->print_retract_lift.value);
+            RETURN_COMPARE_NON_EQUAL(config->print_temperature.value);
+            // end print modifier
             if (this->pattern == ipConcentric || rhs.pattern == ipConcentric) {
                 // arachne if concentric
                 RETURN_COMPARE_NON_EQUAL(config->perimeter_generator.value);
@@ -239,6 +246,13 @@ struct SurfaceFillParams : FillParams
             || config->small_area_infill_flow_compensation_model != rhs.config->small_area_infill_flow_compensation_model
             || config->solid_infill_extruder != rhs.config->solid_infill_extruder
             || config->wipe_into_infill != rhs.config->wipe_into_infill
+            // print modifier, because region are fused in gode wiew if not.
+            || config->print_extrusion_multiplier        != rhs.config->print_extrusion_multiplier
+            || config->print_first_layer_temperature     != rhs.config->print_first_layer_temperature
+            || config->print_retract_length              != rhs.config->print_retract_length
+            || config->print_retract_lift                != rhs.config->print_retract_lift
+            || config->print_temperature                 != rhs.config->print_temperature
+            // end print modifier
             ))
             return false;
         if (config != nullptr && (this->pattern == ipConcentric || rhs.pattern == ipConcentric) &&

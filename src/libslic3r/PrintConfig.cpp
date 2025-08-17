@@ -193,6 +193,7 @@ static const t_config_enum_values s_keys_map_InfillPattern {
     {"adaptivecubic",       ipAdaptiveCubic},
     {"supportcubic",        ipSupportCubic},
     {"lightning",           ipLightning},
+    {"ensuring",            ipEnsuring},
     {"auto",                ipAuto}
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(InfillPattern)
@@ -1520,6 +1521,7 @@ void PrintConfigDef::init_fff_params()
         " Rectilinear (filled) replaces zig-zag patterns by a single big line & is more efficient for filling little spaces."
         "\nIf you want an 'aligned' pattern, set 90° to the fill angle increment setting.");
     def->set_enum<InfillPattern>({
+        { "ensuring",           L("Ensuring") },
         { "rectilinear",        L("Rectilinear") },
         { "rectilineargapfill", L("Rectilinear (filled)") },
         { "monotonic",          L("Monotonic") },
@@ -1535,7 +1537,7 @@ void PrintConfigDef::init_fff_params()
     });
 
     def->mode = comExpert | comSuSi;
-    def->set_default_value(new ConfigOptionEnum<InfillPattern>(ipRectilinear));
+    def->set_default_value(new ConfigOptionEnum<InfillPattern>(ipEnsuring));
 
     def = this->add("enforce_full_fill_volume", coBool);
     def->label = L("Enforce 100% fill volume");
@@ -1806,6 +1808,7 @@ void PrintConfigDef::init_fff_params()
     def->category = OptionCategory::extruders;
     def->tooltip = L("The extruder to use (unless more specific extruder settings are specified) for the first layer.");
     def->min = 0;  // 0 = inherit defaults
+    def->mode = comExpert | comSuSi;
     def->set_enum_labels(ConfigOptionDef::GUIType::i_enum_open, 
         { L("default"), "1", "2", "3", "4", "5", "6", "7", "8", "9" }); // override label for item 0
 
@@ -2313,7 +2316,7 @@ void PrintConfigDef::init_fff_params()
     def->can_be_disabled = true;
     def->mode = comAdvancedE | comSuSi;
     def->is_vector_extruder = true;
-    def->set_default_value(enable_default_option(new ConfigOptionFloats({0.02})));
+    def->set_default_value(disable_default_option(new ConfigOptionFloats({0.02})));
     def->aliases = {"filament_default_pa"};
 
     def = this->add("filament_bridge_pa", coFloatsOrPercents);
@@ -4177,7 +4180,7 @@ void PrintConfigDef::init_fff_params()
     def->min = 0;
     def->mode = comExpert | comSuSi;
     def->can_be_disabled = true;
-    def->set_default_value(enable_default_option(new ConfigOptionFloat(1500)));
+    def->set_default_value(disable_default_option(new ConfigOptionFloat(1500)));
 
     def = this->add("max_fan_speed", coInts);
     def->label = L("Max");
@@ -10355,6 +10358,7 @@ std::unordered_set<std::string> prusa_export_to_remove_keys = {
 "fill_smooth_width",
 "fill_top_flow_ratio",
 "fill_top_flow_ratio",
+"first_layer_extruder",
 "first_layer_extrusion_spacing",
 "first_layer_infill_extrusion_width",
 "first_layer_infill_extrusion_spacing",
@@ -10802,7 +10806,13 @@ std::map<std::string, std::string> PrintConfigDef::to_prusa(t_config_option_key&
     if ("arc_fitting" == opt_key && "bambu" == value) {
         value = "emit_center";
     }
-    
+    if ("wipe_tower_brim_width" == opt_key && value.find("%") != std::string::npos) {
+        const ConfigOptionFloatOrPercent *current_opt = all_conf.option<ConfigOptionFloatOrPercent>(opt_key);
+        assert(current_opt && current_opt->percent);
+        const ConfigOptionFloats *nozzle_diameters = all_conf.option<ConfigOptionFloats>("nozzle_diameter");
+        value = std::to_string(current_opt->get_abs_value(nozzle_diameters->get_at(0)));
+    }
+
     if ("thumbnails" == opt_key) {
     // add format to thumbnails
         const ConfigOptionEnum<GCodeThumbnailsFormat> *format_opt = all_conf.option<ConfigOptionEnum<GCodeThumbnailsFormat>>("thumbnails_format");
