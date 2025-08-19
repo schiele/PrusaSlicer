@@ -1,4 +1,4 @@
 BUILD: 2.7.61.8-7-gfcf91a4ff9
 system: rolling
 date: Tue Aug 19 07:12:09 AM CEST 2025
-tasks: configure_deps build_deps configure build[incomplete]
+tasks: configure_deps build_deps configure build install[incomplete]
