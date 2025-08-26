@@ -776,9 +776,6 @@ ExtrusionEntityCollection PerimeterGenerator::_traverse_loops_classic(const Para
 }
 
 //#define _DEBUG_OVERHANGS
-#ifdef _DEBUG_OVERHANGS
-std::vector<std::string> debug_colors;
-#endif
 ExtrusionPaths PerimeterGenerator::create_overhangs_classic(const Parameters &params,
                                                             const Polyline &loop_polygons,
                                                             const ExtrusionRole role,
@@ -786,6 +783,7 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_classic(const Parameters &pa
 #ifdef _DEBUG_OVERHANGS
     static int iInst=0;
     iInst++;
+    std::vector<std::string> debug_colors;
 #endif
     loop_polygons.assert_valid();
 
@@ -804,9 +802,9 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_classic(const Parameters &pa
                                                              float(params.layer->height)}},
                            false);
         assert(paths.back().mm3_per_mm() == paths.back().mm3_per_mm());
-        assert(paths.back().width() == paths.back().width());
         assert(paths.back().height() == paths.back().height());
         assert(paths.size() == 1);
+        assert(paths.back().width() == paths.back().width());
 #if _DEBUG
         for (size_t idx = 1; idx < paths.front().size(); ++idx)
             assert(!paths.front().polyline.get_point(idx - 1).coincides_with_epsilon(
@@ -837,7 +835,7 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_classic(const Parameters &pa
         BoundingBox bbox = get_extents(params.layer->lslices());
         bbox.offset(scale_(1.));
         static int iii=0;
-        ::Slic3r::SVG svg(debug_out_path("%d_before_overahngs_%d_%d", params.layer->id(), iInst, iii).c_str(), bbox);
+        ::Slic3r::SVG svg(debug_out_path("%d_before_overahngs_%d_%d.svg", params.layer->id(), iInst, iii).c_str(), bbox);
         for (const Surface &srf : *this->slices) {
             svg.draw(srf.expolygon, "grey");
         }
@@ -982,7 +980,7 @@ ExtrusionPaths PerimeterGenerator::create_overhangs_classic(const Parameters &pa
         BoundingBox bbox = get_extents(params.layer->lslices());
         bbox.offset(scale_(1.));
         static int iii=0;
-        ::Slic3r::SVG svg(debug_out_path("%d_cmiddle_overahngs_%d_%d", params.layer->id(), iInst, iii++).c_str(), bbox);
+        ::Slic3r::SVG svg(debug_out_path("%d_cmiddle_overahngs_%d_%d.svg", params.layer->id(), iInst, iii++).c_str(), bbox);
         for (const Surface &srf : *this->slices) {
             svg.draw(srf.expolygon, "grey");
         }
@@ -1185,6 +1183,7 @@ void PerimeterGenerator::_sort_overhangs(const Parameters &params,
     Polylines loop_polygons;
     Polylines ok_polylines;
     auto export_debug_overhangs_svg = [&](const std::string &name){
+        return; // FIXME
         BoundingBox bbox = get_extents(params.layer->lslices());
         bbox.offset(scale_(1.));
         static int iii=0;
