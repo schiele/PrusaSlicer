@@ -278,8 +278,8 @@ public:
     template<typename OtherDerived>
     Point(const Eigen::MatrixBase<OtherDerived> &other) : Vec2crd(other) {}
     static Point round(const Vec2d& rhs) { return Point(coord_t(std::round(rhs.x())), coord_t(std::round(rhs.y()))); }
-    static Point new_scale(coordf_t x, coordf_t y) { return Point(coord_t(scale_(x)), coord_t(scale_(y))); }
-    static Point new_scale(const Point &p) { return Point(scale_t(p.x()), scale_t(p.y())); }
+    static Point new_scale(coordf_t x, coordf_t y) { return Point(scale_t(x), scale_t(y)); }
+    //static Point new_scale(const Point &p) { return Point(scale_t(p.x()), scale_t(p.y())); }  //???
     template<typename OtherDerived>
     static Point new_scale(const Eigen::MatrixBase<OtherDerived> &v) { return Point(scale_t(v.x()), scale_t(v.y())); }
 

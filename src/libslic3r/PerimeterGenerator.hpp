@@ -18,6 +18,8 @@
 #include "RegionSettings.hpp"
 #include "SurfaceCollection.hpp"
 
+//#define _DEBUG_OVERHANGS
+
 namespace Slic3r::Arachne {
 struct ExtrusionLine;
 }
@@ -244,17 +246,34 @@ private:
     // the bbox is here to accelerate the diffs, loop_polygons is inside it.
     ExtrusionPaths create_overhangs_arachne(const Parameters &params,
         const ClipperLib_Z::Path& loop_polygons, const BoundingBox& bbox, ExtrusionRole role, bool is_external) const;
+
+    enum OverhangType : int{
+        NOT_OVERHANG = 0,
+        DYNAMIC_OVERHANG,
+        SMALL_SPEED_OVERHANG,
+        BIG_SPEED_OVERHANG,
+        SMALL_FLOW_OVERHANG,
+        BIG_FLOW_OVERHANG,
+    };
     struct Params_sort_overhangs
     {
         bool is_external;
         bool is_loop;
         bool has_dynamic;
-        size_t layer_height_count;
+        //size_t layer_height_count;
         Point first_point;
         Point last_point;
+        std::vector<int> overhang_type_2_lh;
+#ifdef _DEBUG_OVERHANGS
+        std::vector<std::string> debug_colors;
+        int debug_i = 0;
+#endif
     };
+
     void _sort_overhangs(const Parameters &params,
-        ExtrusionPaths &paths, const ExtrusionRole role, const Params_sort_overhangs is_external) const;
+                         ExtrusionPaths &paths,
+                         const ExtrusionRole role,
+                         const Params_sort_overhangs &overhangs_params) const;
 
     // transform loops into ExtrusionEntityCollection, adding also thin walls into it.
     ExtrusionEntityCollection _traverse_loops_classic(const Parameters &params,

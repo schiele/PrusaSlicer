@@ -1185,6 +1185,8 @@ void PrintObject::calculate_overhanging_perimeters()
                             virtual void use(const ExtrusionPath &path) override {
                                 if (path.role().is_overhang())
                                     assert(path.attributes().overhang_attributes.has_value());
+                                assert(!path.attributes().overhang_attributes.has_value() || path.attributes().overhang_attributes->has_full_overhangs_speed ||
+                                       path.attributes().overhang_attributes->has_dynamic_overhangs_speed);
                             }
                         };
                         OverhangAssertVisitor ov_visitor;

@@ -6561,7 +6561,13 @@ double_t GCodeGenerator::_compute_speed_mm_per_sec(const ExtrusionPath& path, co
             factor = float(-speed + SMALL_PERIMETER_SPEED_RATIO_OFFSET);
         }
         //it's a bit hacky, so if you want to rework it, help yourself.
-        if (path.role() == ExtrusionRole::Perimeter) {
+        if ((path.role().is_overhang() && m_config.overhangs) ||
+                   (path.attributes().overhang_attributes.has_value() &&
+                    path.attributes().overhang_attributes->has_full_overhangs_speed)) {
+            // OverhangPerimeter or OverhangExternalPerimeter
+            speed = m_config.get_computed_value("overhangs_speed");
+            if(comment) *comment = "overhangs_speed";
+        } else if (path.role() == ExtrusionRole::Perimeter) {
             speed = m_config.get_computed_value("perimeter_speed");
             if(comment) *comment = "perimeter_speed";
         } else if (path.role() == ExtrusionRole::ExternalPerimeter) {
@@ -6573,10 +6579,6 @@ double_t GCodeGenerator::_compute_speed_mm_per_sec(const ExtrusionPath& path, co
         } else if (path.role() == ExtrusionRole::InternalBridgeInfill) {
             speed = m_config.get_computed_value("internal_bridge_speed");
             if(comment) *comment = "internal_bridge_speed";
-        } else if (path.role().is_overhang() && m_config.overhangs) {
-            // OverhangPerimeter or OverhangExternalPerimeter
-            speed = m_config.get_computed_value("overhangs_speed");
-            if(comment) *comment = "overhangs_speed";
         } else if (path.role() == ExtrusionRole::InternalInfill) {
             speed = m_config.get_computed_value("infill_speed");
             if(comment) *comment = "infill_speed";
@@ -6639,9 +6641,13 @@ double_t GCodeGenerator::_compute_speed_mm_per_sec(const ExtrusionPath& path, co
         } else {
             if(comment) *comment = std::string("% of max_volumetric_speed ") + std::to_string(vol_speed);
         }
-
         // if using a % of an auto speed, use the % over the volumetric speed.
-        if (path.role() == ExtrusionRole::Perimeter) {
+        if ((path.role().is_overhang() && m_config.overhangs) ||
+                   (path.attributes().overhang_attributes.has_value() &&
+                    path.attributes().overhang_attributes->has_full_overhangs_speed)) {
+            speed = m_config.overhangs_speed.get_abs_value(vol_speed);
+            if(comment) *comment = std::string("overhangs_speed ") + *comment;
+        } else if (path.role() == ExtrusionRole::Perimeter) {
             speed = m_config.perimeter_speed.get_abs_value(vol_speed);
             if(comment) *comment = std::string("perimeter_speed ") + *comment;
         } else if (path.role() == ExtrusionRole::ExternalPerimeter) {
@@ -6653,9 +6659,6 @@ double_t GCodeGenerator::_compute_speed_mm_per_sec(const ExtrusionPath& path, co
         } else if (path.role() == ExtrusionRole::InternalBridgeInfill) {
             speed = m_config.internal_bridge_speed.get_abs_value(vol_speed);
             if(comment) *comment = std::string("internal_bridge_speed ") + *comment;
-        } else if (path.role().is_overhang() && m_config.overhangs) {
-            speed = m_config.overhangs_speed.get_abs_value(vol_speed);
-            if(comment) *comment = std::string("overhangs_speed ") + *comment;
         } else if (path.role() == ExtrusionRole::InternalInfill) {
             speed = m_config.infill_speed.get_abs_value(vol_speed);
             if(comment) *comment = std::string("infill_speed ") + *comment;
@@ -6686,10 +6689,10 @@ double_t GCodeGenerator::_compute_speed_mm_per_sec(const ExtrusionPath& path, co
     // compute overhangs dynamic if needed
     // OverhangPerimeter or OverhangExternalPerimeter
     // don't need to do anything on first layer, as there is no overhangs? (at least, the data to compute them is not generated)
-    assert(!path.attributes().overhang_attributes.has_value() || !path.attributes().overhang_attributes->has_full_overhangs_speed ||
-           path.role().is_overhang());
-    if (/*path.role().is_overhang() && */ path.attributes().overhang_attributes.has_value() &&
-        m_config.overhangs.get_bool() && m_config.overhangs_dynamic_speed.is_enabled() && !path.attributes().overhang_attributes->has_full_overhangs_speed) {
+    assert(!path.attributes().overhang_attributes.has_value() || path.attributes().overhang_attributes->has_full_overhangs_speed ||
+           path.attributes().overhang_attributes->has_dynamic_overhangs_speed);
+
+    if (path.attributes().overhang_attributes.has_value() && path.attributes().overhang_attributes->has_dynamic_overhangs_speed) {
         assert(this->layer()->id() > 0);
         double my_speed = speed;
         if(comment) *comment = "overhangs_speed";

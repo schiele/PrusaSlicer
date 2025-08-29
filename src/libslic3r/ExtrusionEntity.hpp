@@ -160,6 +160,8 @@ struct OverhangAttributes {
     float proximity_to_curled_lines; //value between 0 and 1
     bool has_full_overhangs_flow = false;
     bool has_full_overhangs_speed = false;
+    bool has_dynamic_overhangs_flow = false;
+    bool has_dynamic_overhangs_speed = false;
 };
 
 struct ExtrusionAttributes : ExtrusionFlow

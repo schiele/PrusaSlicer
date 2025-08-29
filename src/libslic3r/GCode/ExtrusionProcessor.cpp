@@ -16,10 +16,12 @@ ExtrusionPaths calculate_and_split_overhanging_extrusions(const ExtrusionPath   
                                                           const AABBTreeLines::LinesDistancer<Linef>      &unscaled_prev_layer,
                                                           const AABBTreeLines::LinesDistancer<CurledLine> &prev_layer_curled_lines,
                                                           const double &nozzle_diameter) {
+    assert(!path.attributes().overhang_attributes.has_value() || path.attributes().overhang_attributes->has_full_overhangs_speed ||
+           path.attributes().overhang_attributes->has_dynamic_overhangs_speed);
     if (!path.attributes().overhang_attributes) {
         return { path };
     } else {
-        if (path.attributes().overhang_attributes->has_full_overhangs_speed &&  path.attributes().overhang_attributes->has_full_overhangs_flow) {
+        if (!path.attributes().overhang_attributes->has_dynamic_overhangs_flow && !path.attributes().overhang_attributes->has_dynamic_overhangs_speed) {
             // not inside the dynamic range
             //path.attributes().overhang_attributes->start_distance_from_prev_layer = 1;
             //path.attributes().overhang_attributes->end_distance_from_prev_layer = 1;
@@ -95,7 +97,11 @@ ExtrusionPaths calculate_and_split_overhanging_extrusions(const ExtrusionPath   
     new_attrs.overhang_attributes = std::optional<OverhangAttributes>(
         {calculated_distances[0].first, 
         calculated_distances[0].first, 
-        calculated_distances[0].second});
+        calculated_distances[0].second,
+        path.attributes().overhang_attributes->has_full_overhangs_flow,
+        path.attributes().overhang_attributes->has_full_overhangs_speed,
+        path.attributes().overhang_attributes->has_dynamic_overhangs_flow,
+        path.attributes().overhang_attributes->has_dynamic_overhangs_speed});
     result.emplace_back(new_attrs);
     result.back().polyline.append(Point::new_scale(extended_points[0].position));
     size_t sequence_start_index = 0;
@@ -161,6 +167,11 @@ ExtrusionPaths calculate_and_split_overhanging_extrusions(const ExtrusionPath   
     // avoid precision loss
     result.front().polyline.set_front(path.first_point());
     result.back().polyline.set_back(path.last_point());
+    for (const ExtrusionPath &res_path : result) {
+        assert(!res_path.attributes().overhang_attributes.has_value() ||
+               res_path.attributes().overhang_attributes->has_full_overhangs_speed ||
+               res_path.attributes().overhang_attributes->has_dynamic_overhangs_speed);
+    }
     return result;
 };
 
