@@ -1936,15 +1936,33 @@ void GCodeGenerator::_do_export(Print& print_mod, GCodeOutputStream &file, Thumb
                 this->m_throw_if_canceled();
                 this->set_origin(unscale((*print_object_instance_sequential_active)->shift));
                 if (finished_objects > 0) {
-                    _move_to_print_object(preamble_to_put_start_layer, print, finished_objects, initial_extruder_id);
+                    if (!this->config().between_objects_gcode_before_move.value) {
+                        _move_to_print_object(preamble_to_put_start_layer, print, finished_objects,
+                                              initial_extruder_id);
+                    } else {
+                        // retract & wipe, at least.
+                        preamble_to_put_start_layer.append(this->retract_and_wipe());
+                    }
+                    assert(prev_object);
+                    DynamicConfig config;
+                    config.set_key_value("previous_object_id", new ConfigOptionInt(m_label_objects.get_object_id(*prev_object)));
+                    config.set_key_value("next_object_id", new ConfigOptionInt(m_label_objects.get_object_id(object)));
+                    config.set_key_value("previous_object_name", new ConfigOptionString(m_label_objects.get_object_name(*prev_object)));
+                    config.set_key_value("next_object_name", new ConfigOptionString(m_label_objects.get_object_name(object)));
                     std::string between_objects_gcode =
                         this->placeholder_parser_process("between_objects_gcode",
                                                          print.config().between_objects_gcode.value,
-                                                         initial_extruder_id);
+                                                         initial_extruder_id, &config);
                     // Set first layer extruder temperatures, don't wait for it to reach the temperature.
                     // don't change the bed temp for each object, it can lead to auto-removel
-                    this->_print_first_layer_extruder_temperatures(preamble_to_put_start_layer, print, between_objects_gcode, initial_extruder_id, false);
+                    std::string set_temperature;
+                    this->_print_first_layer_extruder_temperatures(set_temperature, print, between_objects_gcode, initial_extruder_id, false);
+                    preamble_to_put_start_layer.append(set_temperature).append("\n");
                     preamble_to_put_start_layer.append(between_objects_gcode).append("\n");
+                    if (this->config().between_objects_gcode_before_move.value) {
+                        _move_to_print_object(preamble_to_put_start_layer, print, finished_objects,
+                                              initial_extruder_id);
+                    }
                 } else {
                     set_extra_lift(0, 0, print.config(), m_writer, initial_extruder_id);
                 }

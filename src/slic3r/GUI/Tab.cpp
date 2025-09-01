@@ -2044,7 +2044,7 @@ std::vector<Slic3r::GUI::PageShp> Tab::create_pages(std::string setting_type_nam
                 if ("no_search" == params[i])
                     no_search = true;
             }
-            
+
             current_group = current_page->new_optgroup(_(params.back()), no_title, !no_search, type_override);
             for (int i = 1; i < params.size() - 1; i++) {
                 if (boost::starts_with(params[i], "title_width$")) {

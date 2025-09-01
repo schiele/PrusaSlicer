@@ -971,6 +971,7 @@ static std::vector<std::string> s_Preset_printer_options {
     "toolchange_gcode",
     "color_change_gcode", "pause_print_gcode", "template_custom_gcode","feature_gcode",
     "between_objects_gcode",
+    "between_objects_gcode_before_move",
     //printer fields
     "printer_custom_variables",
     "printer_vendor",

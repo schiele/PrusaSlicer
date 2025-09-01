@@ -1093,6 +1093,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloatOrPercent,      autospeed_min_thin_flow))
     ((ConfigOptionString,              before_layer_gcode))
     ((ConfigOptionString,              between_objects_gcode))
+    ((ConfigOptionBool,                between_objects_gcode_before_move))
     ((ConfigOptionBool,                binary_gcode))
     ((ConfigOptionFloat,               cooling_tube_retraction))
     ((ConfigOptionFloat,               cooling_tube_length))

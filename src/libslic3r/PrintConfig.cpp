@@ -815,6 +815,13 @@ void PrintConfigDef::init_fff_params()
     def->mode = comExpert | comPrusa;
     def->set_default_value(new ConfigOptionString(""));
 
+    def = this->add("between_objects_gcode_before_move", coBool);
+    def->label = L("Put gcode before the move");
+    def->category = OptionCategory::customgcode;
+    def->tooltip = L("'This'between_objects_gcode' code is inserted before moving to the next object, instead of after moving to the next object.");
+    def->mode = comExpert | comSuSi;
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("bottom_solid_layers", coInt);
     //TRN Print Settings: "Bottom solid layers"
     def->label = L_CONTEXT("Bottom", "Layers");
@@ -10263,6 +10270,7 @@ std::unordered_set<std::string> prusa_export_to_remove_keys = {
 "avoid_crossing_top",
 "avoid_travel_island",
 "avoid_travel_island_weight",
+"between_objects_gcode_before_move",
 "bridge_fill_pattern",
 "bridge_precision",
 "bridge_overlap",
@@ -12467,7 +12475,7 @@ static std::map<t_custom_gcode_key, t_config_option_keys> s_CustomGcodeSpecificP
     {"toolchange_gcode",        {"layer_num", "layer_z", "max_layer_z", "previous_extruder", "next_extruder", "toolchange_z"}},
     {"color_change_gcode",      {"color_change_extruder", "next_color", "next_colour"}},
     {"pause_print_gcode",       {"color_change_extruder", "next_color", "next_colour"}},
-    {"between_objects_gcode",   {"layer_num", "layer_z"}},
+    {"between_objects_gcode",   {"layer_num", "layer_z", "previous_object_id", "previous_object_name", "next_object_id", "next_object_name"}},
 };
 
 const std::map<t_custom_gcode_key, t_config_option_keys>& custom_gcode_specific_placeholders()
@@ -12527,7 +12535,7 @@ CustomGcodeSpecificConfigDef::CustomGcodeSpecificConfigDef()
     def = this->add("next_colour", coString);
     // TRN: This is a label in custom g-code editor dialog, belonging to color_change_extruder. Denoted index of the extruder for which color change is performed.
     def->label = L("Next colour");
-    def->tooltip = L("Like next_color, but for british people.\nNext color to display when a color change is performed, in #ffffff format.");
+    def->tooltip = L("Next color to display when a color change is performed, in #ffffff format (same as 'next_color', but for british people).");
 
     def = this->add("previous_extrusion_role", coString);
     def->label = L("Previous extrusion role");
@@ -12557,6 +12565,25 @@ CustomGcodeSpecificConfigDef::CustomGcodeSpecificConfigDef()
     def->label = L("Computed used filaent for each extruder");
     def->tooltip = L("It's an array of mm of extruded filament at this layer, the layer that ends now. The first extruder is at index 0, and this array has the same "
                      "number of entries as the number of extruders as the printer.");
+
+    def = this->add("previous_object_id", coInt);
+    def->label = L("Index of the object that finished printing.");
+    def->tooltip = L("0-based index, the index is the object's position in the right panel list in the platter tab, from top to bottom."
+        "\nIt's the same id used for 'label object' gcode.");
+
+    def = this->add("next_object_id", coInt);
+    def->label = L("Index of the object that will start printing.");
+    def->tooltip = L("0-based index, the index is the object's position in the right panel list in the platter tab, from top to bottom."
+        "\nIt's the same id used for 'label object' gcode.");
+
+    def = this->add("previous_object_name", coString);
+    def->label = L("Name of the object that finished printing.");
+    def->tooltip = L("It's the same name used for 'label object' gcode.");
+
+    def = this->add("next_object_name", coString);
+    def->label = L("Name of the object that will start printing.");
+    def->tooltip = L("It's the same name used for 'label object' gcode.");
+
 }
 
 const CustomGcodeSpecificConfigDef custom_gcode_specific_config_def;
