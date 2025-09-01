@@ -499,6 +499,7 @@ private:
         std::vector<SliceIsland> slices;
         std::vector<SliceIsland> slices_offsetted;
         const Layer* last_layer;
+        const PrintObject* last_object;
         coord_t diameter;
     }                                   m_layer_slices_offseted{ {},{},nullptr, 0};
     // one per extruder

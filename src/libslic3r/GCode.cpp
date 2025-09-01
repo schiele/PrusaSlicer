@@ -8080,6 +8080,7 @@ bool GCodeGenerator::can_cross_perimeter(const Polyline& travel, bool offset)
                 // we didn't see any object yet (we are on the raft)
                 return true;
             }
+            bool object_changed = m_layer_slices_offseted.last_object == nullptr || m_layer_slices_offseted.last_object != m_layer->object();
             if (!m_last_object_layers.empty() && m_layer_slices_offseted.last_layer != m_layer) {
                 //note: if printing support, we need all the already printed objects layers.
                 // but if we're printing an object, we only need our island (that is in our layer) and don't need any other layer.
@@ -8087,6 +8088,7 @@ bool GCodeGenerator::can_cross_perimeter(const Polyline& travel, bool offset)
                 // TODO: I think it's possible to have the SliceIsland for each layer, and then loop over all of them
                 // only if for SupportLayer
                 m_layer_slices_offseted.last_layer = m_layer;
+                m_layer_slices_offseted.last_object = m_layer->object();
                 m_layer_slices_offseted.diameter = scale_t(EXTRUDER_CONFIG_WITH_DEFAULT(nozzle_diameter, 0.4)) / 2;
                 ExPolygons slices;
                 ExPolygons slices_offsetted;
@@ -8109,7 +8111,7 @@ bool GCodeGenerator::can_cross_perimeter(const Polyline& travel, bool offset)
                 slices = union_ex(slices);
                 slices_offsetted = union_ex(slices_offsetted);
                 // remove top surfaces
-                // if support i don't care becasue i need to cross external perimter before anyway.
+                // if support i don't care because i need to cross external perimeter before anyway.
                 if (!is_support_layer) {
                     for (const LayerRegion *reg : m_layer->regions()) {
                         m_throw_if_canceled();
@@ -8165,6 +8167,9 @@ bool GCodeGenerator::can_cross_perimeter(const Polyline& travel, bool offset)
                         }
                     }
                 }
+            }
+            if (object_changed) {
+                return true;
             }
         //if (is_approx(m_layer_slices_offseted.last_layer->print_z, 22.34, 0.01)) {
         //    static int aodfjiaqsdz = 0;
