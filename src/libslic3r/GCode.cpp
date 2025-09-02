@@ -6287,10 +6287,21 @@ std::string GCodeGenerator::_extrude(const ExtrusionPath &path, const std::strin
                 } else {
                     const Vec2d  center_offset = this->point_to_gcode(center) - this->point_to_gcode(current_pos);
                     double       angle         = Geometry::ArcWelder::arc_angle(current_pos, segment.point, radius);
-                    assert(angle != 0);
-                    const coordf_t line_length = angle * std::abs(radius);
-                    gcode += m_writer.extrude_arc_to_xy(this->point_to_gcode(segment.point), center_offset, e_per_mm * unscaled(line_length),
-                                                        segment.ccw(), comment);
+                    // Note: Geometry::ArcWelder::arc_angle Returned angle is in the range <0, 2 PI)
+                    assert(angle > 0);
+                    if (angle < 0.00001) {
+                        //strait
+                        if (!path.role().is_external_perimeter() || config().external_perimeter_cut_corners.value == 0) {
+                            // normal & legacy pathcode
+                            _extrude_line(gcode, Line(current_pos, segment.point), e_per_mm, comment, path.role());
+                        } else {
+                            _extrude_line_cut_corner(gcode, Line(current_pos, segment.point), e_per_mm, comment, last_pos, path.width());
+                        }
+                    } else {
+                        const coordf_t line_length = angle * std::abs(radius);
+                        gcode += m_writer.extrude_arc_to_xy(this->point_to_gcode(segment.point), center_offset,
+                                                            e_per_mm * unscaled(line_length), segment.ccw(), comment);
+                    }
                 }
                 last_pos    = current_pos;
                 current_pos = segment.point;
