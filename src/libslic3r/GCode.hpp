@@ -133,6 +133,7 @@ public:
     const Vec2d&    origin() const { return m_origin; }
     void            set_origin(const Vec2d &pointf);
     void            set_origin(const coordf_t x, const coordf_t y) { this->set_origin(Vec2d(x, y)); }
+    uint16_t        last_extruder() const { return m_writer.tool() ? m_writer.tool()->id() : size_t(0); }
     const Point&    last_pos() const { assert(m_last_pos); return *m_last_pos; }
     bool            last_pos_defined() const { return m_last_pos.has_value(); }
     void            set_last_pos(const Point &pos) { m_last_pos = pos; }
@@ -500,6 +501,8 @@ private:
         std::vector<SliceIsland> slices_offsetted;
         const Layer* last_layer;
         const PrintObject* last_object;
+        const PrintInstance* last_instance;
+        uint16_t last_extruder;
         coord_t diameter;
     }                                   m_layer_slices_offseted{ {},{},nullptr, 0};
     double                              m_volumetric_speed;

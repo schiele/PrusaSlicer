@@ -7775,6 +7775,7 @@ void GCodeGenerator::SliceIsland::create_hole_bb() {
         this->hole_boundingboxes.emplace_back(poly.points);
     }
 }
+
 bool GCodeGenerator::can_cross_perimeter(const Polyline& travel, bool offset)
 {
     if (m_layer != nullptr) {
@@ -7792,14 +7793,18 @@ bool GCodeGenerator::can_cross_perimeter(const Polyline& travel, bool offset)
                 return true;
             }
             bool object_changed = m_layer_slices_offseted.last_object == nullptr || m_layer_slices_offseted.last_object != m_layer->object();
-            if (!m_last_object_layers.empty() && m_layer_slices_offseted.last_layer != m_layer) {
+            bool instance_changed = m_layer_slices_offseted.last_instance != m_last_instance;
+            bool extruder_changed = m_layer_slices_offseted.last_extruder != m_writer.tool()->id();
+            if ((!m_last_object_layers.empty() && m_layer_slices_offseted.last_layer != m_layer) || extruder_changed) {
                 //note: if printing support, we need all the already printed objects layers.
                 // but if we're printing an object, we only need our island (that is in our layer) and don't need any other layer.
                 // is it worth it to recompute the slices each time ?
                 // TODO: I think it's possible to have the SliceIsland for each layer, and then loop over all of them
                 // only if for SupportLayer
                 m_layer_slices_offseted.last_layer = m_layer;
+                m_layer_slices_offseted.last_instance = m_last_instance;
                 m_layer_slices_offseted.last_object = m_layer->object();
+                m_layer_slices_offseted.last_extruder = m_writer.tool()->id();
                 m_layer_slices_offseted.diameter = scale_t(EXTRUDER_CONFIG_WITH_DEFAULT(nozzle_diameter, 0.4)) / 2;
                 ExPolygons slices;
                 ExPolygons slices_offsetted;
@@ -7812,15 +7817,68 @@ bool GCodeGenerator::can_cross_perimeter(const Polyline& travel, bool offset)
                         // we are interserted to not going near it, so offset it to the exterior
                         append(slices_offsetted, offset_ex(layer->lslices(), m_layer_slices_offseted.diameter * 1.5f));
                     }
+
+                    slices = union_ex(slices);
+                    slices_offsetted = union_ex(slices_offsetted);
                 } else {
                     // our layer
                     append(slices, m_layer->lslices());
-                    //w e are interested to not cross outside of it.
-                    append(slices_offsetted,
-                            offset_ex(m_layer->lslices(), -m_layer_slices_offseted.diameter * 1.5f));
+
+                    slices = union_ex(slices);
+                    // multiple extruders?
+                    // clip by region
+                    assert(m_layer_slices_offseted.last_layer != nullptr);
+                    const LayerRegionPtrs &all_regions = m_layer_slices_offseted.last_layer->regions();
+                    bool multiple_extruders = false;
+                    for (const LayerRegion *lregion : all_regions) {
+                            multiple_extruders = multiple_extruders ||
+                                lregion->region().config().perimeter_extruder.value !=
+                                    m_layer_slices_offseted.last_extruder + 1;
+                            multiple_extruders = multiple_extruders ||
+                                lregion->region().config().infill_extruder.value !=
+                                    m_layer_slices_offseted.last_extruder + 1;
+                            multiple_extruders = multiple_extruders ||
+                                lregion->region().config().solid_infill_extruder.value !=
+                                    m_layer_slices_offseted.last_extruder + 1;
+                            if (multiple_extruders) {
+                                break;
+                            }
+                    }
+                    if (multiple_extruders) {
+                        ExPolygons clip;
+                        for (const LayerRegion *lregion : all_regions) {
+                            bool same_extruders = lregion->region().config().perimeter_extruder.value ==
+                                    lregion->region().config().infill_extruder.value &&
+                                lregion->region().config().infill_extruder.value ==
+                                    lregion->region().config().solid_infill_extruder.value;
+
+                            if (same_extruders) {
+                                if (lregion->region().config().perimeter_extruder.value ==
+                                    m_layer_slices_offseted.last_extruder + 1) {
+                                    clip = union_ex(clip, lregion->get_cached_slices());
+                                }
+                            } else {
+                                if (lregion->region().config().infill_extruder.value !=
+                                    lregion->region().config().solid_infill_extruder.value) {
+                                    BOOST_LOG_TRIVIAL(warning) << "";
+                                }
+                                if (lregion->region().config().perimeter_extruder.value ==
+                                    m_layer_slices_offseted.last_extruder + 1) {
+                                    assert(lregion->region().config().infill_extruder.value !=
+                                            m_layer_slices_offseted.last_extruder + 1);
+                                    clip = union_ex(clip, diff_ex(lregion->get_cached_slices(), lregion->fill_expolygons()));
+                                } else {
+                                    assert(lregion->region().config().infill_extruder.value ==
+                                            m_layer_slices_offseted.last_extruder + 1);
+                                    clip = union_ex(clip, lregion->fill_expolygons());
+                                }
+                            }
+                        }
+                        slices = intersection_ex(slices, offset_ex(clip, SCALED_EPSILON * 10 /*safety offset*/));
+                    }
+                    // w e are interested to not cross outside of it.
+                    append(slices_offsetted, offset_ex(slices, -m_layer_slices_offseted.diameter * 1.5f));
                 }
-                slices = union_ex(slices);
-                slices_offsetted = union_ex(slices_offsetted);
                 // remove top surfaces
                 // if support i don't care because i need to cross external perimeter before anyway.
                 if (!is_support_layer) {
@@ -7879,7 +7937,7 @@ bool GCodeGenerator::can_cross_perimeter(const Polyline& travel, bool offset)
                     }
                 }
             }
-            if (object_changed) {
+            if (object_changed || instance_changed) {
                 return true;
             }
         //if (is_approx(m_layer_slices_offseted.last_layer->print_z, 22.34, 0.01)) {
