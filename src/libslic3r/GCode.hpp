@@ -300,7 +300,7 @@ private:
     virtual void use(const ExtrusionEntityCollection &collection) override;
     std::string     extrude_entity(const ExtrusionEntityReference &entity, const std::string_view description, double speed = -1.);
     std::string     extrude_loop(const ExtrusionLoop &loop, const std::string_view description, double speed = -1.);
-    std::string     extrude_loop_vase(const ExtrusionLoop &loop, const std::string_view description, double speed = -1.);
+    std::string     extrude_loop_vase(const ExtrusionPaths& normal_loop_paths, const ExtrusionLoop &original_loop, const std::string_view description, double speed = -1.);
     std::string     extrude_multi_path(const ExtrusionMultiPath &multipath, const std::string_view description, double speed = -1.);
     std::string     extrude_multi_path3D(const ExtrusionMultiPath3D &multipath, const std::string_view description, double speed = -1.);
     std::string     extrude_path(const ExtrusionPath &path, const std::string_view description, double speed = -1.);
@@ -469,6 +469,7 @@ private:
 #ifdef _DEBUGINFO
     std::vector<coord_t>                 m_layers_z;
     std::vector<coord_t>                 m_layers_with_supp_z;
+    bool                                 m_loop_vase_mode = false;
 #endif
     uint32_t                            m_layer_with_support_count;
     // Progress bar indicator. Increments from -1 up to layer_count.
