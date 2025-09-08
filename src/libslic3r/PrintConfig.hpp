@@ -898,6 +898,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBool,                 external_perimeters_hole))
     ((ConfigOptionBool,                 external_perimeters_nothole))
     ((ConfigOptionBool,                 external_perimeters_vase))
+    ((ConfigOptionFloatOrPercent,       external_perimeters_vase_min_height))
     ((ConfigOptionBool,                 extra_perimeters))
     ((ConfigOptionFloatOrPercent,       extra_perimeters_below_area))
     ((ConfigOptionInt,                  extra_perimeters_count))
