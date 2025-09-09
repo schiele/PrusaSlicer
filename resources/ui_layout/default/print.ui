@@ -20,7 +20,6 @@ group:Horizontal shells
 	end_line
 	setting:solid_over_perimeters
 	setting:ensure_vertical_shell_thickness
-	setting:enforce_full_fill_volume
 	top_bottom_shell_thickness_explanation
 group:Infill
 	line:Sparse infill pattern
@@ -261,6 +260,7 @@ group:Advanced Infill options
 		setting:label_width$8:width$5:fill_smooth_distribution
 		setting:label_width$26:label$Spacing between ironing lines:width$5:sidetext_width$7:fill_smooth_width
 	end_line
+	setting:enforce_full_fill_volume
 	setting:label$Small Area Infill Flow Compensation (beta):small_area_infill_flow_compensation_model
 	end_line
 group:title_width$19:Ironing post-process (This will go on top of infills and perimeters)
