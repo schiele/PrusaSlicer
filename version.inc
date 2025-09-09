@@ -7,7 +7,7 @@ set(SLIC3R_APP_NAME "Slic3r")
 set(SLIC3R_APP_KEY "Slic3r")
 # exe name of the slicer, should be lowercase and valid in all os
 set(SLIC3R_APP_CMD "Slic3r")
-# id for windows registry
+# id for windows registry ([a-z] [A-Z] [0-9] '_' and '.' only)
 set(SLIC3R_APP_PROG_ID "Slic3r.1")
 # versions
 set(SLIC3R_VERSION "2.7-beta+UNKNOWN")
