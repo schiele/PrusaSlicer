@@ -677,6 +677,14 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvancedE | comPrusa;
     def->set_default_value(new ConfigOptionEnum<ArcFittingType>(ArcFittingType::Disabled));
 
+    def = this->add("arc_fitting_ignore_holes", coBool);
+    def->label = L("Ignore holes");
+    def->full_label = L("Arc fitting: ignore holes");
+    def->category = OptionCategory::firmware;
+    def->tooltip = L("Don't trnsform holes into arc (G2/G3). This applies to all perimeter holes.");
+    def->mode = comAdvancedE | comSuSi;
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("arc_fitting_resolution", coFloatOrPercent);
     def->label = L("Arc fitting resolution");
     def->sidetext = L("mm or %");
@@ -10271,6 +10279,7 @@ void deserialize_maybe_from_prusa(std::map<t_config_option_key, std::string> set
 
 std::unordered_set<std::string> prusa_export_to_remove_keys = {
 "allow_empty_layers",
+"arc_fitting_ignore_holes",
 "arc_fitting_resolution",
 "arc_fitting_tolerance",
 "autospeed_min_thin_flow",

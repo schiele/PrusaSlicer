@@ -759,6 +759,7 @@ void ConfigManipulation::toggle_printer_fff_options(DynamicPrintConfig *config, 
     }
 
     bool have_arc_fitting = config->option("arc_fitting")->get_int() != int(ArcFittingType::Disabled);
+    toggle_field("arc_fitting_ignore_holes", have_arc_fitting);
     toggle_field("arc_fitting_resolution", have_arc_fitting);
     toggle_field("arc_fitting_tolerance", have_arc_fitting);
 

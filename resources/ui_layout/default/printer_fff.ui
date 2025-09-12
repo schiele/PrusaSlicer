@@ -41,6 +41,9 @@ group:silent_mode_event:filename_format_event:Firmware
 	end_line
 	line:G2/G3 generation
 		setting:arc_fitting
+		setting:arc_fitting_ignore_holes
+	end_line
+	line:G2/G3 Resolution
 		setting:arc_fitting_resolution
 		setting:arc_fitting_tolerance
 	end_line

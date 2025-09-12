@@ -1088,6 +1088,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     GCodeConfig,
 
     ((ConfigOptionEnum<ArcFittingType>, arc_fitting))
+    ((ConfigOptionBool,                arc_fitting_ignore_holes))
     ((ConfigOptionFloatOrPercent,      arc_fitting_resolution))
     ((ConfigOptionFloatOrPercent,      arc_fitting_tolerance))
     ((ConfigOptionBool,                autoemit_temperature_commands))
