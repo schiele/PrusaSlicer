@@ -7,7 +7,7 @@ set(SLIC3R_APP_NAME "SuperSlicer")
 set(SLIC3R_APP_KEY "SuperSlicer")
 # exe name of the slicer, should be lowercase and valid in all os
 set(SLIC3R_APP_CMD "superslicer")
-# id for windows registry
+# id for windows registry ([a-z] [A-Z] [0-9] '_' and '.' only)
 set(SLIC3R_APP_PROG_ID "Slic3r.1")
 # versions
 set(SLIC3R_VERSION "2.7-beta+UNKNOWN")
