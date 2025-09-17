@@ -98,6 +98,8 @@ changes. This way we can ensure that nobody wastes their time and no conflicts a
 
 ## License and attribution
 
+The windows releases are signed by [signpath](https://github.com/supermerill/SuperSlicer/wiki/Windows-code-signing-policy) (from the 2.7.61.11)
+
 SuperSlicer is licensed under the _GNU Affero General Public License, version 3_.
 SuperSlicer is based on PrusaSlicer by PrusaResearch.
 
