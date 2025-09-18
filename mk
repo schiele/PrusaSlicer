@@ -48,13 +48,13 @@ export CMAKE_C_COMPILER_LAUNCHER=ccache
 export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 mkdir -p "$DIR/$DDIR"
 cd "$DIR/$DDIR"
-cmake .. $DEPFLAGS -DDEP_WX_GTK3=ON -DDEP_DOWNLOAD_DIR="$DIR/deps/download"
-make -j $PAR
+#cmake .. $DEPFLAGS -DDEP_WX_GTK3=ON -DDEP_DOWNLOAD_DIR="$DIR/deps/download"
+#make -j $PAR
 mkdir -p "$DIR/$BDIR"
 cd "$DIR/$BDIR"
-cmake .. -DSLIC3R_STATIC=1 $BLDFLAGS \
+cmake .. -DXSLIC3R_STATIC=1 $BLDFLAGS \
 	-DSLIC3R_GTK=3 -DSLIC3R_PCH=OFF \
-	-DCMAKE_PREFIX_PATH="$DIR/$DDIR/destdir/usr/local" \
+	-DXCMAKE_PREFIX_PATH="$DIR/$DDIR/destdir/usr/local" \
 	-DCMAKE_INSTALL_PREFIX=~/tools/orcaslicer/$BDIR \
 	-DBBL_RELEASE_TO_PUBLIC=1 -DBBL_INTERNAL_TESTING=0 \
 	-DORCA_TOOLS=ON
