@@ -509,6 +509,7 @@ static std::vector<std::string> s_Preset_print_options {
         "thin_perimeters", "thin_perimeters_all",
         "overhangs",
         "overhangs_extrusion_spacing",
+        "overhangs_type",
         "overhangs_speed",
         "overhangs_speed_enforce",
         "overhangs_max_slope",

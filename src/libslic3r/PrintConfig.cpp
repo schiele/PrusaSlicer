@@ -3307,8 +3307,8 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionPercent(80));
 
     def = this->add("gap_fill_perimeter", coBool);
-    def->label = L("Allow Periemter inside Gap fill");
-    def->full_label = L("Allow Periemter inside Gap fill");
+    def->label = L("Allow Perimeter inside Gap fill");
+    def->full_label = L("Allow Perimeter inside Gap fill");
     def->category = OptionCategory::perimeter;
     def->tooltip = L("Allow to create a perimeter inside a gapfill area if it's possible.");
     def->mode = comExpert | comSuSi;
@@ -10472,7 +10472,6 @@ std::unordered_set<std::string> prusa_export_to_remove_keys = {
 "overhangs_max_slope",
 "overhangs_reverse_threshold",
 "overhangs_reverse",
-"overhangs_spacing",
 "overhangs_speed_enforce",
 "overhangs_type",
 "overhangs_width_speed",

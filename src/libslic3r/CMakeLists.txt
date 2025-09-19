@@ -372,6 +372,7 @@ set(SLIC3R_SOURCES
     RegionSettings.cpp
     RegionSettings.hpp
     Semver.cpp
+    Semver.hpp
     ShortEdgeCollapse.cpp
     ShortEdgeCollapse.hpp
     ShortestPath.cpp
