@@ -721,6 +721,10 @@ void Layer::make_perimeters()
                             && config.external_perimeters_nothole == other_config.external_perimeters_nothole
                             && config.external_perimeters_vase == other_config.external_perimeters_vase
                             && config.external_perimeters_vase_min_height == other_config.external_perimeters_vase_min_height
+                            && config.seam_notch_all            == other_config.seam_notch_all
+                            && config.seam_notch_angle          == other_config.seam_notch_angle
+                            && config.seam_notch_inner          == other_config.seam_notch_inner
+                            && config.seam_notch_outer          == other_config.seam_notch_outer
                             //&& config.extra_perimeters_below_area == other_config.extra_perimeters_below_area // can be used in modifiers
                             //&& config.extra_perimeters_odd_layers == other_config.extra_perimeters_odd_layers // can be used in modifiers
                             //&& config.extra_perimeters_on_overhangs == other_config.extra_perimeters_on_overhangs // can be used in modifiers
