@@ -164,6 +164,8 @@ public:
 	void init() { m_initialized = true; }
 	// Push a prefabricated notification from basic_notifications (see the table at the end of this file).
 	void push_notification(const NotificationType type, int timestamp = 0);
+	// Push a prefabricated notification from basic_notifications (see the table at the end of this file).
+	void push_notification(const NotificationType type, const std::string& text, int timestamp = 0);
 	// Push a NotificationType::CustomNotification with NotificationLevel::RegularNotificationLevel and 10s fade out interval.
 	void push_notification(const std::string& text, int timestamp = 0);
 	// Push a NotificationType::CustomNotification with provided notification level and 10s for RegularNotificationLevel.

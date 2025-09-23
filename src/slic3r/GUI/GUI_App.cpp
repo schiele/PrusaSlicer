@@ -143,6 +143,8 @@ using namespace std::literals;
 namespace Slic3r {
 namespace GUI {
 
+wxDEFINE_EVENT(EVT_CONFIG_UPDATER_SHOW_DIALOG, wxCommandEvent);
+
 class MainFrame;
 
 class SplashScreen : public wxSplashScreen
@@ -928,8 +930,14 @@ void GUI_App::post_init()
         CallAfter([this] {
             // preset_updater->sync downloads profile updates on background so it must begin after config wizard finished.
             bool cw_showed = this->config_wizard_startup();
+#ifndef USE_GTHUB_PRESET_UPDATE
+    ///////////////////////// -supermerill: old prusa code for the old way to update profiles /////////////////////////
+    ///////////////////////// not used anymore 
             this->preset_updater->sync(preset_bundle.get(), this);
+#endif
             if (! cw_showed) {
+                this->preset_updater->set_installed_vendors(preset_bundle.get());
+                this->preset_updater->sync_async([this](int nb_updates) {this->check_updates(true, nb_updates);});
                 // The CallAfter is needed as well, without it, GL extensions did not show.
                 // Also, we only want to show this when the wizard does not, so the new user
                 // sees something else than "we want something" on the first start.
@@ -1621,7 +1629,7 @@ bool GUI_App::on_init_inner()
                         , _u8L("See Releases page.")
                         , [](wxEvtHandler* evnthndlr) {wxGetApp().open_browser_with_warning_dialog("https://github.com/" SLIC3R_GITHUB "/releases"); return true; }
                     );
-    }
+                }
             }
             });
         Bind(EVT_SLIC3R_APP_DOWNLOAD_PROGRESS, [this](const wxCommandEvent& evt) {
@@ -1685,10 +1693,18 @@ bool GUI_App::on_init_inner()
 #endif
                 }
         }); 
-
+        
+#ifndef USE_GTHUB_PRESET_UPDATE
+    ///////////////////////// -supermerill: old prusa code for the old way to update profiles /////////////////////////
+    ///////////////////////// not used anymore 
         Bind(EVT_CONFIG_UPDATER_SYNC_DONE, [this](const wxCommandEvent& evt) {
-            this->check_updates(false);
+            check_updates(true);
         });
+#else
+        Bind(EVT_CONFIG_UPDATER_SHOW_DIALOG, [this](const wxCommandEvent& evt) {
+            this->preset_updater->show_synch_window(this->plater(), preset_bundle.get(), _L("Managing vendor bundles:"), [](bool){});
+        }); 
+#endif
 
     }
     else {
@@ -3261,9 +3277,53 @@ void GUI_App::add_config_menu(wxMenuBar *menu)
         case ConfigMenuWizard:
             run_wizard(ConfigWizard::RR_USER);
             break;
-		case ConfigMenuUpdateConf:
-			check_updates(true);
-			break;
+        case ConfigMenuUpdateConf:
+#ifndef USE_GTHUB_PRESET_UPDATE
+    ///////////////////////// -supermerill: old prusa code for the old way to update profiles /////////////////////////
+    ///////////////////////// not used anymore 
+            check_updates(true);
+#else
+            assert(this->preset_updater);
+            if (this->preset_updater) {
+                bool is_in_synch = this->preset_updater->synch_process_ongoing;
+                if (is_in_synch) {
+                    std::lock_guard<std::mutex> guard(this->preset_updater->callback_update_preset_mutex);
+                    //test again, to avoid issues
+                    if (this->preset_updater->synch_process_ongoing) {
+                        auto old_callback_update_preset = this->preset_updater->callback_update_preset;
+                        this->preset_updater->sync_async([this, old_callback_update_preset](int nb_updates) {
+                            old_callback_update_preset(nb_updates);
+                            this->preset_updater->set_installed_vendors(preset_bundle.get());
+                            this->preset_updater->reload_all_vendors();
+                            this->preset_updater->sync_async([this](int update_count) {
+                                // end of waiting dialog (yes, it has to be called without any exception)
+                                this->wait_dialog.reset();
+                                // call show_synch_window once this call is returned.
+                                // can't call it here as there is still things to celan up before
+                                wxCommandEvent* evt = new wxCommandEvent(EVT_CONFIG_UPDATER_SHOW_DIALOG);
+                                this->QueueEvent(evt);
+                            });
+                        });
+                        this->wait_dialog.reset(new wxBusyInfo("Updating the presets, please wait"));
+                        return;
+                    } else {
+                        // the mutex lock makes us wait enough time.
+                    }
+                }
+                this->wait_dialog.reset(new wxBusyInfo("Updating the presets, please wait"));
+                this->preset_updater->set_installed_vendors(preset_bundle.get());
+                this->preset_updater->reload_all_vendors();
+                this->preset_updater->sync_async([this](int update_count) {
+                    // end of waiting dialog (yes, it has to be called without any exception)
+                    this->wait_dialog.reset();
+                    // call show_synch_window once this call is returned.
+                    // can't call it here as there is still things to celan up before
+                    wxCommandEvent* evt = new wxCommandEvent(EVT_CONFIG_UPDATER_SHOW_DIALOG);
+                    this->QueueEvent(evt);
+                });
+            }
+#endif
+            break;
         case ConfigMenuUpdateApp:
             app_version_check(true);
             break;
@@ -3891,10 +3951,13 @@ bool GUI_App::may_switch_to_SLA_preset(const wxString& caption)
     return true;
 }
 
-bool GUI_App::run_wizard(ConfigWizard::RunReason reason, ConfigWizard::StartPage start_page)
+bool GUI_App::run_wizard(ConfigWizard::RunReason reason, ConfigWizard::StartPage start_page, bool bypass_bundle_install /*= false*/)
 {
     wxCHECK_MSG(mainframe != nullptr, false, "Internal error: Main frame not created / null");
-
+    
+#ifndef USE_GTHUB_PRESET_UPDATE
+    ///////////////////////// -supermerill: old prusa code for the old way to update profiles /////////////////////////
+    ///////////////////////// not used anymore 
     if (reason == ConfigWizard::RR_USER) {
         // Cancel sync before starting wizard to prevent two downloads at same time
         preset_updater->cancel_sync();
@@ -3902,8 +3965,19 @@ bool GUI_App::run_wizard(ConfigWizard::RunReason reason, ConfigWizard::StartPage
         if (preset_updater->config_update(app_config->orig_version(), PresetUpdater::UpdateParams::FORCED_BEFORE_WIZARD) == PresetUpdater::R_ALL_CANCELED)
             return false;
     }
+#endif
+    // if nothing installed, show the installatino dialog first
+    bool is_synch = this->preset_updater->is_synch;
+    if (bypass_bundle_install || !is_synch || this->preset_updater->count_installed() == 0) {
+        this->preset_updater->show_synch_window(
+            this->mainframe, preset_bundle.get(),
+            _L("You don't have any vendor configuration bundles intalled yet. You need to choose the vendor that are "
+            "useful for you. If you want to install a prusa printer, you should install a prusa bundle so you can "
+            "choose inside prusa printer presets."),
+            [&](bool is_ok) { if (is_ok) run_wizard(reason, start_page, true); });
+        return false;
+    }
 
-    
     ConfigWizard *wizard = nullptr;
     {
         wxBusyCursor wait;
@@ -4121,7 +4195,10 @@ bool GUI_App::config_wizard_startup()
     return false;
 }
 
-bool GUI_App::check_updates(const bool verbose)
+#ifndef USE_GTHUB_PRESET_UPDATE
+    ///////////////////////// -supermerill: old prusa code for the old way to update profiles /////////////////////////
+    ///////////////////////// not used anymore 
+bool GUI_App::check_updates(const bool verbose, int nb_updates)
 {	
 	PresetUpdater::UpdateResult updater_result;
 	try {
@@ -4145,6 +4222,18 @@ bool GUI_App::check_updates(const bool verbose)
     // Applicaiton will continue.
     return true;
 }
+#else
+bool GUI_App::check_updates(const bool verbose, int nb_updates) {
+    if (nb_updates > 0) {
+        // Show notification
+        GUI::wxGetApp().plater()->get_notification_manager()
+            ->push_notification(GUI::NotificationType::PresetUpdateAvailable,
+                                Slic3r::format(_u8L("%1% configurations update are available."), nb_updates));
+    }
+    // Applicaiton will continue.
+    return true;
+}
+#endif
 
 bool GUI_App::open_browser_with_warning_dialog(const wxString& url,  wxWindow* parent/* = nullptr*/, bool allow_remember_choice/* = true*/, int flags/* = 0*/)
 {
@@ -4241,19 +4330,22 @@ void GUI_App::associate_bgcode_files()
 void GUI_App::on_version_read(wxCommandEvent& evt)
 {
     app_config->set("version_online", into_u8(evt.GetString()));
+    std::optional<Slic3r::Semver> version_online = Semver::parse(into_u8(evt.GetString()));
     std::string opt = app_config->get("notify_release");
-    if (this->plater_ == nullptr || (!m_app_updater->get_triggered_by_user() && opt != "all" && opt != "release")) {
+    if (!version_online || this->plater_ == nullptr) {
+        return;
+    } else if (!m_app_updater->get_triggered_by_user() && opt != "all" && (opt != "release" || version_online->prerelease() == nullptr)) {
         BOOST_LOG_TRIVIAL(info) << "Version online: " << evt.GetString() << ". User does not wish to be notified.";
         return;
     }
-    if (*Semver::parse(SLIC3R_VERSION_FULL) >= *Semver::parse(into_u8(evt.GetString()))) {
+    if (*Semver::parse(SLIC3R_VERSION_FULL) >= *version_online) {
         if (m_app_updater->get_triggered_by_user())
         {
-            std::string text = (*Semver::parse(into_u8(evt.GetString())) == Semver()) 
+            std::string text = (*version_online == Semver()) 
                 ? _u8L("Check for application update has failed.")
                 : Slic3r::format(_u8L("You are currently running the latest released version %1%."), evt.GetString());
 
-            if (*Semver::parse(SLIC3R_VERSION) > *Semver::parse(into_u8(evt.GetString())))
+            if (*Semver::parse(SLIC3R_VERSION) > *version_online)
                 text = Slic3r::format(_u8L("There are no new released versions online. The latest release version is %1%."), evt.GetString());
 
             this->plater_->get_notification_manager()->push_version_notification(NotificationType::NoNewReleaseAvailable

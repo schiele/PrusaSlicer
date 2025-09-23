@@ -92,10 +92,16 @@ ConfigFileType guess_config_file_type(const ptree &tree)
 
 VendorProfile VendorProfile::from_ini(const boost::filesystem::path &path, bool load_all)
 {
+    const std::string id = path.stem().string();
+
+    if (! boost::filesystem::exists(path)) {
+        throw Slic3r::RuntimeError((boost::format("Cannot load Vendor Config Bundle `%1%`: File not found: `%2%`.") % id % path).str());
+    }
+
     ptree tree;
     boost::nowide::ifstream ifs(path.string());
     boost::property_tree::read_ini(ifs, tree);
-    return VendorProfile::from_ini(tree, path, load_all);
+    return VendorProfile::from_ini(tree, id, load_all);
 }
 
 static const std::unordered_map<std::string, std::string> pre_family_model_map {{
@@ -108,17 +114,13 @@ static const std::unordered_map<std::string, std::string> pre_family_model_map {
     { "SL1",        "SL1" },
 }};
 
-VendorProfile VendorProfile::from_ini(const ptree &tree, const boost::filesystem::path &path, bool load_all)
+VendorProfile VendorProfile::from_ini(const ptree &tree, const std::string &base_id, bool load_all)
 {
     static const std::string printer_model_key = "printer_model:";
     static const std::string filaments_section = "default_filaments";
     static const std::string materials_section = "default_sla_materials";
 
-    const std::string id = path.stem().string();
-
-    if (! boost::filesystem::exists(path)) {
-        throw Slic3r::RuntimeError((boost::format("Cannot load Vendor Config Bundle `%1%`: File not found: `%2%`.") % id % path).str());
-    }
+    std::string id = base_id;
 
     VendorProfile res(id);
 
@@ -134,6 +136,15 @@ VendorProfile VendorProfile::from_ini(const ptree &tree, const boost::filesystem
 
     // Load the header
     const auto &vendor_section = get_or_throw(tree, "vendor")->second;
+
+    // fix id if set (can be useful when when getting from internet or loading from a stream)
+    const auto id_node = vendor_section.find("id");
+    if (id_node != vendor_section.not_found()) {
+        std::string id_from_vendor = id_node->second.data();
+        res.id = id = id_from_vendor;
+    }
+
+    // name, full_name and technologies
     res.name = get_or_throw(vendor_section, "name")->second.data();
     auto full_name_node = vendor_section.find("full_name");
     res.full_name = (full_name_node == vendor_section.not_found()) ? res.name : full_name_node->second.data();
@@ -155,12 +166,23 @@ VendorProfile VendorProfile::from_ini(const ptree &tree, const boost::filesystem
         res.technologies.push_back(PrinterTechnology::ptFFF);
     }
 
-    auto config_version_str = get_or_throw(vendor_section, "config_version")->second.data();
-    auto config_version = Semver::parse(config_version_str);
-    if (! config_version) {
-        throw Slic3r::RuntimeError((boost::format("Vendor Config Bundle `%1%` is not valid: Cannot parse config_version: `%2%`.") % id % config_version_str).str());
-    } else {
-        res.config_version = std::move(*config_version);
+    // description
+    const auto description_node = vendor_section.find("description");
+    if (description_node != vendor_section.not_found()) {
+        res.description = description_node->second.data();
+    }
+
+    //it's now possible to have no version (only the vendor header)
+    const auto config_version_node = vendor_section.find("config_version");
+    if (config_version_node != vendor_section.not_found()) {
+        auto config_version = Semver::parse(config_version_node->second.data());
+        if (! config_version) {
+            throw Slic3r::RuntimeError((boost::format("Vendor Config Bundle `%1%` is not valid: Cannot parse config_version: `%2%`.") % id % config_version_node->second.data()).str());
+        } else {
+            res.config_version = std::move(*config_version);
+        }
+    } else if(load_all) {
+        throw Slic3r::RuntimeError((boost::format("Vendor Config Bundle `%1%` is not valid: Missing secion or key: `%2%`.") % id % "config_version").str());
     }
 
     // Load URLs
@@ -169,9 +191,31 @@ VendorProfile VendorProfile::from_ini(const ptree &tree, const boost::filesystem
         res.config_update_url = config_update_url->second.data();
     }
 
+    const auto config_update_github = vendor_section.find("config_update_github");
+    if (config_update_github != vendor_section.not_found()) {
+        res.config_update_github = config_update_github->second.data();
+    }
+
     const auto changelog_url = vendor_section.find("changelog_url");
     if (changelog_url != vendor_section.not_found()) {
         res.changelog_url = changelog_url->second.data();
+    }
+
+    //slicer
+
+    const auto slicer_name_node = vendor_section.find("slicer");
+    if (slicer_name_node != vendor_section.not_found()) {
+        res.slicer = slicer_name_node->second.data();
+    }
+
+    const auto slicer_version_node = vendor_section.find("slicer_version");
+    if (slicer_version_node != vendor_section.not_found()) {
+        auto slicer_version = Semver::parse(slicer_version_node->second.data());
+        if (! slicer_version) {
+            res.slicer_version = Semver::zero();
+        } else {
+            res.slicer_version = std::move(*slicer_version);
+        }
     }
 
     //get family column size

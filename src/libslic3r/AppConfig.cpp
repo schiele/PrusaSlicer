@@ -1156,7 +1156,7 @@ bool AppConfig::set_vendors(const VendorMap &vendors)
 {
     if (m_vendors != vendors) {
         m_vendors = vendors;
-    m_dirty = true;
+        m_dirty = true;
         return true;
     } else
         return false;

@@ -36,11 +36,15 @@ class VendorProfile
 public:
     std::string                     name;
     std::string                     full_name;
+    std::string                     description;
     std::vector<PrinterTechnology>  technologies;
-    std::string                     id;
+    std::string                     id; // == name
     Semver                          config_version;
-    std::string                     config_update_url;
+    std::string                     config_update_url; //old prusaslicer
+    std::string                     config_update_github; //new superslicer
     std::string                     changelog_url;
+    std::string                     slicer;
+    Semver                          slicer_version;
     bool                            templates_profile { false };
 
     //families
@@ -61,8 +65,8 @@ public:
         std::vector<PrinterVariant> variants;
         std::vector<std::string>	default_materials;
         // Vendor & Printer Model specific print bed model & texture.
-        std::string 			 	bed_model;
-        std::string 				bed_texture;
+        std::string                 bed_model;
+        std::string                 bed_texture;
         bool                        bed_with_grid;
         std::string                 thumbnail;
 
@@ -88,7 +92,7 @@ public:
     // Load VendorProfile from an ini file.
     // If `load_all` is false, only the header with basic info (name, version, URLs) is loaded.
     static VendorProfile from_ini(const boost::filesystem::path &path, bool load_all=true);
-    static VendorProfile from_ini(const boost::property_tree::ptree &tree, const boost::filesystem::path &path, bool load_all=true);
+    static VendorProfile from_ini(const boost::property_tree::ptree &tree, const std::string &id, bool load_all=true);
 
     size_t      num_variants() const { size_t n = 0; for (auto &model : models) n += model.variants.size(); return n; }
     std::vector<std::string> families() const;

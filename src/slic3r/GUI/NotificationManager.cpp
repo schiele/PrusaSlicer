@@ -2127,6 +2127,15 @@ void NotificationManager::push_notification(const NotificationType type, int tim
 	if (it != std::end(basic_notifications))
 		push_notification_data(*it, timestamp);
 }
+
+void NotificationManager::push_notification(const NotificationType type, const std::string& text, int timestamp) {
+    auto it = std::find_if(std::begin(basic_notifications), std::end(basic_notifications),
+                           boost::bind(&NotificationData::type, boost::placeholders::_1) == type);
+    assert(it != std::end(basic_notifications));
+    if (it != std::end(basic_notifications)) {
+        push_notification_data(NotificationData{it->type, it->level, it->duration, text, it->hypertext, it->callback, it->text2}, timestamp);
+    }
+}
 void NotificationManager::push_notification(const std::string& text, int timestamp)
 {
 	push_notification_data({ NotificationType::CustomNotification, NotificationLevel::RegularNotificationLevel, 10, text }, timestamp);
@@ -2137,7 +2146,7 @@ void NotificationManager::push_notification(NotificationType type,
                                             const std::string& text,
                                             const std::string& hypertext,
                                             std::function<bool(wxEvtHandler*)> callback,
-											const std::string& text_after,
+                                            const std::string &text_after,
                                             int timestamp)
 {
 	int duration = get_standard_duration(level);
