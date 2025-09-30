@@ -272,8 +272,8 @@ then
     fi
     
     echo -e "[4/8] Building dependencies ...\n"
-    if [[ "$BUILD_ARCH" == "$BUILD_ARCH_x86" ]]
-    then
+#    if [[ "$BUILD_ARCH" == "$BUILD_ARCH_x86" ]]
+#    then
         # build each dep separatly, seems like it fails less to compile this way.
         ls .
         echo -e "[4/8] Building dep_OCCT ...\n"
@@ -320,7 +320,7 @@ then
         make dep_MPFR -j$NCORES
         echo -e "[4/8] Building dep_Catch2 ...\n"
         make dep_Catch2 -j$NCORES
-    fi
+#    fi
 
     # make deps
     make -j$NCORES
