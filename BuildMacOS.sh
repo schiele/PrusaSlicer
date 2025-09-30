@@ -155,32 +155,35 @@ fi
 echo "Build architecture: ${BUILD_ARCH}"
 echo "Build IMG_ARCH=${BUILD_IMG_ARCH}\n"
 
-echo "\nls /Applications:\n"
+echo "ls /Applications:"
 ls /Applications
-echo "\nnls /Applications/Xcode_14.3.1.app:\n"
+echo "ls /Applications/Xcode_14.3.1.app:"
 ls /Applications/Xcode_14.3.1.app
-echo "\nnls /Applications/Xcode_14.3.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs:\n"
+echo "ls /Applications/Xcode_14.3.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs:"
 ls /Applications/Xcode_14.3.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs
-echo "\nnls /Applications/Xcode_14.3.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.3.sdk/usr/lib:\n"
+echo "ls /Applications/Xcode_14.3.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.3.sdk/usr/lib:"
 ls /Applications/Xcode_14.3.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.3.sdk/usr/lib
-echo "\nnls /Applications/Xcode_15.2.0.app:\n"
+echo "ls /Applications/Xcode_15.2.0.app:"
 ls /Applications/Xcode_15.2.0.app
-echo "\nnls /Applications/Xcode_15.2.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs:\n"
+echo "ls /Applications/Xcode_15.2.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs:"
 ls /Applications/Xcode_15.2.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs
-echo "\nnls /Applications/Xcode_15.2.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk/usr/lib:\n"
+echo "ls /Applications/Xcode_15.2.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk/usr/lib:"
 ls /Applications/Xcode_15.2.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk/usr/lib
-echo "\nnls /Applications/Xcode_15.4.0.app:\n"
+echo "ls /Applications/Xcode_15.4.0.app:"
 ls /Applications/Xcode_15.4.0.app
-echo "\nnls /Applications/Xcode_15.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs:\n"
+echo "ls /Applications/Xcode_15.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs:"
 ls /Applications/Xcode_15.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs
-echo "\nnls /Applications/Xcode_15.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.4.sdk/usr/lib:\n"
+echo "ls /Applications/Xcode_15.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.4.sdk/usr/lib:"
 ls /Applications/Xcode_15.4.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.4.sdk/usr/lib
-echo "\nnls /Applications/Xcode_16.2.0.app:\n"
+echo "ls /Applications/Xcode_16.2.0.app:"
 ls /Applications/Xcode_16.2.0.app
-echo "\nnls /Applications/Xcode_16.2.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs:\n"
+echo "ls /Applications/Xcode_16.2.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs:"
 ls /Applications/Xcode_16.2.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs
-echo "\nnls /Applications/Xcode_16.2.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.2.sdk/usr/lib:\n"
+echo "ls /Applications/Xcode_16.2.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.2.sdk/usr/lib:"
 ls /Applications/Xcode_16.2.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.2.sdk/usr/lib
+
+echo "ls /usr/bin/:"
+ls /usr/bin/
 
 # if [[ "$BUILD_ARCH" == "$BUILD_ARCH_x86" ]]
 # then
