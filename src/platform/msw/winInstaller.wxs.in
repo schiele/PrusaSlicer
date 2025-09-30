@@ -5,7 +5,7 @@
     Language="1033"
     Version="$(var.InstallerVersion)"
     Manufacturer="Supermerill"
-    UpgradeCode="ee58a199-3c77-4865-bbe9-52b9cbb2bc32"
+    UpgradeCode="@SLIC3R_GUID@"
   >
 
     <Package
@@ -29,7 +29,7 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." AllowSameVersionUpgrades="yes"/>
 
     <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFiles64Folder">
+      <Directory Id="ProgramFilesFolder">
         <Directory Id="INSTALLFOLDER" Name="@SLIC3R_APP_KEY@"></Directory>
       </Directory>
       <Directory Id="ProgramMenuFolder">
