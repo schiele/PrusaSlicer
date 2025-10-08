@@ -865,7 +865,7 @@ void Tab::update_changed_ui()
     if (type() == Preset::TYPE_FFF_FILAMENT) {
         // compatible_print[er]s isn't added with "#0" by the presetcollection;
         for (const std::string special_key : {"compatible_print", "compatible_prints_condition", "compatible_printers",
-                                    "compatible_printers_condition", "inherits"}) {
+                                    "compatible_printers_condition", "inherits", "filament_vendor"}) {
             auto found = dirty_options.find(OptionKeyIdx::scalar(special_key));
             if (found != dirty_options.end()) {
                 dirty_options.emplace(OptionKeyIdx{special_key, 0}, found->second);
