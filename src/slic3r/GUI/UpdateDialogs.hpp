@@ -16,17 +16,13 @@
 #include <boost/filesystem.hpp>
 
 #include "libslic3r/Semver.hpp"
+#include "slic3r/Utils/PresetUpdater.hpp"
 #include "MsgDialog.hpp"
 
 class wxBoxSizer;
 class wxCheckBox;
 
 namespace Slic3r {
-
-//for UpdateConfigDialog
-class PresetUpdater;
-struct VendorSync;
-struct VendorAvailable;
 
 namespace GUI {
 
@@ -224,17 +220,20 @@ protected://bool install_vendor_config(VendorSync &vendor_synch, VendorAvailable
     void add_vendor_in_list(wxWindow *parent, VendorSync &vendor, wxGridBagSizer *versions_sizer, const int line_num);
     void rebuild_ui();
     void request_rebuild_ui();
+    void request_show_error_msg(const std::string &error_msg);
 };
 
+wxDECLARE_EVENT(EVT_CONFIG_UPDATER_ERROR_MSG, wxCommandEvent);
 wxDECLARE_EVENT(EVT_CONFIG_UPDATER_REDRAW, wxCommandEvent);
+wxDECLARE_EVENT(EVT_VENDOR_VERSION_LAUNCH, wxCommandEvent);
 
 // Dialog informing about a vendor version available.
 class ChooseVendorVersionDialog : public wxDialog
 {
 protected:
     PresetUpdater &m_data;
-    VendorSync &m_vendor;
-    
+    VendorSync m_vendor;
+
     wxScrolledWindow *hscroll;
     wxBoxSizer *main_sizer;
     std::vector<wxWindow*> green_foreground_color;
@@ -245,7 +244,7 @@ protected:
 public:
 
     // force_before_wizard - indicates that check of updated is forced before ConfigWizard opening
-    ChooseVendorVersionDialog(wxWindow* parent, PresetUpdater &data, VendorSync &vendor);
+    ChooseVendorVersionDialog(wxWindow* parent, PresetUpdater &data, const VendorSync &vendor);
     ChooseVendorVersionDialog(ChooseVendorVersionDialog &&) = delete;
     ChooseVendorVersionDialog(const ChooseVendorVersionDialog &) = delete;
     ChooseVendorVersionDialog &operator=(ChooseVendorVersionDialog &&) = delete;
@@ -256,8 +255,10 @@ protected://bool install_vendor_config(VendorSync &vendor_synch, VendorAvailable
     void add_version_in_list(wxWindow *parent, const VendorAvailable &version, wxGridBagSizer *versions_sizer, const int line_num);
     void rebuild_ui();
     void request_rebuild_ui();
+    void request_show_error_msg(const std::string &error_msg);
 };
 
+wxDECLARE_EVENT(EVT_VENDOR_VERSION_ERROR_MSG, wxCommandEvent);
 wxDECLARE_EVENT(EVT_VENDOR_VERSION_REDRAW, wxCommandEvent);
 
 }

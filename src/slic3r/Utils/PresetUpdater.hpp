@@ -30,11 +30,11 @@ struct VendorAvailable
 {
     Semver config_version;
     Semver slicer_version;
+    std::string local_file;
     std::string url_zip;
     std::string commit_sha;
     std::string commit_url;
     std::string tag;
-    bool is_file;
     std::string notes;
 };
 struct VendorSync
@@ -45,7 +45,6 @@ struct VendorSync
     bool synch_in_progress = false;
     bool synch_failed = false;
     bool can_upgrade = false;
-    std::string raw_tags;
     // true if "profile" is inside datadir's vendor directory 
     std::vector<VendorAvailable> available_profiles = {};
     VendorAvailable *best = nullptr;
@@ -53,7 +52,8 @@ struct VendorSync
 
     bool parse_tags(const std::string &json);
     void sort_available();
-    bool install_vendor_config(const VendorAvailable &to_install, PresetUpdater& api_slot);
+    // reurn error message (empty if install succeed)
+    std::string install_vendor_config(const VendorAvailable &to_install, PresetUpdater& api_slot);
     bool uninstall_vendor_config();
     void reset(const VendorProfile &profile, bool installed);
 };
@@ -99,8 +99,12 @@ public:
     
     int get_profile_count_to_update();
     size_t count_installed();
+    VendorSync *get_vendor(std::string id) {
+        auto it = all_vendors.find(id);
+        return it == all_vendors.end() ? nullptr : &it->second;
+    }
 
-    bool has_api_request_slot();
+    bool has_api_request_slot(const std::string &url);
 
     void set_installed_vendors(const PresetBundle *preset_bundle);
     void reload_all_vendors();
@@ -108,7 +112,7 @@ public:
     // If either version check or config updating is enabled, get the appropriate data in the background and cache it.
     // call the handler with PresetUpdaterResult if somethign isntalle
     void sync_async(std::function<void(int)> callback_update_preset, bool force = false);
-    void download_logs(VendorSync &vendor, std::function<void(bool)> callback_result, bool force = false);
+    void download_logs(const std::string &vendor_id, std::function<void(bool)> callback_result, bool force = false);
 
     // Show the window to select what to download
     // emit a EVT_CONFIG_UPDATER_SYNC_DONE into evt_handler when done (if not null)
@@ -118,12 +122,12 @@ public:
                            std::function<void(bool)> callback_dialog_closed);
 
     void download_new_repo(const std::string &github_org_repo, std::function<void(bool)> callback_result);
-    void uninstall_vendor(const VendorSync &vendor, std::function<void(bool)> callback_result);
-    void install_vendor(const VendorSync &vendor, const VendorAvailable &version, std::function<void(bool)> callback_result);
+    void uninstall_vendor(const std::string &vendor_id, std::function<void(bool)> callback_result);
+    void install_vendor(const std::string &vendor_id, const VendorAvailable &version, std::function<void(const std::string &)> callback_result);
 
     void uninstall_all_vendors(std::function<void(bool)> callback_result);
-    void install_all_vendors(std::function<void(bool)> callback_result);
-    void upgrade_all_installed_vendors(std::function<void(bool)> callback_result);
+    void install_all_vendors(std::function<void(const std::string &)> callback_result);
+    void upgrade_all_installed_vendors(std::function<void(const std::string &)> callback_result);
 protected:
     void load_unused_vendors(std::set<std::string> &vendors_id, const boost::filesystem::path vendor_dir, bool is_installed);
 

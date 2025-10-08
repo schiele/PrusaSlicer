@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <ostream>
+#include <regex>
 #include <utility>
 #include <stdexcept>
 #include <boost/algorithm/string.hpp>
@@ -50,6 +51,9 @@ namespace Slic3r {
 
 wxDEFINE_EVENT(EVT_CONFIG_UPDATER_SYNC_DONE, wxCommandEvent);
 
+#define ERROR_MSG_UNABLE_SNAPSHOT "Error: fail to take a snapshot"
+#define ERROR_MSG_UNABLE_COPY_CONFIG "Unable to copy the vendor bundle into the configuration directory."
+
 PresetUpdater::PresetUpdater() {}
 
 PresetUpdater::~PresetUpdater() {
@@ -67,7 +71,7 @@ void PresetUpdater::set_installed_vendors(const PresetBundle *preset_bundle) {
         auto it = all_vendors.find(installed_vendor.id);
         if (it == all_vendors.end()) {
             this->all_vendors[installed_vendor.id] = (VendorSync{installed_vendor, true});
-            if (!installed_vendor.config_update_github.empty()) {
+            if (!installed_vendor.config_update_rest.empty()) {
                 is_synch = false;
             }
         } else {
@@ -98,7 +102,7 @@ void PresetUpdater::load_unused_vendors(std::set<std::string> &vendors_id, const
         VendorProfile vp = VendorProfile::from_ini(path, false);
         auto it = all_vendors.find(vp.id);
         if (it == all_vendors.end() || it->second.available_profiles.empty()) {
-            if (!vp.config_update_github.empty()) {
+            if (!vp.config_update_rest.empty()) {
                 is_synch = false;
             }
             this->all_vendors[vp.id] = VendorSync{vp, false};
@@ -106,7 +110,8 @@ void PresetUpdater::load_unused_vendors(std::set<std::string> &vendors_id, const
             if (vp.config_version != Semver()) {
                 // this vendor spec has a version
                 this->all_vendors[vp.id].available_profiles.emplace_back(
-                    VendorAvailable{vp.config_version, vp.slicer_version, path.string(), "", "", "", true, std::string()});
+                    VendorAvailable{vp.config_version, vp.slicer_version, path.string(), "", "", "",
+                                    /*tag = */vp.config_version.to_string() + "=" + vp.slicer_version.to_string(), ""});
             }
             vendors_id.insert(vp.id);
             // now order by version
@@ -136,9 +141,35 @@ void PresetUpdater::reload_all_vendors() {
             }
         }
     }
-    //FIXME: load "available_profiles"
+    // if the ini is in the root instead of its dir, fix the issue.
+    for (const boost::filesystem::directory_entry &vendor_entry :
+         boost::filesystem::directory_iterator(configuration_path / "cache" / "vendor")) {
+        if (vendor_entry.status().type() == boost::filesystem::file_type::regular_file) {
+            if (vendor_entry.path().extension() == ".ini") {
+                boost::filesystem::path vendor_dir = vendor_entry.path().parent_path();
+                if (boost::filesystem::exists(vendor_dir / vendor_entry.path().stem()) &&
+                    boost::filesystem::is_directory(vendor_dir / vendor_entry.path().stem())) {
+                    // rename for simplier copy
+                    boost::filesystem::rename(vendor_dir / vendor_entry.path().stem(),
+                                              vendor_dir / (vendor_entry.path().stem().string() + ".temp"));
+                    boost::filesystem::create_directory(vendor_dir / vendor_entry.path().stem());
+                    // move
+                    boost::filesystem::rename(vendor_dir / (vendor_entry.path().stem().string() + ".temp"),
+                                              vendor_dir / vendor_entry.path().stem() / vendor_entry.path().stem());
+                } else {
+                    boost::filesystem::create_directory(vendor_dir / vendor_entry.path().stem());
+                }
+                boost::filesystem::rename(vendor_entry.path(),
+                                            vendor_dir / vendor_entry.path().stem() / vendor_entry.path().filename());
+            }
+        }
+    }
     // read all vendor from cache (added but not installed)
-    load_unused_vendors(vendors_id, configuration_path / "cache" / "vendor", /*is_installed=*/ false);
+    for (const boost::filesystem::directory_entry &vendor_entry : boost::filesystem::directory_iterator(configuration_path / "cache" / "vendor")) {
+        if (vendor_entry.status().type() == boost::filesystem::file_type::directory_file) {
+            load_unused_vendors(vendors_id, vendor_entry.path(), /*is_installed=*/false);
+        }
+    }
 
     // get our vendors from resources;
     assert(boost::filesystem::exists(resources_path / "profiles"));
@@ -146,151 +177,179 @@ void PresetUpdater::reload_all_vendors() {
 
 }
 
-void PresetUpdater::download_logs(VendorSync &vendor, std::function<void(bool)> callback_result, bool force) {
-    // note: all_vendors shoudln't change since vendor was stored somewhere elese.
-    std::lock_guard<std::mutex> guard(this->callback_update_changelog_mutex);
-    changelog_synch = vendor.available_profiles.size();
-    // for each tag
-    for (size_t available_idx = 0; available_idx < vendor.available_profiles.size(); available_idx++) {
-        VendorAvailable &version = vendor.available_profiles[available_idx];
-        if (version.commit_url.empty()) {
-            continue;
+void PresetUpdater::download_logs(const std::string &vendor_id, std::function<void(bool)> callback_result, bool force) {
+    bool result = true;
+    {
+        std::lock_guard<std::recursive_mutex> guard_vendors(this->all_vendors_mutex);
+        auto it_mutable_vendor = all_vendors.find(vendor_id);
+        if (it_mutable_vendor == all_vendors.end()) {
+            assert(false);
+            result = false;
+            goto callback_after_unlock;
+            //note: you can use guard.unlock();[guard_vendors.unlock()]callback_result(result);return; instead of the goto.
         }
-        Semver slicer_major_ver = version.slicer_version.no_patch();
-        //is there older versions with same slicer major version?
-        Semver best_previous_version = Semver::zero();
-        size_t best_idx = 0;
-        for (size_t i_prev = 0; i_prev < vendor.available_profiles.size(); i_prev++) {
-            if (!vendor.available_profiles[i_prev].commit_sha.empty() &&
-                vendor.available_profiles[i_prev].config_version < version.config_version) {
-                if (best_previous_version < vendor.available_profiles[i_prev].config_version) {
-                    if (vendor.available_profiles[i_prev].slicer_version.no_patch() == slicer_major_ver) {
-                        best_idx = i_prev;
-                        best_previous_version = vendor.available_profiles[i_prev].config_version;
-                    }
+        assert(vendor_id == it_mutable_vendor->second.profile.id);
+        VendorSync &vendor = it_mutable_vendor->second;
+        // note: all_vendors shoudln't change since vendor was stored somewhere elese.
+        std::lock_guard<std::mutex> guard(this->callback_update_changelog_mutex);
+        changelog_synch = vendor.available_profiles.size();
+        boost::filesystem::path cache_path = GUI::into_path(data_dir()) / "cache" / "vendor" / vendor.profile.usable_id() / "logs";
+        boost::filesystem::create_directories(cache_path);
+        // for each tag
+        for (size_t available_idx = 0; available_idx < vendor.available_profiles.size(); available_idx++) {
+            VendorAvailable &version = vendor.available_profiles[available_idx];
+            if (version.commit_url.empty()) {
+                if (--changelog_synch == 0) {
+                    assert(available_idx + 1 == vendor.available_profiles.size());
+                    goto callback_after_unlock;
                 }
+                continue;
             }
-        }
-        if (best_idx == 0) {
-            assert(best_previous_version == Semver::zero());
-            //can't find a previous version with same slicer version, choose best one
-            // find the previous available profile (if any)
+            Semver slicer_major_ver = version.slicer_version.no_patch();
+            // is there older versions with same slicer major version?
+            Semver best_previous_version = Semver::zero();
+            size_t best_idx = 0;
             for (size_t i_prev = 0; i_prev < vendor.available_profiles.size(); i_prev++) {
                 if (!vendor.available_profiles[i_prev].commit_sha.empty() &&
                     vendor.available_profiles[i_prev].config_version < version.config_version) {
                     if (best_previous_version < vendor.available_profiles[i_prev].config_version) {
-                        if (vendor.available_profiles[i_prev].slicer_version.no_patch() <= slicer_major_ver) {
+                        if (vendor.available_profiles[i_prev].slicer_version.no_patch() == slicer_major_ver) {
                             best_idx = i_prev;
                             best_previous_version = vendor.available_profiles[i_prev].config_version;
                         }
                     }
                 }
             }
-        }
-        if (best_idx == 0) {
-            boost::filesystem::path cache_path = GUI::into_path(data_dir()) / "cache" / "vendor" / "temp" / vendor.profile.id /
-                (version.commit_sha + ".json");
-            if (boost::filesystem::exists(cache_path) && !force) {
-                // reuse the cache file
-                boost::nowide::ifstream file(cache_path.string());
-                std::string body { std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
-                boost::property_tree::ptree root;
-                std::stringstream json_stream(body);
-                boost::property_tree::read_json(json_stream, root);
-                version.notes = root.get<std::string>("commit.message");
-                if (--changelog_synch == 0) {
-                    callback_result(true);
-                }
-            } else if (has_api_request_slot()) {
-                // root
-                Http::get(version.commit_url)
-                    .size_limit(1024 * 64 /*64kio, 100tags should use 27ko*/)
-                    .on_error([this, &version, callback_result](std::string body, std::string error,
-                                                                unsigned http_status) {
-                        if (--changelog_synch == 0) {
-                            callback_result(false);
+            if (best_idx == 0) {
+                assert(best_previous_version == Semver::zero());
+                // can't find a previous version with same slicer version, choose best one
+                // find the previous available profile (if any)
+                for (size_t i_prev = 0; i_prev < vendor.available_profiles.size(); i_prev++) {
+                    if (!vendor.available_profiles[i_prev].commit_sha.empty() &&
+                        vendor.available_profiles[i_prev].config_version < version.config_version) {
+                        if (best_previous_version < vendor.available_profiles[i_prev].config_version) {
+                            if (vendor.available_profiles[i_prev].slicer_version.no_patch() <= slicer_major_ver) {
+                                best_idx = i_prev;
+                                best_previous_version = vendor.available_profiles[i_prev].config_version;
+                            }
                         }
-                    })
-                    .on_complete([this, &version, cache_path, callback_result](std::string body,
-                                                                                unsigned /* http_status */) {
-                        // store
-                        FILE *fp = boost::nowide::fopen(cache_path.string().c_str(), "w");
-                        if (fp == nullptr) {
-                            BOOST_LOG_TRIVIAL(error) << "PresetUpdater::download_logs: Couldn't open "
-                                                        << cache_path.string().c_str() << " for writing";
-                        } else {
-                            fprintf(fp, body.c_str());
-                            fclose(fp);
-                        }
-                        // parse it
-                        boost::property_tree::ptree root;
-                        std::stringstream json_stream(body);
-                        boost::property_tree::read_json(json_stream, root);
-                        version.notes = root.get<std::string>("commit.message");
-                        if (--changelog_synch == 0) {
-                            callback_result(true);
-                        }
-                    })
-                    .perform();
-                
-            }
-        } else {
-            boost::filesystem::path cache_path = GUI::into_path(data_dir()) / "cache" / "vendor" / "temp" / vendor.profile.id /
-                (vendor.available_profiles[best_idx].tag + "..." + version.tag + ".json");
-            if (boost::filesystem::exists(cache_path) && !force) {
-                // reuse the cache file
-                boost::nowide::ifstream file(cache_path.string());
-                std::string body { std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
-                boost::property_tree::ptree root;
-                std::stringstream json_stream(body);
-                boost::property_tree::read_json(json_stream, root);
-                for (boost::property_tree::ptree::value_type &kv : root.get_child("commits")) {
-                    if (!version.notes.empty()) {
-                        version.notes += "\n";
                     }
-                    version.notes += kv.second.get<std::string>("commit.message");
                 }
-                if (--changelog_synch == 0) {
-                    callback_result(true);
-                }
-            } else if (has_api_request_slot()) {
-                std::string url(std::string("https://api.github.com/repos/") + vendor.profile.config_update_github +
-                                "/compare/" + vendor.available_profiles[best_idx].tag + "..." + version.tag);
-                Http::get(url)
-                    .size_limit(1024 * 64 /*64kio, 100tags should use 27ko*/)
-                    .on_error(
-                        [this, &version, callback_result](std::string body, std::string error, unsigned http_status) {
+            }
+            if (best_idx == 0) {
+                boost::filesystem::path file_cache_path = cache_path / (version.tag + ".json");
+                if (boost::filesystem::exists(file_cache_path) && !force) {
+                    // reuse the cache file
+                    boost::nowide::ifstream file(file_cache_path.string());
+                    std::string body{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+                    boost::property_tree::ptree root;
+                    std::stringstream json_stream(body);
+                    boost::property_tree::read_json(json_stream, root);
+                    version.notes = root.get<std::string>("commit.message");
+                    if (--changelog_synch == 0) {
+                        goto callback_after_unlock;
+                    }
+                } else if (has_api_request_slot(version.commit_url)) {
+                    // root
+                    Http::get(version.commit_url)
+                        .size_limit(1024 * 64 /*64kio, 100tags should use 27ko*/)
+                        .on_error([this, &version, callback_result](std::string body, std::string error,
+                                                                    unsigned http_status) {
                             if (--changelog_synch == 0) {
                                 callback_result(false);
                             }
                         })
-                    .on_complete([this, &version, cache_path, callback_result](std::string body, unsigned /* http_status */) {
-                        // store
-                        FILE *fp = boost::nowide::fopen(cache_path.string().c_str(), "w");
-                        if (fp == nullptr) {
-                            BOOST_LOG_TRIVIAL(error) << "PresetUpdater::download_logs: Couldn't open " << cache_path.string().c_str() << " for writing";
-                        } else {
-                            fprintf(fp, body.c_str());
-                            fclose(fp);
-                        }
-                        // parse it
-                        boost::property_tree::ptree root;
-                        std::stringstream json_stream(body);
-                        boost::property_tree::read_json(json_stream, root);
-                        for (boost::property_tree::ptree::value_type &kv : root.get_child("commits")) {
-                            if (!version.notes.empty()) {
-                                version.notes += "\n";
+                        .on_complete([this, &version, file_cache_path, callback_result](std::string body,
+                                                                                        unsigned /* http_status */) {
+                            // store
+                            FILE *fp = boost::nowide::fopen(file_cache_path.string().c_str(), "w");
+                            if (fp == nullptr) {
+                                BOOST_LOG_TRIVIAL(error) << "PresetUpdater::download_logs: Couldn't open "
+                                                         << file_cache_path.string().c_str() << " for writing";
+                            } else {
+                                fprintf(fp, body.c_str());
+                                fclose(fp);
                             }
+                            // parse it
+                            boost::property_tree::ptree root;
+                            std::stringstream json_stream(body);
+                            boost::property_tree::read_json(json_stream, root);
+                            version.notes = root.get<std::string>("commit.message");
+                            if (--changelog_synch == 0) {
+                                callback_result(true);
+                            }
+                        })
+                        .perform();
+                }
+            } else {
+                boost::filesystem::path file_cache_path = cache_path /
+                    (vendor.available_profiles[best_idx].tag + "..." + version.tag + ".json");
+                if (boost::filesystem::exists(file_cache_path) && !force) {
+                    // reuse the cache file
+                    boost::nowide::ifstream file(file_cache_path.string());
+                    std::string body{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+                    boost::property_tree::ptree root;
+                    std::stringstream json_stream(body);
+                    boost::property_tree::read_json(json_stream, root);
+                    version.notes.clear();
+                    for (boost::property_tree::ptree::value_type &kv : root.get_child("commits")) {
+                        if (version.notes.empty()) {
                             version.notes += kv.second.get<std::string>("commit.message");
+                        } else {
+                            version.notes = kv.second.get<std::string>("commit.message") + "\n" + version.notes;
                         }
-                        if (--changelog_synch == 0) {
-                            callback_result(true);
-                        }
-                    })
-                    .perform();
+                    }
+                    if (--changelog_synch == 0) {
+                        goto callback_after_unlock;
+                    }
+                } else if (std::string base_url = VendorProfile::get_http_url_rest(vendor.profile.config_update_rest);
+                           has_api_request_slot(base_url)) {
+                    std::string url(base_url + "/compare/" + vendor.available_profiles[best_idx].tag + "..." +
+                                    version.tag);
+                    Http::get(url)
+                        .size_limit(1024 * 64 /*64kio, 100tags should use 27ko*/)
+                        .on_error([this, &version, callback_result](std::string body, std::string error,
+                                                                    unsigned http_status) {
+                            if (--changelog_synch == 0) {
+                                callback_result(false);
+                            }
+                        })
+                        .on_complete([this, &version, file_cache_path, callback_result](std::string body,
+                                                                                        unsigned /* http_status */) {
+                            // store
+                            FILE *fp = boost::nowide::fopen(file_cache_path.string().c_str(), "w");
+                            if (fp == nullptr) {
+                                BOOST_LOG_TRIVIAL(error) << "PresetUpdater::download_logs: Couldn't open "
+                                                         << file_cache_path.string().c_str() << " for writing";
+                            } else {
+                                fprintf(fp, body.c_str());
+                                fclose(fp);
+                            }
+                            // parse it
+                            boost::property_tree::ptree root;
+                            std::stringstream json_stream(body);
+                            boost::property_tree::read_json(json_stream, root);
+                            version.notes.clear();
+                            for (boost::property_tree::ptree::value_type &kv : root.get_child("commits")) {
+                                if (version.notes.empty()) {
+                                    version.notes += kv.second.get<std::string>("commit.message");
+                                } else {
+                                    version.notes = kv.second.get<std::string>("commit.message") + "\n" +
+                                        version.notes;
+                                }
+                            }
+                            if (--changelog_synch == 0) {
+                                callback_result(true);
+                            }
+                        })
+                        .perform();
+                }
             }
         }
     }
+    return;
+callback_after_unlock:
+    callback_result(result);
 }
 
 void PresetUpdater::sync_async(std::function<void(int)> callback_update_preset, bool force) {
@@ -324,17 +383,12 @@ void PresetUpdater::sync_async(std::function<void(int)> callback_update_preset, 
 
 void PresetUpdater::update_vendor(VendorSync &vendor, bool force) {
     // reuse
-    if (!vendor.raw_tags.empty()) {
-        assert(vendor.is_synch);
-        end_updating();
-        return;
-    }
-    boost::filesystem::path cache_path = GUI::into_path(data_dir()) / "cache" / "vendor" / (vendor.profile.id + "_tags.json");
+    boost::filesystem::path cache_path = GUI::into_path(data_dir()) / "cache" / "vendor" / vendor.profile.usable_id() / (vendor.profile.usable_id() + "_tags.json");
     if (boost::filesystem::exists(cache_path) && !force) {
         std::time_t last_mod  = boost::filesystem::last_write_time(cache_path);
         std::time_t now = std::time(nullptr);
         // wait a day before checking again
-        if (last_mod + 24 + 3600 < now) {
+        if (last_mod + 24 * 3600 > now) {
             // reuse the cache file
             boost::nowide::ifstream file(cache_path.string());
             std::string body { std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
@@ -346,7 +400,7 @@ void PresetUpdater::update_vendor(VendorSync &vendor, bool force) {
         }
     }
     vendor.synch_in_progress = true;
-    if (vendor.profile.config_update_github.size() < 5 || vendor.profile.config_update_github.find('/') == std::string::npos) {
+    if (VendorProfile::get_http_url_rest(vendor.profile.config_update_rest).empty()) {
         //not correct config_update_github
         vendor.synch_failed = true;
         vendor.synch_in_progress = false;
@@ -354,9 +408,8 @@ void PresetUpdater::update_vendor(VendorSync &vendor, bool force) {
         return;
     }
     // create url to get tags from github
-    std::string url(std::string("https://api.github.com/repos/") + vendor.profile.config_update_github +
-                    "/tags?per_page=100;page=1");
-    if (has_api_request_slot()) {
+    std::string url(VendorProfile::get_http_url_rest(vendor.profile.config_update_rest) + "/tags?per_page=100;page=1");
+    if (has_api_request_slot(url)) {
         Http::get(url)
             .size_limit(1024 * 64 /*64kio, 100tags should use 27ko*/)
             .on_error([&](std::string body, std::string error, unsigned http_status) {
@@ -396,31 +449,29 @@ void VendorSync::reset(const VendorProfile &vprofile, bool installed) {
     this->synch_failed = false;
     //available_profiles = {};
     this->profile = vprofile;
-    //this->can_upgrade = parse_tags(raw_tags);
     this->can_upgrade = !available_profiles.empty() && available_profiles.front().config_version > profile.config_version;
 }
 
 bool VendorSync::parse_tags(const std::string &json) {
-    this->raw_tags = json;
     boost::property_tree::ptree root;
     std::stringstream json_stream(json);
     boost::property_tree::read_json(json_stream, root);
 
-    std::set<std::string> versions_here;
-    for (VendorAvailable &version : available_profiles) {
-        versions_here.emplace(version.config_version.to_string());
+    std::map<std::string, size_t> versions_here;
+    for (size_t idx = 0; idx < available_profiles.size(); ++idx) {
+        VendorAvailable &version = available_profiles[idx];
+        versions_here[version.config_version.to_string()+"="+version.slicer_version.to_string()] = idx;
     }
 
     Semver current_version(SLIC3R_VERSION_FULL);
     const std::regex reg_num("([0-9]+)");
     for (auto json_version : root) {
-        std::string tag = json_version.second.get<std::string>("name");
+        const std::string tag = json_version.second.get<std::string>("name");
         size_t equal_pos = tag.find('=');
         assert(equal_pos != std::string::npos);
         if (equal_pos == std::string::npos) {
             continue;
         }
-        std::string profile_version = tag.substr(0, equal_pos);
         std::optional<Semver> config_version = Semver::parse(tag.substr(0, equal_pos));
         std::optional<Semver> slicer_version = Semver::parse(tag.substr(equal_pos+1));
         if (!config_version || !slicer_version) {
@@ -430,19 +481,29 @@ bool VendorSync::parse_tags(const std::string &json) {
         // check if slicer_version is okay
         std::string str_ver = slicer_version->to_string();
         std::string str_curr_ver = SLIC3R_VERSION_FULL;
-        if (slicer_version > *Semver::parse(SLIC3R_VERSION_FULL) || versions_here.find(config_version->to_string()) != versions_here.end()) {
-            continue;
-        }
-        // okay, add it
+        //if (slicer_version > *Semver::parse(SLIC3R_VERSION_FULL) || versions_here.find(config_version->to_string()) != versions_here.end()) {
+        bool already_here = false;
         const boost::property_tree::ptree& commit_node = json_version.second.get_child("commit");
-        available_profiles.emplace_back(
-            VendorAvailable{*config_version, *slicer_version,
-                            json_version.second.get<std::string>("zipball_url"),
-                            commit_node.get<std::string>("sha"),
-                            commit_node.get<std::string>("url"), 
-                            json_version.second.get<std::string>("name"), 
-                            false, std::string()});
-        versions_here.insert(config_version->to_string());
+        if(versions_here.find(tag) != versions_here.end()) {
+            assert(versions_here[tag] < available_profiles.size());
+            //update the tag infos if not present
+            VendorAvailable &to_update = available_profiles[versions_here[tag]];
+            assert(!to_update.url_zip.empty());
+            if (to_update.tag.empty()) {
+                to_update.tag = tag;
+                to_update.url_zip = json_version.second.get<std::string>("zipball_url");
+                to_update.commit_sha = commit_node.get<std::string>("sha");
+                to_update.commit_url = commit_node.get<std::string>("url");
+            }
+        } else {
+            // okay, add it
+            versions_here[tag] = available_profiles.size();
+            available_profiles.emplace_back(VendorAvailable{*config_version, *slicer_version,
+                                                            /*local_file=*/std::string(),
+                                                            json_version.second.get<std::string>("zipball_url"),
+                                                            commit_node.get<std::string>("sha"),
+                                                            commit_node.get<std::string>("url"), tag, std::string()});
+        }
     }
 
     // now order by version
@@ -499,19 +560,23 @@ int PresetUpdater::get_profile_count_to_update() {
     return count;
 }
 
-void PresetUpdater::uninstall_vendor(const VendorSync &const_vendor, std::function<void(bool)> callback_result) {
+void PresetUpdater::uninstall_vendor(const std::string &vendor_id, std::function<void(bool)> callback_result) {
     // get vendor from map to remove "const"
-    std::lock_guard<std::recursive_mutex> guard(this->all_vendors_mutex);
-    auto it_mutable_vendor = all_vendors.find(const_vendor.profile.id);
-    if (it_mutable_vendor == all_vendors.end() || &it_mutable_vendor->second != &const_vendor) {
+    std::unique_lock<std::recursive_mutex> guard(this->all_vendors_mutex);
+    auto it_mutable_vendor = all_vendors.find(vendor_id);
+    if (it_mutable_vendor == all_vendors.end()) {
         assert(false);
+        guard.unlock();
+        callback_result(false);
         return;
     }
+    assert(vendor_id == it_mutable_vendor->second.profile.id);
     const GUI::Config::Snapshot* snapshot = take_config_snapshot_report_error(*GUI::wxGetApp().app_config, GUI::Config::Snapshot::SNAPSHOT_DOWNGRADE,
-        format(_u8L("Before removing vendor bundle '%1%'"), const_vendor.profile.full_name));
+        format(_u8L("Before removing vendor bundle '%1%'"), it_mutable_vendor->second.profile.full_name));
     if (!snapshot) {
         // fail to snapshot, cancel
         BOOST_LOG_TRIVIAL(error) << "Error: can't take snapshot, cancle preset removal.";
+        guard.unlock();
         callback_result(false);
         return;
     }
@@ -519,7 +584,7 @@ void PresetUpdater::uninstall_vendor(const VendorSync &const_vendor, std::functi
     if (result) {
         // unregister from appconfig
         auto vmap = GUI::wxGetApp().app_config->vendors();
-        vmap.erase(it_mutable_vendor->second.profile.id);
+        vmap.erase(vendor_id);
         GUI::wxGetApp().app_config->set_vendors(vmap);
         GUI::wxGetApp().app_config->save();
         // unregister from current slicer app
@@ -530,33 +595,37 @@ void PresetUpdater::uninstall_vendor(const VendorSync &const_vendor, std::functi
         reload_all_vendors();
         sync_async([callback_result](int nbupdates) { callback_result(true); });
     } else {
+        guard.unlock();
         callback_result(false);
     }
 }
 
-void PresetUpdater::install_vendor(const VendorSync &const_vendor,
+void PresetUpdater::install_vendor(const std::string &vendor_id,
                                    const VendorAvailable &version,
-                                   std::function<void(bool)> callback_result) {
+                                   std::function<void(const std::string &)> callback_result) {
     // get vendor from map to remove "const"
-    std::lock_guard<std::recursive_mutex> guard(this->all_vendors_mutex);
-    auto it_mutable_vendor = all_vendors.find(const_vendor.profile.id);
-    if (it_mutable_vendor == all_vendors.end() || &it_mutable_vendor->second != &const_vendor) {
+    std::unique_lock<std::recursive_mutex> guard(this->all_vendors_mutex);
+    auto it_mutable_vendor = all_vendors.find(vendor_id);
+    if (it_mutable_vendor == all_vendors.end()) {
         assert(false);
-        callback_result(false); 
+        guard.unlock();
+        callback_result(_u8L("Unable to find the select vendor in the cache. Something went wrong with the software.")); 
         return;
     }
+    assert(vendor_id == it_mutable_vendor->second.profile.id);
     const GUI::Config::Snapshot* snapshot = take_config_snapshot_report_error(*GUI::wxGetApp().app_config, GUI::Config::Snapshot::SNAPSHOT_UPGRADE,
-        format(_u8L("Before installing vendor bundle '%1%' version %2%"), const_vendor.profile.full_name, version.config_version.to_string()));
+        format(_u8L("Before installing vendor bundle '%1%' version %2%"), it_mutable_vendor->second.profile.full_name, version.config_version.to_string()));
     if (!snapshot) {
         // fail to snapshot, cancel
         BOOST_LOG_TRIVIAL(error) << "Error: can't take snapshot, cancle preset installation.";
-        callback_result(false); 
+        guard.unlock();
+        callback_result(_u8L(ERROR_MSG_UNABLE_SNAPSHOT)); 
         return;
     }
     VendorSync &vendor = it_mutable_vendor->second;
-    bool result = vendor.install_vendor_config(version, *this);
+    std::string result = vendor.install_vendor_config(version, *this);
     auto vmap = GUI::wxGetApp().app_config->vendors();
-    if (result && vmap.find(vendor.profile.id) != vmap.end()) {
+    if (result.empty() && vmap.find(vendor.profile.id) != vmap.end()) {
         // the vendor is already in use, update the slicer
         // read it with models
         if (vendor.profile.models.empty()) {
@@ -610,6 +679,7 @@ void PresetUpdater::install_vendor(const VendorSync &const_vendor,
         // update tabs
         GUI::wxGetApp().load_current_presets();
     }
+    guard.unlock();
     callback_result(result); 
 }
 
@@ -625,7 +695,9 @@ bool copy_file_and_icons(boost::filesystem::path dir_in, boost::filesystem::path
             return false;
         }
         if (copy) {
-            boost::filesystem::copy(vendor_profile_file_in, vendor_profile_file_out);
+            // need to copy to a temp file and then rename to have a safe overwrite.
+            boost::filesystem::copy(vendor_profile_file_in, dir_out / (vendor_id + ".new.ini"));
+            boost::filesystem::rename(dir_out / (vendor_id + ".new.ini"), vendor_profile_file_out);
         } else {
             boost::filesystem::rename(vendor_profile_file_in, vendor_profile_file_out);
         }
@@ -646,8 +718,11 @@ bool copy_file_and_icons(boost::filesystem::path dir_in, boost::filesystem::path
                     boost::filesystem::directory_iterator(icon_dir_in)) {
                 assert(path_entry.status().type() == boost::filesystem::file_type::regular_file);
                 if (copy) {
-                    boost::filesystem::copy(path_entry.path(),
-                                            icon_dir_out / path_entry.path().lexically_relative(icon_dir_in));
+                    boost::filesystem::path out_path = icon_dir_out / path_entry.path().lexically_relative(icon_dir_in);
+                    boost::filesystem::path out_dir_path = out_path.parent_path();
+
+                    boost::filesystem::copy(path_entry.path(), out_dir_path / "file.temp");
+                    boost::filesystem::rename(out_dir_path / "file.temp", out_path);
                 } else {
                     boost::filesystem::rename(path_entry.path(),
                                               icon_dir_out / path_entry.path().lexically_relative(icon_dir_in));
@@ -662,40 +737,31 @@ bool copy_file_and_icons(boost::filesystem::path dir_in, boost::filesystem::path
 
 }
 
-bool VendorSync::install_vendor_config(const VendorAvailable &to_install, PresetUpdater& api_slot) {
+std::string VendorSync::install_vendor_config(const VendorAvailable &to_install, PresetUpdater& api_slot) {
     // rename current venddor file (if any)
     boost::filesystem::path vendor_file = GUI::into_path(data_dir()) / "vendor" / (this->profile.id + ".ini");
-    boost::filesystem::path old_vendor_file = GUI::into_path(data_dir()) / "vendor" / (this->profile.id + ".ini.old");
     assert(!this->is_installed || boost::filesystem::exists(vendor_file));
-    if (boost::filesystem::exists(vendor_file)) {
-        assert(this->is_installed);
-        boost::filesystem::rename(vendor_file, old_vendor_file);
-    }
     // get new file
-    if (to_install.is_file) {
+    if (!to_install.local_file.empty() && boost::filesystem::exists(to_install.local_file)) {
         // file in resource directory
-        boost::filesystem::path new_vendor_file(to_install.url_zip);
+        boost::filesystem::path new_vendor_file(to_install.local_file);
         assert(new_vendor_file.stem() == profile.id);
         bool copy_okay = copy_file_and_icons(new_vendor_file.parent_path(), GUI::into_path(data_dir()) / "vendor", new_vendor_file.stem().string(), true);
-        if (copy_okay) {
-            if (boost::filesystem::exists(old_vendor_file)) {
-                boost::filesystem::remove(old_vendor_file);
-            }
-        } else {
-            return false;
+        if (!copy_okay) {
+            return _u8L(ERROR_MSG_UNABLE_COPY_CONFIG);
         }
     } else {
+        assert(!to_install.tag.empty());
         //test if already dowloaded
-        std::string directory_name = profile.config_update_github+"-"+to_install.commit_sha.substr(7);
-        std::replace(directory_name.begin(), directory_name.end(), '_', '-');
-        std::replace(directory_name.begin(), directory_name.end(), '/', '-');
+        std::string directory_name = profile.id+"-"+to_install.tag;
+        directory_name = std::regex_replace(directory_name, std::regex("[^0-9a-zA-Z_\\-.]"), "-");
         // download zip
-        boost::filesystem::path temp_dir = GUI::into_path(data_dir()) / "cache" / "vendor" / "temp";
+        boost::filesystem::path temp_dir = GUI::into_path(data_dir()) / "cache" / "vendor" / this->profile.usable_id();
         boost::filesystem::path root_dir = temp_dir / directory_name;
         if (!boost::filesystem::exists(root_dir)) {
             boost::filesystem::create_directories(temp_dir);
             boost::filesystem::path download_zip_file(data_dir());
-            download_zip_file = download_zip_file / "cache" / "vendor" / "temp" / (this->profile.id + ".zip");
+            download_zip_file = download_zip_file / "cache" / "vendor" / this->profile.usable_id() / (this->profile.usable_id() + ".zip");
             if (boost::filesystem::exists(download_zip_file)) {
                 boost::filesystem::remove(download_zip_file);
             }
@@ -703,8 +769,8 @@ bool VendorSync::install_vendor_config(const VendorAvailable &to_install, Preset
             std::atomic_bool cancel = false;
             bool done = false;
             bool res = false;
-            if (!api_slot.has_api_request_slot()) {
-                return false;
+            if (!api_slot.has_api_request_slot(to_install.url_zip)) {
+                return _u8L("Too many requests to github, please try again in an hour");
             }
             Http::get(to_install.url_zip)
                 // max 100 mega
@@ -743,15 +809,16 @@ bool VendorSync::install_vendor_config(const VendorAvailable &to_install, Preset
                 .perform_sync();
             assert(done);
             bool got_root_dir = false;
+            root_dir = temp_dir / directory_name;
             if (!res) {
-                return false;
+                return error_message;
             } else {
                 // unzip
                 // zip reader takes care of opening & closing
                 ZipReader zip(download_zip_file.string());
                 if (!zip.success()) {
                     BOOST_LOG_TRIVIAL(error) << "Unable to open the preset zip. Maybe the download is corrupted.";
-                    return false;
+                    return "Unable to open the preset zip. Maybe the download is corrupted.";
                 }
                 try {
                     mz_uint num_entries = mz_zip_reader_get_num_files(&zip.archive);
@@ -759,23 +826,24 @@ bool VendorSync::install_vendor_config(const VendorAvailable &to_install, Preset
                     // we first loop the entries to read from the archive the .model file only, in order to extract
                     // the version from it
                     bool found_model = false;
+                    boost::filesystem::path zip_root_dir;
                     for (mz_uint i = 0; i < num_entries; ++i) {
                         if (mz_zip_reader_file_stat(&zip.archive, i, &file_stat)) {
-                            boost::filesystem::path in_path = file_stat.m_filename;
-                            assert(in_path.is_relative());
-                            boost::filesystem::path out_path = temp_dir / in_path.lexically_normal();
+                            boost::filesystem::path zip_path = file_stat.m_filename;
+                            assert(zip_path.is_relative());
                             if (!got_root_dir) {
                                 assert(file_stat.m_is_directory);
-                                if (boost::filesystem::exists(out_path)) {
+                                if (boost::filesystem::exists(root_dir)) {
                                     for (const boost::filesystem::directory_entry &path_entry :
-                                         boost::filesystem::directory_iterator(out_path)) {
+                                         boost::filesystem::directory_iterator(root_dir)) {
                                         boost::filesystem::remove_all(path_entry.path());
                                     }
                                 }
-                                root_dir = out_path.lexically_normal();
+                                zip_root_dir = zip_path.lexically_normal();
                                 got_root_dir = true;
-                                boost::filesystem::create_directories(out_path);
+                                boost::filesystem::create_directories(root_dir);
                             } else {
+                                boost::filesystem::path out_path = root_dir / zip_path.lexically_relative(zip_root_dir);
                                 if (file_stat.m_is_directory) {
                                     boost::filesystem::create_directories(out_path);
                                 } else {
@@ -783,12 +851,12 @@ bool VendorSync::install_vendor_config(const VendorAvailable &to_install, Preset
                                     void *p = mz_zip_reader_extract_file_to_heap(&zip.archive, file_stat.m_filename,
                                                                                  &uncompressed_size, 0);
                                     if (!p) {
-                                        return false;
+                                        return _u8L("Unable to open the preset zip. Maybe the download is corrupted");
                                     }
                                     FILE *file_to_write = fopen(out_path.string().c_str(), "wb");
                                     if (file_to_write == nullptr) {
                                         BOOST_LOG_TRIVIAL(error) << "Fail to unzip downloaded config zip.";
-                                        return false;
+                                        return _u8L("Unable to write into the hard disk drive.");
                                     }
                                     fwrite((const char *) p, 1, uncompressed_size, file_to_write);
                                     fclose(file_to_write);
@@ -799,18 +867,14 @@ bool VendorSync::install_vendor_config(const VendorAvailable &to_install, Preset
                     }
                 } catch (const std::exception &) {
                     BOOST_LOG_TRIVIAL(error) << "Fail to upgrade current app by the content of the downloaded zip.";
-                    return false;
+                    return _u8L("Error while extracting the downloaded zip of the vendor bundle.");
                 }
                 // copy the file & icons
                 assert(boost::filesystem::exists(root_dir));
                 bool copy_okay = copy_file_and_icons(root_dir / "profiles", GUI::into_path(data_dir()) / "vendor",
                                                      this->profile.id, true);
-                if (copy_okay) {
-                    if (boost::filesystem::exists(old_vendor_file)) {
-                        boost::filesystem::remove(old_vendor_file);
-                    }
-                } else {
-                    return false;
+                if (!copy_okay) {
+                    return _u8L(ERROR_MSG_UNABLE_COPY_CONFIG);
                 }
             }
         } else {
@@ -819,12 +883,8 @@ bool VendorSync::install_vendor_config(const VendorAvailable &to_install, Preset
             assert(boost::filesystem::exists(root_dir));
             bool copy_okay = copy_file_and_icons(root_dir / "profiles", GUI::into_path(data_dir()) / "vendor",
                                                     this->profile.id, true);
-            if (copy_okay) {
-                if (boost::filesystem::exists(old_vendor_file)) {
-                    boost::filesystem::remove(old_vendor_file);
-                }
-            } else {
-                return false;
+            if (!copy_okay) {
+                return _u8L(ERROR_MSG_UNABLE_COPY_CONFIG);
             }
         }
     }
@@ -833,12 +893,12 @@ bool VendorSync::install_vendor_config(const VendorAvailable &to_install, Preset
     this->is_installed = true;
     this->profile = vp;
     this->can_upgrade = !available_profiles.empty() && available_profiles.front().config_version > profile.config_version;
-    return true;
+    return "";
 }
 
 bool VendorSync::uninstall_vendor_config() {
     // move from vendor to cache
-    bool move_okay = copy_file_and_icons(GUI::into_path(data_dir()) / "vendor", GUI::into_path(data_dir()) / "cache" / "vendor", this->profile.id, false);
+    bool move_okay = copy_file_and_icons(GUI::into_path(data_dir()) / "vendor", GUI::into_path(data_dir()) / "cache" / "vendor" / this->profile.usable_id(), this->profile.usable_id(), false);
     if (!move_okay) {
         return false;
     }
@@ -873,48 +933,118 @@ size_t PresetUpdater::count_installed() {
     return count;
 }
 
-void PresetUpdater::download_new_repo(const std::string &github_org_repo, std::function<void(bool)> callback_result) {
-    Http::get(std::string("https://raw.githubusercontent.com/")+github_org_repo+"/refs/heads/main/description.ini")
-        .size_limit(1024 * 64 /*64kio, 100tags should use 27ko*/)
-        .on_error([&](std::string body, std::string error, unsigned http_status) {
+void PresetUpdater::download_new_repo(const std::string &rest_url, std::function<void(bool)> callback_result) {
+
+    if (rest_url.find("https://api.github.com/repos/") != std::string::npos) {
+        std::string github_org_repo = rest_url.substr(strlen("https://api.github.com/repos/"));
+        assert(github_org_repo.find('/') != std::string::npos);
+        if (github_org_repo.find('/') == std::string::npos) {
+            assert(false);
             callback_result(false);
-        })
-        .on_complete([&](std::string body, unsigned /* http_status */) {
-            try { 
-                assert(github_org_repo.find('/') != std::string::npos);
-                if (github_org_repo.find('/') == std::string::npos) {
-                    assert(false);
-                    callback_result(false);
-                    return;
-                }
-                //body += "\n";
-
-                std::string id = github_org_repo.substr(github_org_repo.find('/') + 1);
-                //parse it to get id (should be at the end of github_org_repo)
-                boost::property_tree::ptree root;
-                std::stringstream json_stream(body);
-                boost::property_tree::read_ini(json_stream, root);
-                VendorProfile vp = VendorProfile::from_ini(root, id, false);
-                // save it
-                boost::filesystem::create_directories(GUI::into_path(data_dir()) / "cache" /"vendor");
-                boost::filesystem::path file_path = GUI::into_path(data_dir()) / "cache" /"vendor" / (vp.id + ".ini");
-                FILE *fp = boost::nowide::fopen(file_path.string().c_str(), "w");
-                if (fp == nullptr) {
-                    BOOST_LOG_TRIVIAL(error) << "PresetUpdater::install_new_repo: Couldn't open " << file_path.c_str() << " for writing";
-                    callback_result(false);
-                    return;
-                }
-                fprintf(fp, body.c_str());
-                fclose(fp);
-
-                callback_result(true);
-            } catch (const std::exception&) {
+            return;
+        }
+        Http::get(std::string("https://raw.githubusercontent.com/")+github_org_repo+"/refs/heads/main/description.ini")
+            .size_limit(1024 * 64 /*64kio, 100tags should use 27ko*/)
+            .on_error([callback_result](std::string body, std::string error, unsigned http_status) {
                 callback_result(false);
-                return;
-            }
+            })
+            .on_complete([this, github_org_repo, callback_result](std::string body, unsigned /* http_status */) {
+                try {
+                    //extract an temp id (it won't be used, there should be one in the description)
+                    std::string id = github_org_repo.substr(github_org_repo.find_last_of('/') + 1);
+                    // parse it to get id (should be at the end of github_org_repo)
+                    boost::property_tree::ptree root;
+                    std::stringstream body_stream(body);
+                    boost::property_tree::read_ini(body_stream, root);
+                    VendorProfile vp = VendorProfile::from_ini(root, id, false);
+                    // save it
+                    boost::filesystem::create_directories(GUI::into_path(data_dir()) / "cache" / "vendor" / vp.usable_id());
+                    boost::filesystem::path file_path = GUI::into_path(data_dir()) / "cache" / "vendor" / vp.usable_id() / (vp.usable_id() + ".ini");
+                    FILE *fp = boost::nowide::fopen(file_path.string().c_str(), "w");
+                    if (fp == nullptr) {
+                        BOOST_LOG_TRIVIAL(error)
+                            << "PresetUpdater::install_new_repo: Couldn't open " << file_path.c_str() << " for writing";
+                        callback_result(false);
+                        return;
+                    }
+                    fprintf(fp, body.c_str());
+                    fclose(fp);
 
-        })
-        .perform();
+                    callback_result(true);
+                } catch (const std::exception &) {
+                    callback_result(false);
+                    return;
+                }
+
+            })
+            .perform();
+    } else {
+        //3rd-party rest api: ask for description
+        Http::get(std::string(rest_url+"/description"))
+            .size_limit(1024 * 64 /*64kio, 100tags should use 27ko*/)
+            .on_error([callback_result](std::string body, std::string error, unsigned http_status) {
+                callback_result(false);
+            })
+            .on_complete([this, rest_url, callback_result](std::string body, unsigned /* http_status */) {
+                try {
+                    if (body.empty()) {
+                        callback_result(false);
+                        return;
+                    }
+                    // ini or json?
+                    bool is_json = body[0] == '{';
+                    //extract an temp id (it won't be used, there should be one in the description)
+                    std::string id = rest_url.substr(rest_url.find_last_of('/') + 1);
+                    // parse it to get id (should be at the end of rest_url)
+                    boost::property_tree::ptree root;
+                    std::stringstream body_stream(body);
+                    VendorProfile vp;
+                    if (is_json) {
+                        boost::property_tree::read_json(body_stream, root);
+                        // from ini should parse the json as well as the ini. (todo: test)
+                        vp = VendorProfile::from_ini(root, id, false);
+                    } else {
+                        boost::property_tree::read_ini(body_stream, root);
+                        vp = VendorProfile::from_ini(root, id, false);
+                    }
+                    // save it
+                    boost::filesystem::create_directories(GUI::into_path(data_dir()) / "cache" / "vendor" / vp.usable_id());
+                    boost::filesystem::path file_path = GUI::into_path(data_dir()) / "cache" / "vendor" / vp.usable_id() / (vp.usable_id() + ".ini");
+                    FILE *fp = boost::nowide::fopen(file_path.string().c_str(), "w");
+                    if (fp == nullptr) {
+                        BOOST_LOG_TRIVIAL(error)
+                            << "PresetUpdater::install_new_repo: Couldn't open " << file_path.c_str() << " for writing";
+                        callback_result(false);
+                        return;
+                    }
+                    if (is_json) {
+                        try{
+                            //transform into ini
+                            fprintf(fp, "[vendor]\n");
+                            for (boost::property_tree::ptree::value_type &kv : root.get_child("vendor")) {
+                                fprintf(fp, kv.first.c_str());
+                                fprintf(fp, " = ");
+                                fprintf(fp, kv.second.data().c_str());
+                                fprintf(fp, "\n");
+                            }
+                            fprintf(fp, "\n");
+                        } catch (const std::exception &) {
+                            assert(false);
+                        }
+                    } else {
+                        fprintf(fp, body.c_str());
+                    }
+                    fclose(fp);
+
+                    callback_result(true);
+                } catch (const std::exception &) {
+                    callback_result(false);
+                    return;
+                }
+
+            })
+            .perform();
+    }
 }
 
 void PresetUpdater::uninstall_all_vendors(std::function<void(bool)> callback_result) {
@@ -955,31 +1085,39 @@ void PresetUpdater::uninstall_all_vendors(std::function<void(bool)> callback_res
     }
 }
 
-bool PresetUpdater::has_api_request_slot() {
+bool PresetUpdater::has_api_request_slot(const std::string &url) {
+    // only limit calls to github api urls, don't limit others
+    if (url.find("api.github.com") == std::string::npos) {
+        return true;
+    }
     if (next_time_slot + 3600 < std::time(nullptr)) {
         next_time_slot = std::time(nullptr);
         max_request = 25;
     }
+    std::cout<<"api call ("<<(25-max_request)<<")\n";
     return (--max_request) > 0;
+
 }
 
-void PresetUpdater::install_all_vendors(std::function<void(bool)> callback_result) {
+void PresetUpdater::install_all_vendors(std::function<void(const std::string &)> callback_result) {
     const GUI::Config::Snapshot* snapshot = take_config_snapshot_report_error(*GUI::wxGetApp().app_config, GUI::Config::Snapshot::SNAPSHOT_DOWNGRADE,
         _u8L("Before installing all vendor bundles"));
     if (!snapshot) {
         // fail to snapshot, cancel
         BOOST_LOG_TRIVIAL(error) << "Error: can't take snapshot, cancle preset removal.";
-        callback_result(false);
+        callback_result(_u8L(ERROR_MSG_UNABLE_SNAPSHOT));
         return;
     }
     std::lock_guard<std::recursive_mutex> guard(this->all_vendors_mutex);
     bool at_leat_an_install = false;
     auto vmap = GUI::wxGetApp().app_config->vendors();
+    std::string errors;
     for (auto& [id, vendor] : this->all_vendors) {
         if (!vendor.is_installed && !vendor.available_profiles.empty()) {
             assert(vendor.best);
-            bool res = vendor.install_vendor_config(*vendor.best, *this);
-            at_leat_an_install = at_leat_an_install || res;
+            std::string res = vendor.install_vendor_config(*vendor.best, *this);
+            at_leat_an_install = at_leat_an_install || res.empty();
+            errors += errors.empty() ? res : (std::string("\n") + errors);
         }
     }
     if (at_leat_an_install) {
@@ -991,30 +1129,31 @@ void PresetUpdater::install_all_vendors(std::function<void(bool)> callback_resul
         // update tabs
         GUI::wxGetApp().load_current_presets();
         reload_all_vendors();
-        sync_async([callback_result](int nbupdates) { callback_result(true); });
+        sync_async([callback_result, errors](int nbupdates) { callback_result(errors); });
     } else {
-        callback_result(true);
+        callback_result(errors);
     }
 }
 
-void PresetUpdater::upgrade_all_installed_vendors(std::function<void(bool)> callback_result) {
+void PresetUpdater::upgrade_all_installed_vendors(std::function<void(const std::string &)> callback_result) {
     const GUI::Config::Snapshot* snapshot = take_config_snapshot_report_error(*GUI::wxGetApp().app_config, GUI::Config::Snapshot::SNAPSHOT_UPGRADE,
         _u8L("Before upgrading all intalled vendor bundles"));
     if (!snapshot) {
         // fail to snapshot, cancel
         BOOST_LOG_TRIVIAL(error) << "Error: can't take snapshot, cancle preset removal.";
-        callback_result(false);
+        callback_result(_u8L(ERROR_MSG_UNABLE_SNAPSHOT));
         return;
     }
     std::lock_guard<std::recursive_mutex> guard(this->all_vendors_mutex);
     bool at_leat_an_upgrade = false;
     auto vmap = GUI::wxGetApp().app_config->vendors();
+    std::string errors;
     for (auto& [id, vendor] : this->all_vendors) {
         if (vendor.is_installed && vendor.can_upgrade) {
             assert(!vendor.available_profiles.empty());
             assert(vendor.best);
-            bool res = vendor.install_vendor_config(*vendor.best, *this);
-            if (res) {
+            std::string res = vendor.install_vendor_config(*vendor.best, *this);
+            if (res.empty()) {
                 at_leat_an_upgrade = true;
                 // read it with models
                 if (vendor.profile.models.empty()) {
@@ -1059,6 +1198,8 @@ void PresetUpdater::upgrade_all_installed_vendors(std::function<void(bool)> call
                         }
                     }
                 }
+            } else {
+                errors += errors.empty() ? res : (std::string("\n") + res);
             }
         }
     }
@@ -1073,9 +1214,9 @@ void PresetUpdater::upgrade_all_installed_vendors(std::function<void(bool)> call
         // update tabs
         GUI::wxGetApp().load_current_presets();
         reload_all_vendors();
-        sync_async([callback_result](int nbupdates) { callback_result(true); });
+        sync_async([callback_result, errors](int nbupdates) { callback_result(errors); });
     } else {
-        callback_result(true);
+        callback_result(errors);
     }
 
 }

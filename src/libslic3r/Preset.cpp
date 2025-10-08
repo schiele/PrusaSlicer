@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <regex>
 #include <stdexcept>
 #include <unordered_map>
 #include <boost/format.hpp>
@@ -89,6 +90,74 @@ ConfigFileType guess_config_file_type(const ptree &tree)
            (bundle > config) ? CONFIG_FILE_TYPE_CONFIG_BUNDLE : CONFIG_FILE_TYPE_CONFIG;
 }
 
+/*static*/ std::string VendorProfile::get_http_url_rest(const std::string &config_update_rest) {
+    if (config_update_rest.empty()) {
+        return "";
+    }
+    size_t pos_http = config_update_rest.find("://");
+    std::string http_part;
+    std::string domain_part;
+    std::string rest_api_root;
+    //extract http part
+    if (pos_http != std::string::npos) {
+        http_part = config_update_rest.substr(0, pos_http + 3);
+        domain_part = config_update_rest.substr(pos_http + 3);
+    } else {
+        http_part = "";
+        domain_part = config_update_rest;
+    }
+    //extract domain
+    size_t pos_slash = config_update_rest.find("/");
+    size_t pos_dot = config_update_rest.find(".");
+    if (pos_dot == std::string::npos) {
+        if (http_part.empty()) {
+            //no http nor domain, use github
+            http_part = "https://";
+            rest_api_root = domain_part;
+            domain_part = "api.github.com/repos";
+            if (!rest_api_root.empty() && rest_api_root[0] == '/') {
+                rest_api_root = rest_api_root.substr(1);
+            }
+            if (!rest_api_root.empty() && rest_api_root[rest_api_root.size() - 1] == '/') {
+                rest_api_root.pop_back();
+            }
+        } else {
+            assert(false);
+            // i don't understand what is it.
+            // use it as-is.
+        }
+    } else {
+        // extract domain
+        if (pos_slash != std::string::npos) {
+            assert(pos_slash <= pos_dot + 4);
+            assert(pos_slash > pos_dot);
+            rest_api_root = domain_part.substr(pos_slash + 1);
+            domain_part = domain_part.substr(0, pos_slash);
+        } else {
+            //no rest api... weird .. but okay...
+            if (!domain_part.empty() && domain_part[rest_api_root.size() - 1] == '/') {
+                domain_part.pop_back();
+            }
+        }
+    }
+    http_part += domain_part;
+    assert(domain_part.empty() || domain_part.front() != '/');
+    assert(domain_part.empty() || domain_part.back() != '/');
+    assert(domain_part.empty() || domain_part.front() != '.');
+    assert(domain_part.empty() || domain_part.back() != '.');
+    if (!rest_api_root.empty()) {
+        assert(rest_api_root.front() != '/');
+        assert(rest_api_root.back() != '/');
+        http_part += "/";
+        http_part += rest_api_root;
+    }
+    return http_part;
+}
+
+const std::regex VP_FOR_FILENAME("[^0-9a-zA-Z_\\-. ]");
+std::string VendorProfile::usable_id() const {
+    return std::regex_replace(id, VP_FOR_FILENAME, "-");
+}
 
 VendorProfile VendorProfile::from_ini(const boost::filesystem::path &path, bool load_all)
 {
@@ -190,10 +259,13 @@ VendorProfile VendorProfile::from_ini(const ptree &tree, const std::string &base
     if (config_update_url != vendor_section.not_found()) {
         res.config_update_url = config_update_url->second.data();
     }
-
+    
+    const auto config_update_rest = vendor_section.find("config_update_rest");
     const auto config_update_github = vendor_section.find("config_update_github");
-    if (config_update_github != vendor_section.not_found()) {
-        res.config_update_github = config_update_github->second.data();
+    if (config_update_rest != vendor_section.not_found()) {
+        res.config_update_rest = config_update_rest->second.data();
+    } else if (config_update_github != vendor_section.not_found()) {
+        res.config_update_rest = config_update_github->second.data();
     }
 
     const auto changelog_url = vendor_section.find("changelog_url");

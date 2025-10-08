@@ -41,7 +41,7 @@ public:
     std::string                     id; // == name
     Semver                          config_version;
     std::string                     config_update_url; //old prusaslicer
-    std::string                     config_update_github; //new superslicer
+    std::string                     config_update_rest; //new superslicer
     std::string                     changelog_url;
     std::string                     slicer;
     Semver                          slicer_version;
@@ -88,6 +88,12 @@ public:
     VendorProfile(std::string id) : id(std::move(id)) {}
 
     bool 		valid() const { return ! name.empty() && ! id.empty() && config_version.valid(); }
+
+    // return id but with only simple carracter, to be used in filesystems.
+    std::string usable_id() const;
+
+    // return a correctly formed https://domaind.nme/api/rest
+    static std::string get_http_url_rest(const std::string &config_update_rest);
 
     // Load VendorProfile from an ini file.
     // If `load_all` is false, only the header with basic info (name, version, URLs) is loaded.
