@@ -639,17 +639,22 @@ ExPolygons Layer::merged(coordf_t offset_scaled) const
         offset_scaled  = float(  SCALED_EPSILON);
         offset_scaled2 = float(- SCALED_EPSILON);
     }
-    Polygons polygons;
+    ExPolygons expolygons;
 	for (LayerRegion *layerm : m_regions) {
 		const PrintRegionConfig &config = layerm->region().config();
 		// Our users learned to bend Slic3r to produce empty volumes to act as subtracters. Only add the region if it is non-empty.
-		if (config.bottom_solid_layers > 0 || config.top_solid_layers > 0 || config.fill_density > 0. || config.perimeters > 0 || (config.solid_infill_every_layers.value > 0 && config.fill_density.value > 0))
-			append(polygons, offset(layerm->slices().surfaces, offset_scaled));
+        if (config.bottom_solid_layers > 0 || config.top_solid_layers > 0 || config.fill_density > 0. ||
+            config.perimeters > 0 || (config.solid_infill_every_layers.value > 0 && config.fill_density.value > 0)) {
+            append(expolygons, offset_ex(layerm->slices().surfaces, offset_scaled));
 	}
-    ExPolygons out = union_ex(polygons);
+    }
+    expolygons = union_ex(expolygons);
 	if (offset_scaled2 != 0.f)
-		out = offset_ex(out, offset_scaled2);
-    return out;
+        expolygons = offset_ex(expolygons, offset_scaled2);
+
+    // with +- offset, you can have dupicated points. ensure_valid will remove them.
+    ensure_valid(expolygons);
+    return expolygons;
 }
 
 // Here the perimeters are created cummulatively for all layer regions sharing the same parameters influencing the perimeters.
@@ -715,6 +720,11 @@ void Layer::make_perimeters()
                             && config.external_perimeters_hole  == other_config.external_perimeters_hole
                             && config.external_perimeters_nothole == other_config.external_perimeters_nothole
                             && config.external_perimeters_vase == other_config.external_perimeters_vase
+                            && config.external_perimeters_vase_min_height == other_config.external_perimeters_vase_min_height
+                            && config.seam_notch_all            == other_config.seam_notch_all
+                            && config.seam_notch_angle          == other_config.seam_notch_angle
+                            && config.seam_notch_inner          == other_config.seam_notch_inner
+                            && config.seam_notch_outer          == other_config.seam_notch_outer
                             //&& config.extra_perimeters_below_area == other_config.extra_perimeters_below_area // can be used in modifiers
                             //&& config.extra_perimeters_odd_layers == other_config.extra_perimeters_odd_layers // can be used in modifiers
                             //&& config.extra_perimeters_on_overhangs == other_config.extra_perimeters_on_overhangs // can be used in modifiers
@@ -1332,7 +1342,11 @@ void SupportLayer::simplify_support_extrusion_path() {
         scaled_resolution = scale_d(print_config.arc_fitting_resolution.get_abs_value(unscaled(scaled_resolution)));
     }
     if (scaled_resolution == 0) scaled_resolution = enable_arc_fitting ? SCALED_EPSILON * 2 : SCALED_EPSILON;
-    SimplifyVisitor visitor{ scaled_resolution , enable_arc_fitting ? print_config.arc_fitting : ArcFittingType::Disabled, &print_config.arc_fitting_tolerance, enable_arc_fitting ? SCALED_EPSILON * 2 : SCALED_EPSILON};
+    SimplifyVisitor visitor{scaled_resolution,
+                            enable_arc_fitting ? print_config.arc_fitting : ArcFittingType::Disabled,
+                            false,
+                            &print_config.arc_fitting_tolerance,
+                            enable_arc_fitting ? SCALED_EPSILON * 2 : SCALED_EPSILON};
     this->support_fills.visit(visitor);
 }
 

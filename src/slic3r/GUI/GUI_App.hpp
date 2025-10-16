@@ -17,6 +17,7 @@
 #include "wxExtensions.hpp"
 
 #include <wx/app.h>
+#include <wx/busyinfo.h>
 #include <wx/colour.h>
 #include <wx/font.h>
 #include <wx/string.h>
@@ -363,6 +364,7 @@ public:
     std::unique_ptr<AppConfig> app_config;
 
     std::unique_ptr<PresetBundle> preset_bundle;
+    std::unique_ptr<wxBusyInfo>   wait_dialog;
 
     std::unique_ptr<PresetUpdater> preset_updater;
     MainFrame*      mainframe{ nullptr };
@@ -394,7 +396,9 @@ public:
 
     void            open_web_page_localized(const std::string &http_address);
     bool            may_switch_to_SLA_preset(const wxString& caption);
-    bool            run_wizard(ConfigWizard::RunReason reason, ConfigWizard::StartPage start_page = ConfigWizard::SP_WELCOME);
+    bool run_wizard(ConfigWizard::RunReason reason,
+                    ConfigWizard::StartPage start_page = ConfigWizard::SP_WELCOME,
+                    bool bypass_bundle_install = false);
     void            show_desktop_integration_dialog();
     void            show_downloader_registration_dialog();
 
@@ -437,7 +441,7 @@ private:
     bool            config_wizard_startup();
     // Returns true if the configuration is fine. 
     // Returns true if the configuration is not compatible and the user decided to rather close the slicer instead of reconfiguring.
-	bool            check_updates(const bool verbose);
+	bool            check_updates(const bool verbose, int nb_updates = 0);
     void            on_version_read(wxCommandEvent& evt);
     // if the data from version file are already downloaded, shows dialogs to start download of new version of app
     void            app_updater(bool from_user);
@@ -450,6 +454,7 @@ private:
 
 DECLARE_APP(GUI_App)
 
+wxDECLARE_EVENT(EVT_CONFIG_UPDATER_SHOW_DIALOG, wxCommandEvent);
 } // GUI
 } // Slic3r
 

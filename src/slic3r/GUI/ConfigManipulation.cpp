@@ -384,6 +384,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig* config)
 
     bool has_external_peri_not_loop = config->opt_bool("external_perimeters_first") && !have_perimeter_loop;
     toggle_field("external_perimeters_vase", has_external_peri_not_loop);
+    toggle_field("external_perimeters_vase_min_height", has_external_peri_not_loop && config->opt_bool("external_perimeters_vase"));
     toggle_field("external_perimeters_first_force", has_external_peri_not_loop && !have_arachne );
     bool is_ext_forced = config->opt_bool("external_perimeters_first_force");
     for (auto el : { "external_perimeters_nothole", "external_perimeters_hole"})
@@ -758,6 +759,7 @@ void ConfigManipulation::toggle_printer_fff_options(DynamicPrintConfig *config, 
     }
 
     bool have_arc_fitting = config->option("arc_fitting")->get_int() != int(ArcFittingType::Disabled);
+    toggle_field("arc_fitting_ignore_holes", have_arc_fitting);
     toggle_field("arc_fitting_resolution", have_arc_fitting);
     toggle_field("arc_fitting_tolerance", have_arc_fitting);
 

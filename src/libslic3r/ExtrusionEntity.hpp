@@ -160,6 +160,8 @@ struct OverhangAttributes {
     float proximity_to_curled_lines; //value between 0 and 1
     bool has_full_overhangs_flow = false;
     bool has_full_overhangs_speed = false;
+    bool has_dynamic_overhangs_flow = false;
+    bool has_dynamic_overhangs_speed = false;
 };
 
 struct ExtrusionAttributes : ExtrusionFlow
@@ -690,6 +692,7 @@ struct HasThisRoleVisitor : public HasRoleVisitor{
 class ConfigOptionFloatOrPercent;
 class SimplifyVisitor : public ExtrusionVisitor{
     ArcFittingType                    m_use_arc_fitting;
+    bool                              m_ignore_holes;
     coordf_t                          m_scaled_resolution;
     const ConfigOptionFloatOrPercent* m_arc_fitting_tolearance;
     // when an entity is too small, this is set to true do the collection that is higher in the stack can merge & delete.
@@ -697,11 +700,11 @@ class SimplifyVisitor : public ExtrusionVisitor{
     bool                              m_last_deleted = false;
 public:
     using ExtrusionVisitor::use;
-    SimplifyVisitor(coordf_t scaled_resolution, ArcFittingType use_arc_fitting, const ConfigOptionFloatOrPercent *arc_fitting_tolearance)
-        : m_scaled_resolution(scaled_resolution), m_use_arc_fitting(use_arc_fitting), m_arc_fitting_tolearance(arc_fitting_tolearance)
+    SimplifyVisitor(coordf_t scaled_resolution, ArcFittingType use_arc_fitting, bool ignore_holes, const ConfigOptionFloatOrPercent *arc_fitting_tolearance)
+        : m_scaled_resolution(scaled_resolution), m_ignore_holes(ignore_holes), m_use_arc_fitting(use_arc_fitting), m_arc_fitting_tolearance(arc_fitting_tolearance)
     {}
-    SimplifyVisitor(coordf_t scaled_resolution, ArcFittingType use_arc_fitting, const ConfigOptionFloatOrPercent *arc_fitting_tolearance, coord_t min_path_size)
-        : m_scaled_resolution(scaled_resolution), m_use_arc_fitting(use_arc_fitting), m_arc_fitting_tolearance(arc_fitting_tolearance), m_min_path_size(min_path_size)
+    SimplifyVisitor(coordf_t scaled_resolution, ArcFittingType use_arc_fitting, bool ignore_holes, const ConfigOptionFloatOrPercent *arc_fitting_tolearance, coord_t min_path_size)
+        : m_scaled_resolution(scaled_resolution), m_ignore_holes(ignore_holes), m_use_arc_fitting(use_arc_fitting), m_arc_fitting_tolearance(arc_fitting_tolearance), m_min_path_size(min_path_size)
     {}
     
     virtual void use(ExtrusionPath& path) override;

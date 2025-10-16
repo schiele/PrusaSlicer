@@ -3897,7 +3897,7 @@ void FillWithPerimeter::fill_surface_extrusion(const Surface *surface,
                                                                 ExtrusionFlow{params.flow.mm3_per_mm(),
                                                                               params.flow.width(),
                                                                               params.flow.height()}},
-                                            true);
+                                            !params.monotonic);
 
             // === extrude infill ===
             // 50% overlap with the new perimeter
@@ -3924,7 +3924,7 @@ void FillWithPerimeter::fill_surface_extrusion(const Surface *surface,
                                                                         ExtrusionFlow{params.flow.mm3_per_mm(),
                                                                                       params.flow.width(),
                                                                                       params.flow.height()}},
-                                                    true);
+                                                    !params.monotonic);
 #ifdef _DEBUGINFO
                     eec_infill->visit(LoopAssertVisitor());
 #endif

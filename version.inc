@@ -7,11 +7,13 @@ set(SLIC3R_APP_NAME "SuperSlicer")
 set(SLIC3R_APP_KEY "SuperSlicer")
 # exe name of the slicer, should be lowercase and valid in all os
 set(SLIC3R_APP_CMD "superslicer")
-# id for windows registry
-set(SLIC3R_APP_PROG_ID "Slic3r.1")
+# id for windows registry ([a-z] [A-Z] [0-9] '_' and '.' only)
+set(SLIC3R_APP_PROG_ID "superslicer.1")
+# windows guid to identify the app, can begenerated via powershell running [guid]::NewGuid()
+set(SLIC3R_GUID "a81705b0-978a-4a7d-bf67-8671e631dd4c")
 # versions
-set(SLIC3R_VERSION "2.7.62-beta+UNKNOWN")
-set(SLIC3R_VERSION_FULL "2.7.62.0")
+set(SLIC3R_VERSION "2.7.62-beta2+UNKNOWN")
+set(SLIC3R_VERSION_FULL "2.7.62.0-beta2")
 set(SLIC3R_BUILD_ID "${SLIC3R_APP_KEY}_${SLIC3R_VERSION_FULL}+UNKNOWN")
 set(SLIC3R_RC_VERSION "2,7,62,0")
 set(SLIC3R_RC_VERSION_DOTS "${SLIC3R_VERSION_FULL}")

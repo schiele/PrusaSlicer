@@ -1185,6 +1185,8 @@ void PrintObject::calculate_overhanging_perimeters()
                             virtual void use(const ExtrusionPath &path) override {
                                 if (path.role().is_overhang())
                                     assert(path.attributes().overhang_attributes.has_value());
+                                assert(!path.attributes().overhang_attributes.has_value() || path.attributes().overhang_attributes->has_full_overhangs_speed ||
+                                       path.attributes().overhang_attributes->has_dynamic_overhangs_speed);
                             }
                         };
                         OverhangAssertVisitor ov_visitor;
@@ -1356,6 +1358,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "external_perimeter_extrusion_spacing"
             || opt_key == "external_perimeter_extrusion_width"
             || opt_key == "external_perimeters_vase"
+            || opt_key == "external_perimeters_vase_min_height"
             || opt_key == "gap_fill_extension"
             || opt_key == "gap_fill_last"
             || opt_key == "gap_fill_max_width"
