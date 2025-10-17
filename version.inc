@@ -12,11 +12,13 @@ set(SLIC3R_APP_PROG_ID "superslicer.1")
 # windows guid to identify the app, can begenerated via powershell running [guid]::NewGuid()
 set(SLIC3R_GUID "a81705b0-978a-4a7d-bf67-8671e631dd4c")
 # versions
-set(SLIC3R_VERSION "2.7.62-beta2+UNKNOWN")
-set(SLIC3R_VERSION_FULL "2.7.62.0-beta2")
-set(SLIC3R_BUILD_ID "${SLIC3R_APP_KEY}_${SLIC3R_VERSION_FULL}+UNKNOWN")
+set(SLIC3R_VERSION_TAG "-beta2+UNKNOWN")
 set(SLIC3R_RC_VERSION "2,7,62,0")
-set(SLIC3R_RC_VERSION_DOTS "${SLIC3R_VERSION_FULL}")
+set(SLIC3R_RC_VERSION_DOTS "2.7.62.0")
+set(SLIC3R_VERSION "2.7.62${SLIC3R_VERSION_TAG}")
+set(SLIC3R_VERSION_FULL "${SLIC3R_RC_VERSION_DOTS}${SLIC3R_VERSION_TAG}")
+# add an '+UNKNOWN' at the end of SLIC3R_BUILD_ID if it's not in the SLIC3R_VERSION_FULL
+set(SLIC3R_BUILD_ID "${SLIC3R_APP_KEY}_${SLIC3R_VERSION_FULL}")
 
 # Same as the slicer name but for gcodeviewer
 set(GCODEVIEWER_APP_NAME "${SLIC3R_APP_NAME} G-code Viewer")
