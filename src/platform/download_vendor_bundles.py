@@ -4,10 +4,8 @@ import shutil
 import os
 import sys
 
+# list of repositories to download for each release.
 all_repositories= [
-	"https://github.com/SuperSlicer-org/Voron-Profile.git",
-	"https://github.com/SuperSlicer-org/Creality-Profile.git",
-	"https://github.com/SuperSlicer-org/PrusaResearch-Profile.git",
 ]
 
 if len(sys.argv) < 2:
