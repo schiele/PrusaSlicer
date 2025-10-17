@@ -3992,7 +3992,7 @@ bool GUI_App::run_wizard(ConfigWizard::RunReason reason, ConfigWizard::StartPage
 #endif
     // if nothing installed, show the installatino dialog first
     bool is_synch = this->preset_updater->is_synch;
-    if (bypass_bundle_install || !is_synch || this->preset_updater->count_installed() == 0) {
+    if (!bypass_bundle_install && this->preset_updater->count_installed() > 0 && ( !is_synch || this->preset_updater->count_installed() == 0)) {
         this->preset_updater->show_synch_window(
             this->mainframe, preset_bundle.get(),
             _L("You don't have any vendor configuration bundles intalled yet. You need to choose the vendor that are "
