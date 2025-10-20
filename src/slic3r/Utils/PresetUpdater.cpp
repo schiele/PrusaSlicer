@@ -932,6 +932,9 @@ size_t PresetUpdater::count_installed() {
     }
     return count;
 }
+size_t PresetUpdater::count_available() {
+    return this->all_vendors.size();
+}
 
 void PresetUpdater::download_new_repo(const std::string &rest_url, std::function<void(bool)> callback_result) {
 

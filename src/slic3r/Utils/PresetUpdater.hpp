@@ -98,6 +98,7 @@ public:
     };
     
     int get_profile_count_to_update();
+    size_t count_available();
     size_t count_installed();
     VendorSync *get_vendor(std::string id) {
         auto it = all_vendors.find(id);
