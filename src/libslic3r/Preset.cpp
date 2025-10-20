@@ -107,8 +107,8 @@ ConfigFileType guess_config_file_type(const ptree &tree)
         domain_part = config_update_rest;
     }
     //extract domain
-    size_t pos_slash = config_update_rest.find("/");
-    size_t pos_dot = config_update_rest.find(".");
+    size_t pos_slash = domain_part.find("/");
+    size_t pos_dot = domain_part.find(".");
     if (pos_dot == std::string::npos) {
         if (http_part.empty()) {
             //no http nor domain, use github
@@ -139,6 +139,10 @@ ConfigFileType guess_config_file_type(const ptree &tree)
                 domain_part.pop_back();
             }
         }
+    }
+    if (domain_part == "github.com") {
+        //we need the api
+        domain_part = "api.github.com/repos";
     }
     http_part += domain_part;
     assert(domain_part.empty() || domain_part.front() != '/');
