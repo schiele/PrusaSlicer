@@ -618,14 +618,26 @@ PageWelcome::PageWelcome(ConfigWizard *parent)
     , cbox_integrate(append(
         new wxCheckBox(this, wxID_ANY, _L("Perform desktop integration (Sets this binary to be searchable by the system)."))
     ))
+    , bt_new_vendor(append(
+        new wxButton(this, wxID_ANY, _L("Add more vendors"))))
+    , run_reason(ConfigWizard::RunReason::RR_USER)
 {
     welcome_text->Hide();
-    cbox_reset->Hide();
-    cbox_integrate->Hide();    
+    bt_new_vendor->Hide();
+    cbox_integrate->Hide();
+    bt_new_vendor->Bind(wxEVT_BUTTON, [this, parent](wxCommandEvent &) {
+        ConfigWizard::RunReason rr = this->run_reason;
+        parent->EndModal(wxID_CANCEL);
+        wxCommandEvent *evt = new wxCommandEvent(EVT_WIZARD_SHOW_DIALOG);
+        // set args for GUI_App::run_wizard
+        evt->SetInt(int(rr) + 8*(GUI_App::RunVendorBundleManage::RVBM_ALWAYS));
+        GUI::wxGetApp().QueueEvent(evt);
+    });
 }
 
 void PageWelcome::set_run_reason(ConfigWizard::RunReason run_reason)
 {
+    this->run_reason = run_reason;
     const bool data_empty = run_reason == ConfigWizard::RR_DATA_EMPTY;
     welcome_text->Show(data_empty);
     cbox_reset->Show(!data_empty);

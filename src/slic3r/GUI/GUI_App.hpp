@@ -396,9 +396,15 @@ public:
 
     void            open_web_page_localized(const std::string &http_address);
     bool            may_switch_to_SLA_preset(const wxString& caption);
+
+    enum RunVendorBundleManage {
+        RVBM_NEVER,
+        RVBM_IF_EMPTY,
+        RVBM_ALWAYS,
+    };
     bool run_wizard(ConfigWizard::RunReason reason,
                     ConfigWizard::StartPage start_page = ConfigWizard::SP_WELCOME,
-                    bool bypass_bundle_install = false);
+                    RunVendorBundleManage bypass_bundle_install = RVBM_IF_EMPTY);
     void            show_desktop_integration_dialog();
     void            show_downloader_registration_dialog();
 
@@ -455,6 +461,7 @@ private:
 DECLARE_APP(GUI_App)
 
 wxDECLARE_EVENT(EVT_CONFIG_UPDATER_SHOW_DIALOG, wxCommandEvent);
+wxDECLARE_EVENT(EVT_WIZARD_SHOW_DIALOG, wxCommandEvent);
 } // GUI
 } // Slic3r
 
