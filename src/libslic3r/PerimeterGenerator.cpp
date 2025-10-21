@@ -6724,10 +6724,14 @@ ExtrusionLoop PerimeterGenerator::_extrude_and_cut_loop(const Parameters &params
         }
 
         // detect overhanging/bridging perimeters
-        bool need_detect_overhang = params.region_setting.has_many_config(&params.config.overhangs_width_speed) ||
-            params.region_setting.get_solo_config(&params.config.overhangs_width_speed).is_enabled() ||
-            params.region_setting.has_many_config(&params.config.overhangs_width) ||
-            params.region_setting.get_solo_config(&params.config.overhangs_width).is_enabled();
+        bool need_detect_overhang = false;
+        if (params.region_setting.has_many_config(&params.config.overhangs)) {
+            need_detect_overhang = true;
+        } else {
+            const RegionSettings::SettingsValue& opt_values = params.region_setting.get_solo_config(&params.config.overhangs);
+            need_detect_overhang = opt_values.get_bool(&params.config.overhangs);
+                //&& (opt_values.is_enabled(&params.config.overhangs_width_speed) || opt_values.is_enabled(&params.config.overhangs_flow_ratio));
+        }
         if (need_detect_overhang && params.layer->id() > 0
             && !(params.object_config.support_material && params.object_config.support_material_contact_distance_type.value == zdNone)) {
             ExtrusionPaths paths = this->create_overhangs_classic(params, initial_polyline, role, is_external);
@@ -6843,16 +6847,19 @@ ExtrusionLoop PerimeterGenerator::_traverse_and_join_loops(const Parameters &   
             //PerimeterGeneratorLoops less_childs = childs;
             //less_childs.erase(less_childs.begin() + nearest.idx_children);
             //create new node with recursive ask for the inner perimeter & COPY of the points, ready to be cut
+            assert(nearest.idx_polyline_outter >= 0);
+            assert(nearest.idx_polyline_outter < my_loop.paths.size());
 
             ArcPolyline tosplit = std::move(my_loop.paths[nearest.idx_polyline_outter].polyline);
             my_loop.paths[nearest.idx_polyline_outter].polyline = ArcPolyline();
             my_loop.paths.insert(my_loop.paths.begin() + nearest.idx_polyline_outter + 1, my_loop.paths[nearest.idx_polyline_outter]);
+            assert(nearest.idx_polyline_outter + 1 < my_loop.paths.size());
 
             // outer_start == outer_end
             ExtrusionPath *outer_start = &my_loop.paths[nearest.idx_polyline_outter];
             ExtrusionPath *outer_end = &my_loop.paths[nearest.idx_polyline_outter + 1];
             Line deletedSection;
-            
+
             assert(outer_start->polyline.empty());
             assert(outer_end->polyline.empty());
 
@@ -6887,6 +6894,7 @@ ExtrusionLoop PerimeterGenerator::_traverse_and_join_loops(const Parameters &   
                 assert(my_loop.paths[nearest.idx_polyline_outter + 1].empty());
                 my_loop.paths.erase(my_loop.paths.begin() + nearest.idx_polyline_outter + 1);
             }
+            assert(nearest.idx_polyline_outter < my_loop.paths.size());
             if (to_reduce.size() > 1 && to_reduce.length() > (params.perimeter_flow.scaled_width() / 10)) to_reduce.clip_start(params.perimeter_flow.scaled_width() / 20);
             deletedSection.b = to_reduce.front();
             
@@ -6901,11 +6909,15 @@ ExtrusionLoop PerimeterGenerator::_traverse_and_join_loops(const Parameters &   
             const size_t child_paths_size = child_loop.paths.size();
             if (child_paths_size == 0) continue;
             my_loop.paths.insert(my_loop.paths.begin() + nearest.idx_polyline_outter + 1, child_loop.paths.begin(), child_loop.paths.end());
-            
+            assert(nearest.idx_polyline_outter + 1 < my_loop.paths.size());
+
             //add paths into my_loop => need to re-get the refs
             outer_start = &my_loop.paths[nearest.idx_polyline_outter];
-            outer_end = &my_loop.paths[nearest.idx_polyline_outter + child_paths_size + 1];
-            ExtrusionPath *inner_start = &my_loop.paths[nearest.idx_polyline_outter+1];
+            const size_t next_idx_polyline_outter = (nearest.idx_polyline_outter + child_paths_size + 1) % my_loop.paths.size();
+            assert(next_idx_polyline_outter >= 0);
+            assert(next_idx_polyline_outter < my_loop.paths.size());;
+            outer_end = &my_loop.paths[next_idx_polyline_outter];
+            ExtrusionPath *inner_start = &my_loop.paths[nearest.idx_polyline_outter + 1];
             ExtrusionPath *inner_end = &my_loop.paths[nearest.idx_polyline_outter + child_paths_size];
             //TRIM
             //choose trim direction
@@ -6986,7 +6998,7 @@ ExtrusionLoop PerimeterGenerator::_traverse_and_join_loops(const Parameters &   
                     outer_start = &my_loop.paths[nearest.idx_polyline_outter];
                     inner_start = &my_loop.paths[nearest.idx_polyline_outter + 1];
                     inner_end = &my_loop.paths[nearest.idx_polyline_outter + child_paths_size];
-                    outer_end = &my_loop.paths[nearest.idx_polyline_outter + child_paths_size + 1];
+                    outer_end = &my_loop.paths[next_idx_polyline_outter];
                 }
 
             }
