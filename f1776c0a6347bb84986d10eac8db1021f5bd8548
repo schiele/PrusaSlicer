@@ -3,3 +3,5 @@ system: rolling
 date: Fri Sep 12 06:18:59 PM CEST 2025
 tasks: configure_deps build_deps configure build install
 SUCCESS
+======================================================================
+BUILD: version_2.9.3-8-g510e3fad69
