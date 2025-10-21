@@ -16,6 +16,7 @@
 #include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/bind/bind.hpp>
+#include <boost/asio/deadline_timer.hpp>
 
 using boost::optional;
 using boost::system::error_code;
