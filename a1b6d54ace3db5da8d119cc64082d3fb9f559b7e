@@ -1,4 +1,4 @@
 BUILD: version_2.9.4-rc1-9-g25313b57ae
 system: rolling
 date: Tue Nov  4 10:06:00 PM CET 2025
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
