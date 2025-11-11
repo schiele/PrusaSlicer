@@ -36,7 +36,6 @@ public:
     std::string finalize(GCodeGenerator &gcodegen);
     std::vector<float> used_filament_length() const;
     int get_current_layer_idx() const { return m_layer_idx; }
-    double get_last_wipe_tower_print_z() const { return m_last_wipe_tower_print_z; }
 
 private:
     WipeTowerIntegration& operator=(const WipeTowerIntegration&);

@@ -2082,7 +2082,7 @@ void GCodeGenerator::_do_export(Print& print_mod, GCodeOutputStream &file, Thumb
                         if (m_wipe_tower && idx > 0) {
                             uint16_t extruder_id = tool_ordering.first_extruder();
 
-                            assert (/*m_wipe_tower->get_last_wipe_tower_print_z()*/ parallel_ordering
+                            assert (parallel_ordering
                                        .layer_tools()[m_wipe_tower->get_current_layer_idx() + 1]
                                        .print_z < print.config().parallel_objects_step_max_z.value - EPSILON);
                                 m_wipe_tower->next_layer();
@@ -7289,6 +7289,13 @@ std::string GCodeGenerator::_travel_before_extrude(const ExtrusionPath &path, co
     }
     assert(moved_to_point);
 
+    // ensure ramping travel even if no call to write_travel_to
+    if (m_new_z_target) {
+        assert(this->writer().get_unlifted_position().z() - EPSILON < *m_new_z_target);
+        this->writer().travel_to_z(*m_new_z_target);
+        m_new_z_target.reset();
+    }
+
     return gcode;
 }
 
@@ -7941,7 +7948,7 @@ void GCodeGenerator::write_travel_to(std::string &gcode, Polyline& travel, std::
         //simple travel, as we don't know where we are.
         gcode += m_writer.travel_to_xy(this->point_to_gcode(travel.back()), 0.0, comment);
     }
-    
+
     // ramping travel (in a new layer) -> set lift if needed (so unlift() works)
     if (m_new_z_target) {
         assert(this->writer().get_position().z() + EPSILON > *m_new_z_target);
