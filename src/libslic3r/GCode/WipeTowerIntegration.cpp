@@ -112,7 +112,7 @@ std::string WipeTowerIntegration::append_tcr(GCodeGenerator &gcodegen, const Wip
         // the tool without travelling to the tower.
     }
 
-    if (will_go_down) {
+    if (gcodegen.writer().get_position().z() > z) {
         if (!need_unretract)
             gcode += gcodegen.writer().retract();
         gcode += gcodegen.writer().travel_to_z(z, "Travel down to the last wipe tower layer.");
