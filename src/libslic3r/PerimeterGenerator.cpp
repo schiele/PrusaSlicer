@@ -3610,6 +3610,42 @@ ProcessSurfaceResult PerimeterGenerator::process_arachne(const Parameters &param
         return true;
     }());
 
+    //build perimeter_boundary
+    bool has_tw = false;
+    for (const Arachne::VariableWidthLines& perimeter : perimeters) {
+        for (const Arachne::ExtrusionLine &el : perimeter) {
+            // extrenal
+            if (el.inset_idx == 0) {
+                //add it
+                if (el.is_closed) {
+                    perimeter_boundary.emplace_back(el.toPolygon());
+                } else {
+                    // need to create a polygon
+                    coord_t biggest_width = 0;
+                    for (const Arachne::ExtrusionJunction &ej : el.junctions) {
+                        biggest_width = std::max(biggest_width, coord_t(ej.w));
+                    }
+                    Polyline polyline = el.toPolyline();
+                    biggest_width = std::min(biggest_width, coord_t(polyline.length() * 2) / 3);
+                    polyline.clip_start(biggest_width / 2);
+                    polyline.clip_end(biggest_width / 2);
+                    for (Polygon &polygon : offset(polyline, double(biggest_width / 2))) {
+                        perimeter_boundary.emplace_back(std::move(polygon));
+                    }
+                    has_tw = true;
+                }
+            }
+        }
+    }
+    if (perimeter_boundary.size() > 1) {
+        perimeter_boundary = union_ex(perimeter_boundary);
+    }
+    //offset2 to fusion, as the thin walls need to attach
+    if(has_tw) {
+        perimeter_boundary = offset2_ex(perimeter_boundary, params.get_ext_perimeter_spacing() / 8,
+                                        -params.get_ext_perimeter_spacing() / 8);
+    }
+
     int start_perimeter = int(perimeters.size()) - 1;
     int end_perimeter = -1;
     int direction = -1;
@@ -4261,6 +4297,10 @@ void PerimeterGenerator::process(// Input:
             nb_loop_holes = nb_loop_contour; // nb_loop_contour is in/out
         } else {
             surface_process_result = process_classic(params, nb_loop_contour, nb_loop_holes, surface, *loops, *gap_fill);
+        }
+        // boundaries if no perimeters
+        if (nb_loop_contour == 0 || nb_loop_holes == 0) {
+            perimeter_boundary = union_ex(perimeter_boundary, surface.expolygon);
         }
         this->throw_if_canceled();
         for(auto *peri : loops->entities()) assert(!peri->empty());
@@ -5412,11 +5452,16 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                                                                 (coord_t) ((params.get_ext_perimeter_width() + params.get_ext_perimeter_spacing()) * 1.2),
                                                                 min_width,
                                                                 scale_t(params.layer->height)};
+                                size_t next_thin_wall_idx = thin_walls_thickpolys.size();
                                 ma.use_bounds(bound)
                                     .use_min_real_width(scale_t(params.ext_perimeter_flow.nozzle_diameter()))
                                     .use_tapers(thin_walls_overlap)
                                     .set_min_length(params.get_ext_perimeter_width() + params.get_ext_perimeter_spacing())
                                     .build(thin_walls_thickpolys);
+                                // store thin walls bound in boundary
+                                if (next_thin_wall_idx < thin_walls_thickpolys.size()) {
+                                    perimeter_boundary.push_back(bound);
+                                }
                             }
                             break;
                         }
@@ -5455,6 +5500,13 @@ ProcessSurfaceResult PerimeterGenerator::process_classic(const Parameters &     
                     assert(contour_count > 0);
                     // Remove all but the largest area polygon.
                     keep_largest_contour_only(*all_next_onion);
+                }
+                //compute boundary
+                if (perimeter_boundary.empty()) {
+                    perimeter_boundary = offset_ex(next_onion, params.get_ext_perimeter_width() / 2);
+                } else {
+                    append(perimeter_boundary, offset_ex(next_onion, params.get_ext_perimeter_width() / 2));
+                    perimeter_boundary = union_ex(perimeter_boundary);
                 }
             } else {
                 next_overhang = last_overhang;
@@ -6724,10 +6776,14 @@ ExtrusionLoop PerimeterGenerator::_extrude_and_cut_loop(const Parameters &params
         }
 
         // detect overhanging/bridging perimeters
-        bool need_detect_overhang = params.region_setting.has_many_config(&params.config.overhangs_width_speed) ||
-            params.region_setting.get_solo_config(&params.config.overhangs_width_speed).is_enabled() ||
-            params.region_setting.has_many_config(&params.config.overhangs_width) ||
-            params.region_setting.get_solo_config(&params.config.overhangs_width).is_enabled();
+        bool need_detect_overhang = false;
+        if (params.region_setting.has_many_config(&params.config.overhangs)) {
+            need_detect_overhang = true;
+        } else {
+            const RegionSettings::SettingsValue& opt_values = params.region_setting.get_solo_config(&params.config.overhangs);
+            need_detect_overhang = opt_values.get_bool(&params.config.overhangs);
+                //&& (opt_values.is_enabled(&params.config.overhangs_width_speed) || opt_values.is_enabled(&params.config.overhangs_flow_ratio));
+        }
         if (need_detect_overhang && params.layer->id() > 0
             && !(params.object_config.support_material && params.object_config.support_material_contact_distance_type.value == zdNone)) {
             ExtrusionPaths paths = this->create_overhangs_classic(params, initial_polyline, role, is_external);
@@ -6843,16 +6899,19 @@ ExtrusionLoop PerimeterGenerator::_traverse_and_join_loops(const Parameters &   
             //PerimeterGeneratorLoops less_childs = childs;
             //less_childs.erase(less_childs.begin() + nearest.idx_children);
             //create new node with recursive ask for the inner perimeter & COPY of the points, ready to be cut
+            assert(nearest.idx_polyline_outter >= 0);
+            assert(nearest.idx_polyline_outter < my_loop.paths.size());
 
             ArcPolyline tosplit = std::move(my_loop.paths[nearest.idx_polyline_outter].polyline);
             my_loop.paths[nearest.idx_polyline_outter].polyline = ArcPolyline();
             my_loop.paths.insert(my_loop.paths.begin() + nearest.idx_polyline_outter + 1, my_loop.paths[nearest.idx_polyline_outter]);
+            assert(nearest.idx_polyline_outter + 1 < my_loop.paths.size());
 
             // outer_start == outer_end
             ExtrusionPath *outer_start = &my_loop.paths[nearest.idx_polyline_outter];
             ExtrusionPath *outer_end = &my_loop.paths[nearest.idx_polyline_outter + 1];
             Line deletedSection;
-            
+
             assert(outer_start->polyline.empty());
             assert(outer_end->polyline.empty());
 
@@ -6887,6 +6946,7 @@ ExtrusionLoop PerimeterGenerator::_traverse_and_join_loops(const Parameters &   
                 assert(my_loop.paths[nearest.idx_polyline_outter + 1].empty());
                 my_loop.paths.erase(my_loop.paths.begin() + nearest.idx_polyline_outter + 1);
             }
+            assert(nearest.idx_polyline_outter < my_loop.paths.size());
             if (to_reduce.size() > 1 && to_reduce.length() > (params.perimeter_flow.scaled_width() / 10)) to_reduce.clip_start(params.perimeter_flow.scaled_width() / 20);
             deletedSection.b = to_reduce.front();
             
@@ -6901,11 +6961,15 @@ ExtrusionLoop PerimeterGenerator::_traverse_and_join_loops(const Parameters &   
             const size_t child_paths_size = child_loop.paths.size();
             if (child_paths_size == 0) continue;
             my_loop.paths.insert(my_loop.paths.begin() + nearest.idx_polyline_outter + 1, child_loop.paths.begin(), child_loop.paths.end());
-            
+            assert(nearest.idx_polyline_outter + 1 < my_loop.paths.size());
+
             //add paths into my_loop => need to re-get the refs
             outer_start = &my_loop.paths[nearest.idx_polyline_outter];
-            outer_end = &my_loop.paths[nearest.idx_polyline_outter + child_paths_size + 1];
-            ExtrusionPath *inner_start = &my_loop.paths[nearest.idx_polyline_outter+1];
+            const size_t next_idx_polyline_outter = (nearest.idx_polyline_outter + child_paths_size + 1) % my_loop.paths.size();
+            assert(next_idx_polyline_outter >= 0);
+            assert(next_idx_polyline_outter < my_loop.paths.size());;
+            outer_end = &my_loop.paths[next_idx_polyline_outter];
+            ExtrusionPath *inner_start = &my_loop.paths[nearest.idx_polyline_outter + 1];
             ExtrusionPath *inner_end = &my_loop.paths[nearest.idx_polyline_outter + child_paths_size];
             //TRIM
             //choose trim direction
@@ -6986,7 +7050,7 @@ ExtrusionLoop PerimeterGenerator::_traverse_and_join_loops(const Parameters &   
                     outer_start = &my_loop.paths[nearest.idx_polyline_outter];
                     inner_start = &my_loop.paths[nearest.idx_polyline_outter + 1];
                     inner_end = &my_loop.paths[nearest.idx_polyline_outter + child_paths_size];
-                    outer_end = &my_loop.paths[nearest.idx_polyline_outter + child_paths_size + 1];
+                    outer_end = &my_loop.paths[next_idx_polyline_outter];
                 }
 
             }

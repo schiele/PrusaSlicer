@@ -144,6 +144,7 @@ namespace Slic3r {
 namespace GUI {
 
 wxDEFINE_EVENT(EVT_CONFIG_UPDATER_SHOW_DIALOG, wxCommandEvent);
+wxDEFINE_EVENT(EVT_WIZARD_SHOW_DIALOG, wxCommandEvent);
 
 class MainFrame;
 
@@ -937,6 +938,7 @@ void GUI_App::post_init()
 #endif
             if (! cw_showed) {
                 this->preset_updater->set_installed_vendors(preset_bundle.get());
+                this->preset_updater->reload_all_vendors();
                 this->preset_updater->sync_async([this](int nb_updates) {this->check_updates(true, nb_updates);});
                 // The CallAfter is needed as well, without it, GL extensions did not show.
                 // Also, we only want to show this when the wizard does not, so the new user
@@ -1640,7 +1642,7 @@ bool GUI_App::on_init_inner()
             associate_stl_files();
 #endif // __WXMSW__
 
-        preset_updater.reset(new PresetUpdater());
+        preset_updater.reset(new PresetUpdater(this));
         Bind(EVT_SLIC3R_VERSION_ONLINE, &GUI_App::on_version_read, this);
         Bind(EVT_SLIC3R_EXPERIMENTAL_VERSION_ONLINE, [this](const wxCommandEvent& evt) {
             if (this->plater_ != nullptr && (m_app_updater->get_triggered_by_user() || app_config->get("notify_release") == "all")) {
@@ -1726,9 +1728,30 @@ bool GUI_App::on_init_inner()
         });
 #else
         Bind(EVT_CONFIG_UPDATER_SHOW_DIALOG, [this](const wxCommandEvent& evt) {
-            this->preset_updater->show_synch_window(this->plater(), preset_bundle.get(), _L("Managing vendor bundles:"), [](bool){});
+            this->preset_updater->show_synch_window(this->plater(), _L("Managing vendor bundles (hover for more information):"), [](bool){});
         }); 
 #endif
+        Bind(EVT_WIZARD_SHOW_DIALOG, [this](const wxCommandEvent& evt) {
+            int args = evt.GetInt();
+            int rr_arg = args % 8;
+            ConfigWizard::RunReason reason = ConfigWizard::RunReason::RR_USER;
+            if (rr_arg == int(ConfigWizard::RunReason::RR_DATA_EMPTY)) {
+                reason = ConfigWizard::RunReason::RR_DATA_EMPTY;
+            } else if (rr_arg == int(ConfigWizard::RunReason::RR_DATA_LEGACY)) {
+                reason = ConfigWizard::RunReason::RR_DATA_LEGACY;
+            } else if (rr_arg == int(ConfigWizard::RunReason::RR_DATA_INCOMPAT)) {
+                reason = ConfigWizard::RunReason::RR_DATA_INCOMPAT;
+            }
+            int rvbm_arg = args % 8;
+            RunVendorBundleManage bypass_bundle_install = RunVendorBundleManage::RVBM_IF_EMPTY;
+            if (rr_arg == int(RunVendorBundleManage::RVBM_NEVER)) {
+                bypass_bundle_install = RunVendorBundleManage::RVBM_NEVER;
+            } else if (rr_arg == int(RunVendorBundleManage::RVBM_ALWAYS)) {
+                bypass_bundle_install = RunVendorBundleManage::RVBM_ALWAYS;
+            }
+
+            this->run_wizard(reason, ConfigWizard::SP_WELCOME, bypass_bundle_install);
+        }); 
 
     }
     else {
@@ -3245,11 +3268,13 @@ void GUI_App::add_config_menu(wxMenuBar *menu)
     const wxString config_wizard_tooltip = from_u8((boost::format(_u8L("Run %s")) % config_wizard_name).str());
     // Cmd+, is standard on OS X - what about other operating systems?
     if (is_editor()) {
+        local_menu->Append(
+            config_id_base + ConfigMenuUpdateConf, _L("Install and upgrade &Vendor bundles") + dots,
+            _L("Check for vendor bundle updates, and choose which version is installed and available in the wizard"));
         local_menu->Append(config_id_base + ConfigMenuWizard, config_wizard_name + dots, config_wizard_tooltip);
         local_menu->Append(config_id_base + ConfigMenuSnapshots, _L("&Configuration Snapshots") + dots, _L("Inspect / activate configuration snapshots"));
         local_menu->Append(config_id_base + ConfigMenuTakeSnapshot, _L("Take Configuration &Snapshot"), _L("Capture a configuration snapshot"));
-        local_menu->Append(config_id_base + ConfigMenuUpdateConf, _L("Check for Configuration Updates"), _L("Check for configuration updates"));
-        local_menu->Append(config_id_base + ConfigMenuUpdateApp, _L("Check for Application Updates"), _L("Check for new version of application"));
+        local_menu->Append(config_id_base + ConfigMenuUpdateApp, _L("Check for &Application Updates"), _L("Check for new version of application"));
 #if defined(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION) 
         //if (DesktopIntegrationDialog::integration_possible())
         local_menu->Append(config_id_base + ConfigMenuDesktopIntegration, _L("Desktop Integration"), _L("Desktop Integration"));    
@@ -3975,7 +4000,7 @@ bool GUI_App::may_switch_to_SLA_preset(const wxString& caption)
     return true;
 }
 
-bool GUI_App::run_wizard(ConfigWizard::RunReason reason, ConfigWizard::StartPage start_page, bool bypass_bundle_install /*= false*/)
+bool GUI_App::run_wizard(ConfigWizard::RunReason reason, ConfigWizard::StartPage start_page, RunVendorBundleManage bypass_bundle_install /*= RVBM_IF_EMPTY*/)
 {
     wxCHECK_MSG(mainframe != nullptr, false, "Internal error: Main frame not created / null");
     
@@ -3992,13 +4017,15 @@ bool GUI_App::run_wizard(ConfigWizard::RunReason reason, ConfigWizard::StartPage
 #endif
     // if nothing installed, show the installatino dialog first
     bool is_synch = this->preset_updater->is_synch;
-    if (!bypass_bundle_install && this->preset_updater->count_installed() > 0 && ( !is_synch || this->preset_updater->count_installed() == 0)) {
+    if (bypass_bundle_install == RVBM_ALWAYS ||
+        (bypass_bundle_install == RVBM_IF_EMPTY && this->preset_updater->count_installed() == 0)) {
         this->preset_updater->show_synch_window(
-            this->mainframe, preset_bundle.get(),
-            _L("You don't have any vendor configuration bundles intalled yet. You need to choose the vendor that are "
-            "useful for you. If you want to install a prusa printer, you should install a prusa bundle so you can "
-            "choose inside prusa printer presets."),
-            [&](bool is_ok) { if (is_ok) run_wizard(reason, start_page, true); });
+            this->mainframe,
+            (this->preset_updater->count_installed() ? _L("You don't have any vendor configuration bundles installed yet.") : wxString()) +
+            _L("\nOnly installed bundles will appear in the wizard. "
+               "\nTo use the vendor bundles that are useful to you, install them first in this dialog. "
+               "\nHover over this text for more information."),
+            [&](bool is_ok) { if (is_ok) run_wizard(reason, start_page, RunVendorBundleManage::RVBM_NEVER); });
         return false;
     }
 
