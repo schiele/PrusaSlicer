@@ -677,3 +677,29 @@ BUILD: 2.7.62.0-beta2-9-g5fe60dbc478
 system: rolling
 date: Wed Nov 19 12:27:30 PM CET 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Fill/../Config.hpp:1137:29: warning: comparison of integer expressions of different signedness: ‘int32_t’ {aka ‘int’} and ‘size_t’ {aka ‘long unsigned int’} [-Wsign-compare]
+ 1137 |         if (idx >= 0 && idx < this->size()) {
+      |                         ~~~~^~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Fill/../Config.hpp:1150:31: warning: comparison of integer expressions of different signedness: ‘int’ and ‘size_t’ {aka ‘long unsigned int’} [-Wsign-compare]
+ 1150 |             for (int i = 0; i < this->size(); ++i) {
+      |                             ~~^~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Fill/../Config.hpp: In instantiation of ‘bool Slic3r::ConfigOptionVector<T>::overriden_by(const Slic3r::ConfigOption*, int32_t) const [with T = int; int32_t = int]’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Fill/../Config.hpp:1104:10:   required from here
+ 1104 |     bool overriden_by(const ConfigOption *rhs, int32_t idx = -1) const override {
+      |          ^~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Fill/../Config.hpp:1111:28: warning: comparison of integer expressions of different signedness: ‘int32_t’ {aka ‘int’} and ‘size_t’ {aka ‘long unsigned int’} [-Wsign-compare]
+ 1111 |         if (idx < 0 || idx >= size()) {
+      |                        ~~~~^~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Fill/../Config.hpp: In instantiation of ‘bool Slic3r::ConfigOptionVector<T>::apply_override(const Slic3r::ConfigOption*, int32_t) [with T = int; int32_t = int]’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Fill/../Config.hpp:1129:10:   required from here
+ 1129 |     bool apply_override(const ConfigOption *rhs, int32_t idx = -1) override {
+      |          ^~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Fill/../Config.hpp:1137:29: warning: comparison of integer expressions of different signedness: ‘int32_t’ {aka ‘int’} and ‘size_t’ {aka ‘long unsigned int’} [-Wsign-compare]
+ 1137 |         if (idx >= 0 && idx < this->size()) {
+      |                         ~~~~^~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Fill/../Config.hpp:1150:31: warning: comparison of integer expressions of different signedness: ‘int’ and ‘size_t’ {aka ‘long unsigned int’} [-Wsign-compare]
+ 1150 |             for (int i = 0; i < this->size(); ++i) {
+      |                             ~~^~~~~~~~~~~~~~
+make[1]: *** [CMakeFiles/Makefile2:1331: src/libslic3r/CMakeFiles/libslic3r.dir/all] Error 2
+make: *** [Makefile:156: all] Error 2
