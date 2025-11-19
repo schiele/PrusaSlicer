@@ -581,3 +581,5 @@ In function ‘bool ClipperLib_Z::SlopesEqual(const IntPoint&, const IntPoint&, 
 [ 16%] Linking CXX static library libclipper.a
 [ 16%] Built target clipper
 make: *** [Makefile:156: all] Error 2
+======================================================================
+BUILD: 2.7.62.0-beta2-9-g0b506f1e2b0
