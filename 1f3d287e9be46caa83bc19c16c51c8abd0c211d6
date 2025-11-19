@@ -309,3 +309,29 @@ BUILD: 2.7.62.0-beta2-9-g763534c4f14
 system: rolling
 date: Wed Nov 19 08:17:18 AM CET 2025
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+
+CMake Warning (dev) at src/build-utils/CMakeLists.txt:39 (add_custom_command):
+  Exactly one of PRE_BUILD, PRE_LINK, or POST_BUILD must be given.  Assuming
+  POST_BUILD to preserve backward compatibility.
+
+  Policy CMP0175 is not set: add_custom_command() rejects invalid arguments.
+  Run "cmake --help-policy CMP0175" for policy details.  Use the cmake_policy
+  command to set the policy and suppress this warning.
+Call Stack (most recent call first):
+  src/slic3r/CMakeLists.txt:418 (encoding_check)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at src/build-utils/CMakeLists.txt:39 (add_custom_command):
+  Exactly one of PRE_BUILD, PRE_LINK, or POST_BUILD must be given.  Assuming
+  POST_BUILD to preserve backward compatibility.
+
+  Policy CMP0175 is not set: add_custom_command() rejects invalid arguments.
+  Run "cmake --help-policy CMP0175" for policy details.  Use the cmake_policy
+  command to set the policy and suppress this warning.
+Call Stack (most recent call first):
+  src/slic3r/CMakeLists.txt:418 (encoding_check)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Found GTK3: /usr/include/gtk-3.0;/usr/include/pango-1.0;/usr/include;/usr/include/cloudproviders;/usr/include/cairo;/usr/include/gdk-pixbuf-2.0;/usr/include/glycin-2;/usr/include/at-spi2-atk/2.0;/usr/include/at-spi-2.0;/usr/include/atk-1.0;/usr/include/dbus-1.0;/usr/lib/dbus-1.0/include;/usr/include/fribidi;/usr/include/pixman-1;/usr/include/harfbuzz;/usr/include/freetype2;/usr/include/libpng16;/usr/include/gio-unix-2.0;/usr/include/glib-2.0;/usr/lib/glib-2.0/include;/usr/include/libmount;/usr/include/blkid;/usr/include/sysprof-6
+-- Configuring incomplete, errors occurred!
