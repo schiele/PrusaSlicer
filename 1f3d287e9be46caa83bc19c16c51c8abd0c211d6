@@ -59,3 +59,5 @@ In file included from /home/rschiele/git/PrusaSlicer/src/angelscript/source/as_b
 [ 12%] Linking CXX static library libangelscript.a
 [ 12%] Built target angelscript
 make: *** [Makefile:156: all] Error 2
+======================================================================
+BUILD: 2.7.62.0-beta2-9-gacfe54b927c
