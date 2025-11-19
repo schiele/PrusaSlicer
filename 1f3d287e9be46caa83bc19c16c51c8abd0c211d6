@@ -247,3 +247,29 @@ BUILD: 2.7.62.0-beta2-9-g8dec1f983d0
 system: rolling
 date: Wed Nov 19 08:13:53 AM CET 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/home/rschiele/git/PrusaSlicer/src/admesh/connect.cpp: In function ‘void stl_check_facets_nearby(stl_file*, float)’:
+/home/rschiele/git/PrusaSlicer/src/admesh/connect.cpp:487:48: warning: comparison of integer expressions of different signedness: ‘int’ and ‘uint32_t’ {aka ‘unsigned int’} [-Wsign-compare]
+  487 |         if (stl->stats.connected_facets_3_edge == stl->stats.number_of_facets)
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/admesh/connect.cpp: In lambda function:
+/home/rschiele/git/PrusaSlicer/src/admesh/connect.cpp:536:60: warning: comparison of integer expressions of different signedness: ‘int’ and ‘uint32_t’ {aka ‘unsigned int’} [-Wsign-compare]
+  536 |                                         if (other_face_idx != stl->stats.number_of_facets) {
+      |                                             ~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/admesh/connect.cpp: In instantiation of ‘void HashTableEdges::insert_edge(stl_file*, const HashEdge&, MatchNeighbors) [with MatchNeighbors = HashTableEdges::insert_edge_exact(stl_file*, const HashEdge&)::<lambda(const HashEdge&, const HashEdge&)>]’:
+/home/rschiele/git/PrusaSlicer/src/admesh/connect.cpp:143:20:   required from here
+  143 |                 this->insert_edge(stl, edge, [stl](const HashEdge& edge1, const HashEdge& edge2) { record_neighbors(stl, edge1, edge2); });
+      |                 ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/admesh/connect.cpp:219:51: warning: unused variable ‘temp’ [-Wunused-variable]
+  219 |                                         HashEdge *temp = link->next;
+      |                                                   ^~~~
+/home/rschiele/git/PrusaSlicer/src/admesh/connect.cpp: In instantiation of ‘void HashTableEdges::insert_edge(stl_file*, const HashEdge&, MatchNeighbors) [with MatchNeighbors = HashTableEdges::insert_edge_nearby(stl_file*, const HashEdge&)::<lambda(const HashEdge&, const HashEdge&)>]’:
+/home/rschiele/git/PrusaSlicer/src/admesh/connect.cpp:148:20:   required from here
+  148 |                 this->insert_edge(stl, edge, [stl](const HashEdge& edge1, const HashEdge& edge2) { match_neighbors_nearby(stl, edge1, edge2); });
+      |                 ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/admesh/connect.cpp:219:51: warning: unused variable ‘temp’ [-Wunused-variable]
+  219 |                                         HashEdge *temp = link->next;
+      |                                                   ^~~~
+[ 13%] Linking CXX static library libadmesh.a
+[ 13%] Built target admesh
+make: *** [Makefile:156: all] Error 2
