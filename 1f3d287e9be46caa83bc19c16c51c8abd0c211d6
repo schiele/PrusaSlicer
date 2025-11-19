@@ -524,3 +524,29 @@ BUILD: 2.7.62.0-beta2-9-gce857260e15
 system: rolling
 date: Wed Nov 19 08:52:20 AM CET 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/angelscript/add_on/scriptmath/scriptmath.cpp: In function ‘AngelScript::asUINT AngelScript::fpToIEEE(float)’:
+/home/rschiele/git/PrusaSlicer/src/angelscript/add_on/scriptmath/scriptmath.cpp:87:17: warning: dereferencing type-punned pointer will break strict-aliasing rules [-Wstrict-aliasing]
+   87 |         return *reinterpret_cast<asUINT*>(&fp);
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/angelscript/add_on/scriptmath/scriptmath.cpp: In function ‘double AngelScript::fpFromIEEE(asQWORD)’:
+/home/rschiele/git/PrusaSlicer/src/angelscript/add_on/scriptmath/scriptmath.cpp:91:17: warning: dereferencing type-punned pointer will break strict-aliasing rules [-Wstrict-aliasing]
+   91 |         return *reinterpret_cast<double*>(&raw);
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/angelscript/add_on/scriptmath/scriptmath.cpp: In function ‘AngelScript::asQWORD AngelScript::fpToIEEE(double)’:
+/home/rschiele/git/PrusaSlicer/src/angelscript/add_on/scriptmath/scriptmath.cpp:95:17: warning: dereferencing type-punned pointer will break strict-aliasing rules [-Wstrict-aliasing]
+   95 |         return *reinterpret_cast<asQWORD*>(&fp);
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/angelscript/add_on/scriptmath/scriptmath.cpp: In function ‘void AngelScript::RegisterScriptMath_Native(asIScriptEngine*)’:
+/home/rschiele/git/PrusaSlicer/src/angelscript/add_on/scriptmath/scriptmath.cpp:135:13: warning: variable ‘r’ set but not used [-Wunused-but-set-variable]
+  135 |         int r;
+      |             ^
+/home/rschiele/git/PrusaSlicer/src/angelscript/add_on/scriptmath/scriptmath.cpp: In function ‘void AngelScript::RegisterScriptMath_Generic(asIScriptEngine*)’:
+/home/rschiele/git/PrusaSlicer/src/angelscript/add_on/scriptmath/scriptmath.cpp:281:13: warning: variable ‘r’ set but not used [-Wunused-but-set-variable]
+  281 |         int r;
+      |             ^
+[ 12%] Building CXX object src/angelscript/CMakeFiles/angelscript.dir/add_on/scriptstdstring/scriptstdstring.cpp.o
+[ 13%] Linking CXX static library libangelscript.a
+[ 13%] Built target angelscript
+make: *** [Makefile:156: all] Error 2
