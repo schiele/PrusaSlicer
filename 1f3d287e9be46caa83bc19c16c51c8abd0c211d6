@@ -278,3 +278,29 @@ BUILD: 2.7.62.0-beta2-9-g8dec1f983d0
 system: rolling
 date: Wed Nov 19 08:14:12 AM CET 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+  115 |         int r;
+      |             ^
+[ 14%] Building CXX object src/angelscript/CMakeFiles/angelscript.dir/add_on/scriptstdstring/scriptstdstring.cpp.o
+[ 15%] Linking CXX static library libangelscript.a
+[ 15%] Built target angelscript
+[  8%] Building CXX object src/libslic3r/CMakeFiles/libslic3r_cgal.dir/IntersectionPoints.cpp.o
+In file included from /home/rschiele/git/PrusaSlicer/src/libslic3r/ExPolygon.hpp:15,
+                 from /home/rschiele/git/PrusaSlicer/src/libslic3r/IntersectionPoints.hpp:8,
+                 from /home/rschiele/git/PrusaSlicer/src/libslic3r/IntersectionPoints.cpp:5:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Point.hpp:26:10: fatal error: Eigen/Geometry: No such file or directory
+   26 | #include <Eigen/Geometry>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r_cgal.dir/build.make:107: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/IntersectionPoints.cpp.o] Error 1
+[  7%] Building CXX object src/libslic3r/CMakeFiles/libslic3r_cgal.dir/Geometry/VoronoiUtilsCgal.cpp.o
+In file included from /home/rschiele/git/PrusaSlicer/src/libslic3r/Geometry/../Line.hpp:15,
+                 from /home/rschiele/git/PrusaSlicer/src/libslic3r/Geometry/Voronoi.hpp:8,
+                 from /home/rschiele/git/PrusaSlicer/src/libslic3r/Geometry/VoronoiUtilsCgal.cpp:9:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Geometry/../Point.hpp:26:10: fatal error: Eigen/Geometry: No such file or directory
+   26 | #include <Eigen/Geometry>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r_cgal.dir/build.make:93: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/Geometry/VoronoiUtilsCgal.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:1363: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/all] Error 2
+make: *** [Makefile:156: all] Error 2
