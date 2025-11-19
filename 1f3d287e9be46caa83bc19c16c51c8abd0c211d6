@@ -555,3 +555,29 @@ BUILD: 2.7.62.0-beta2-9-g2351052f325
 system: rolling
 date: Wed Nov 19 08:54:17 AM CET 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/home/rschiele/git/PrusaSlicer/src/clipper/clipper.cpp: In member function ‘ClipperLib_Z::OutPt* ClipperLib_Z::Clipper::AddLocalMinPoly(ClipperLib_Z::TEdge*, ClipperLib_Z::TEdge*, const ClipperLib_Z::IntPoint&)’:
+/home/rschiele/git/PrusaSlicer/src/clipper/clipper.cpp:1448:79: note: ‘<anonymous>’ declared here
+ 1448 |           SlopesEqual(IntPoint(xPrev, Pt.y()), prevE->Top, IntPoint(xE, Pt.y()), e->Top, m_UseFullRange))
+      |                                                                               ^
+In function ‘bool ClipperLib_Z::SlopesEqual(const IntPoint&, const IntPoint&, const IntPoint&, const IntPoint&, bool)’,
+    inlined from ‘ClipperLib_Z::OutPt* ClipperLib_Z::Clipper::AddLocalMinPoly(ClipperLib_Z::TEdge*, ClipperLib_Z::TEdge*, const ClipperLib_Z::IntPoint&)’ at /home/rschiele/git/PrusaSlicer/src/clipper/clipper.cpp:1448:22:
+/home/rschiele/git/PrusaSlicer/src/clipper/clipper.cpp:351:46: warning: ‘<unnamed>.Eigen::Matrix<long int, 3, 1, 2, 3, 1>::<unnamed>.Eigen::PlainObjectBase<Eigen::Matrix<long int, 3, 1, 2, 3, 1> >::m_storage.Eigen::DenseStorage<long int, 3, 3, 1, 2>::m_data.Eigen::internal::plain_array<long int, 3, 2, 0>::array[1]’ may be used uninitialized [-Wmaybe-uninitialized]
+  351 |   { return SlopesEqual(pt1.x()-pt2.x(), pt1.y()-pt2.y(), pt3.x()-pt4.x(), pt3.y()-pt4.y(), UseFullInt64Range); }
+      |                                         ~~~~~^~
+/home/rschiele/git/PrusaSlicer/src/clipper/clipper.cpp: In member function ‘ClipperLib_Z::OutPt* ClipperLib_Z::Clipper::AddLocalMinPoly(ClipperLib_Z::TEdge*, ClipperLib_Z::TEdge*, const ClipperLib_Z::IntPoint&)’:
+/home/rschiele/git/PrusaSlicer/src/clipper/clipper.cpp:1448:45: note: ‘<anonymous>’ declared here
+ 1448 |           SlopesEqual(IntPoint(xPrev, Pt.y()), prevE->Top, IntPoint(xE, Pt.y()), e->Top, m_UseFullRange))
+      |                                             ^
+In function ‘bool ClipperLib_Z::SlopesEqual(const IntPoint&, const IntPoint&, const IntPoint&, const IntPoint&, bool)’,
+    inlined from ‘ClipperLib_Z::OutPt* ClipperLib_Z::Clipper::AddLocalMinPoly(ClipperLib_Z::TEdge*, ClipperLib_Z::TEdge*, const ClipperLib_Z::IntPoint&)’ at /home/rschiele/git/PrusaSlicer/src/clipper/clipper.cpp:1448:22:
+/home/rschiele/git/PrusaSlicer/src/clipper/clipper.cpp:351:29: warning: ‘*(const long int*)((char*)&<unnamed> + offsetof(Eigen::IntPoint, Eigen::Matrix<long int, 3, 1, 2, 3, 1>::<unnamed>.Eigen::PlainObjectBase<Eigen::Matrix<long int, 3, 1, 2, 3, 1> >::<unnamed>.Eigen::MatrixBase<Eigen::Matrix<long int, 3, 1, 2, 3, 1> >::<unnamed>.Eigen::DenseBase<Eigen::Matrix<long int, 3, 1, 2, 3, 1> >::<unnamed>.Eigen::DenseCoeffsBase<Eigen::Matrix<long int, 3, 1, 2, 3, 1>, 3>::<unnamed>.Eigen::DenseCoeffsBase<Eigen::Matrix<long int, 3, 1, 2, 3, 1>, 1>::<unnamed>.Eigen::DenseCoeffsBase<Eigen::Matrix<long int, 3, 1, 2, 3, 1>, 0>::<unnamed>))’ may be used uninitialized [-Wmaybe-uninitialized]
+  351 |   { return SlopesEqual(pt1.x()-pt2.x(), pt1.y()-pt2.y(), pt3.x()-pt4.x(), pt3.y()-pt4.y(), UseFullInt64Range); }
+      |                        ~~~~~^~
+/home/rschiele/git/PrusaSlicer/src/clipper/clipper.cpp: In member function ‘ClipperLib_Z::OutPt* ClipperLib_Z::Clipper::AddLocalMinPoly(ClipperLib_Z::TEdge*, ClipperLib_Z::TEdge*, const ClipperLib_Z::IntPoint&)’:
+/home/rschiele/git/PrusaSlicer/src/clipper/clipper.cpp:1448:45: note: ‘<anonymous>’ declared here
+ 1448 |           SlopesEqual(IntPoint(xPrev, Pt.y()), prevE->Top, IntPoint(xE, Pt.y()), e->Top, m_UseFullRange))
+      |                                             ^
+[ 16%] Linking CXX static library libclipper.a
+[ 16%] Built target clipper
+make: *** [Makefile:156: all] Error 2
