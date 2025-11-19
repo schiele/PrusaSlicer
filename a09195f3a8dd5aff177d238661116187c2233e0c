@@ -1,4 +1,4 @@
 BUILD: 2.7.61.10-7-ga09195f3a8d
 system: rolling
 date: Wed Nov 19 08:04:05 AM CET 2025
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure[failed]
