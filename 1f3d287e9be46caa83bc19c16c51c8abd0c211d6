@@ -397,3 +397,6 @@ CMake Error at src/libslic3r/CMakeLists.txt:606 (target_link_libraries):
 CMake Generate step failed.  Build files cannot be regenerated correctly.
 ======================================================================
 BUILD: 2.7.62.0-beta2-9-ga0b9c5facfa
+system: rolling
+date: Wed Nov 19 08:44:39 AM CET 2025
+tasks:[incomplete]
