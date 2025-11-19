@@ -646,3 +646,29 @@ BUILD: 2.7.62.0-beta2-9-g4252efca01b
 system: rolling
 date: Wed Nov 19 10:33:48 AM CET 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+[ 23%] Building C object src/avrdude/CMakeFiles/avrdude.dir/stk500.c.o
+[ 24%] Built target semver
+[ 24%] Building C object src/avrdude/CMakeFiles/avrdude.dir/stk500generic.c.o
+[ 24%] Building C object src/avrdude/CMakeFiles/avrdude.dir/term.c.o
+[ 24%] Building C object src/avrdude/CMakeFiles/avrdude.dir/update.c.o
+[ 24%] Building C object src/avrdude/CMakeFiles/avrdude.dir/wiring.c.o
+[ 24%] Building C object src/avrdude/CMakeFiles/avrdude.dir/stk500v2.c.o
+[ 25%] Building CXX object src/avrdude/CMakeFiles/avrdude.dir/avrdude-slic3r.cpp.o
+[ 25%] Building C object src/avrdude/CMakeFiles/avrdude.dir/main.c.o
+[ 25%] Linking CXX static library libavrdude.a
+[ 25%] Built target avrdude
+[ 25%] Building CXX object src/avrdude/CMakeFiles/avrdude-slic3r.dir/main-standalone.cpp.o
+[ 25%] Linking CXX executable avrdude-slic3r
+[ 25%] Built target avrdude-slic3r
+[  5%] Building CXX object src/libslic3r/CMakeFiles/libslic3r_cgal.dir/Geometry/VoronoiUtilsCgal.cpp.o
+In file included from /home/rschiele/git/PrusaSlicer/src/libslic3r/Geometry/../Line.hpp:15,
+                 from /home/rschiele/git/PrusaSlicer/src/libslic3r/Geometry/Voronoi.hpp:8,
+                 from /home/rschiele/git/PrusaSlicer/src/libslic3r/Geometry/VoronoiUtilsCgal.cpp:9:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Geometry/../Point.hpp:26:10: fatal error: Eigen/Geometry: No such file or directory
+   26 | #include <Eigen/Geometry>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r_cgal.dir/build.make:93: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/Geometry/VoronoiUtilsCgal.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:1363: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/all] Error 2
+make: *** [Makefile:156: all] Error 2
