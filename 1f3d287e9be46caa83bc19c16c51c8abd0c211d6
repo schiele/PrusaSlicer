@@ -64,3 +64,29 @@ BUILD: 2.7.62.0-beta2-9-gacfe54b927c
 system: rolling
 date: Wed Nov 19 07:57:06 AM CET 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+compilation terminated.
+make[2]: *** [src/admesh/CMakeFiles/admesh.dir/build.make:107: src/admesh/CMakeFiles/admesh.dir/shared.cpp.o] Error 1
+[  6%] Building CXX object src/admesh/CMakeFiles/admesh.dir/stl_io.cpp.o
+In file included from /home/rschiele/git/PrusaSlicer/src/admesh/stl_io.cpp:30:
+/home/rschiele/git/PrusaSlicer/src/admesh/stl.h:31:10: fatal error: Eigen/Geometry: No such file or directory
+   31 | #include <Eigen/Geometry>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [src/admesh/CMakeFiles/admesh.dir/build.make:121: src/admesh/CMakeFiles/admesh.dir/stl_io.cpp.o] Error 1
+[  6%] Building CXX object src/admesh/CMakeFiles/admesh.dir/stlinit.cpp.o
+In file included from /home/rschiele/git/PrusaSlicer/src/admesh/stlinit.cpp:33:
+/home/rschiele/git/PrusaSlicer/src/admesh/stl.h:31:10: fatal error: Eigen/Geometry: No such file or directory
+   31 | #include <Eigen/Geometry>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [src/admesh/CMakeFiles/admesh.dir/build.make:135: src/admesh/CMakeFiles/admesh.dir/stlinit.cpp.o] Error 1
+[  8%] Building CXX object src/admesh/CMakeFiles/admesh.dir/util.cpp.o
+In file included from /home/rschiele/git/PrusaSlicer/src/admesh/util.cpp:30:
+/home/rschiele/git/PrusaSlicer/src/admesh/stl.h:31:10: fatal error: Eigen/Geometry: No such file or directory
+   31 | #include <Eigen/Geometry>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [src/admesh/CMakeFiles/admesh.dir/build.make:149: src/admesh/CMakeFiles/admesh.dir/util.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:914: src/admesh/CMakeFiles/admesh.dir/all] Error 2
+make: *** [Makefile:156: all] Error 2
