@@ -151,3 +151,5 @@ CMake Error at CMakeLists.txt:483 (message):
   Eigen3 not found in /home/rschiele/git/PrusaSlicer/include/eigen3
 
 -- Configuring incomplete, errors occurred!
+======================================================================
+BUILD: 2.7.62.0-beta2-9-g0c2818cac1c
