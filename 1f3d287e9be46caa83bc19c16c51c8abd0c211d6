@@ -714,3 +714,29 @@ BUILD: 2.7.62.0-beta2-11-g6dd01604bb6
 system: rolling
 date: Sat Nov 22 07:45:06 AM CET 2025
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+In file included from /home/rschiele/git/PrusaSlicer/src/admesh/stlinit.cpp:33:
+/home/rschiele/git/PrusaSlicer/src/admesh/stl.h:31:10: fatal error: Eigen/Geometry: No such file or directory
+   31 | #include <Eigen/Geometry>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [src/admesh/CMakeFiles/admesh.dir/build.make:135: src/admesh/CMakeFiles/admesh.dir/stlinit.cpp.o] Error 1
+[  8%] Building CXX object src/admesh/CMakeFiles/admesh.dir/util.cpp.o
+In file included from /home/rschiele/git/PrusaSlicer/src/admesh/util.cpp:30:
+/home/rschiele/git/PrusaSlicer/src/admesh/stl.h:31:10: fatal error: Eigen/Geometry: No such file or directory
+   31 | #include <Eigen/Geometry>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [src/admesh/CMakeFiles/admesh.dir/build.make:149: src/admesh/CMakeFiles/admesh.dir/util.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:914: src/admesh/CMakeFiles/admesh.dir/all] Error 2
+[  6%] Building CXX object src/libslic3r/CMakeFiles/libslic3r_cgal.dir/Geometry/VoronoiUtilsCgal.cpp.o
+In file included from /home/rschiele/git/PrusaSlicer/src/libslic3r/Geometry/../Line.hpp:15,
+                 from /home/rschiele/git/PrusaSlicer/src/libslic3r/Geometry/Voronoi.hpp:8,
+                 from /home/rschiele/git/PrusaSlicer/src/libslic3r/Geometry/VoronoiUtilsCgal.cpp:9:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/Geometry/../Point.hpp:26:10: fatal error: Eigen/Geometry: No such file or directory
+   26 | #include <Eigen/Geometry>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r_cgal.dir/build.make:93: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/Geometry/VoronoiUtilsCgal.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:1363: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/all] Error 2
+make: *** [Makefile:156: all] Error 2
