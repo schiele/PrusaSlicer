@@ -833,3 +833,5 @@ FAILED:
 [ 14%] Built target libslic3r_cgal
 [ 14%] Built target angelscript
 make: *** [Makefile:156: all] Error 2
+======================================================================
+BUILD: 2.7.62.0-beta2-15-g6da181bf701
