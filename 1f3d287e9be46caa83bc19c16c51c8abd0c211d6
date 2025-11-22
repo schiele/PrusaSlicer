@@ -703,3 +703,5 @@ FAILED:
       |                             ~~^~~~~~~~~~~~~~
 make[1]: *** [CMakeFiles/Makefile2:1331: src/libslic3r/CMakeFiles/libslic3r.dir/all] Error 2
 make: *** [Makefile:156: all] Error 2
+======================================================================
+BUILD: 2.7.62.0-beta2-10-ga9c1ecb7b5d
