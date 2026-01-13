@@ -19,4 +19,4 @@ SUCCESS
 BUILD: version_2.9.4-9-ge657ebe081b
 system: rolling
 date: Tue Jan 13 01:17:54 PM CET 2026
-tasks: configure_deps build_deps configure build install[incomplete]
+tasks: configure_deps build_deps configure build install
