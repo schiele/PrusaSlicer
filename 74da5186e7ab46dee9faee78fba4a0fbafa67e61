@@ -38,3 +38,29 @@ BUILD: 2.7.61.10-8-gd435649d968
 system: rolling
 date: Fri Jan 16 02:55:59 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/home/rschiele/git/PrusaSlicer/src/angelscript/add_on/scriptdictionary/scriptdictionary.cpp:1150:13: warning: variable ‘r’ set but not used [-Wunused-but-set-variable]
+ 1150 |         int r;
+      |             ^
+[ 10%] Building CXX object src/angelscript/CMakeFiles/angelscript.dir/source/as_scriptengine.cpp.o
+In file included from /home/rschiele/git/PrusaSlicer/src/angelscript/source/as_property.h:47,
+                 from /home/rschiele/git/PrusaSlicer/src/angelscript/source/as_objecttype.h:44,
+                 from /home/rschiele/git/PrusaSlicer/src/angelscript/source/as_scriptengine.h:48,
+                 from /home/rschiele/git/PrusaSlicer/src/angelscript/source/as_scriptengine.cpp:42:
+/home/rschiele/git/PrusaSlicer/src/angelscript/source/as_symboltable.h:89:39: warning: template-id not allowed for constructor in C++20 [-Wtemplate-id-cdtor]
+   89 |         asCSymbolTableIterator<T, T2>(asCSymbolTable<T> *table);
+      |                                       ^~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/angelscript/source/as_symboltable.h:89:39: note: remove the ‘< >’
+[ 13%] Building CXX object src/angelscript/CMakeFiles/angelscript.dir/add_on/scriptbuilder/scriptbuilder.cpp.o
+[ 13%] Building CXX object src/angelscript/CMakeFiles/angelscript.dir/add_on/scriptstdstring/scriptstdstring.cpp.o
+[  8%] Building CXX object src/angelscript/CMakeFiles/angelscript.dir/source/as_compiler.cpp.o
+In file included from /home/rschiele/git/PrusaSlicer/src/angelscript/source/as_builder.h:43,
+                 from /home/rschiele/git/PrusaSlicer/src/angelscript/source/as_compiler.h:47,
+                 from /home/rschiele/git/PrusaSlicer/src/angelscript/source/as_compiler.cpp:44:
+/home/rschiele/git/PrusaSlicer/src/angelscript/source/as_symboltable.h:89:39: warning: template-id not allowed for constructor in C++20 [-Wtemplate-id-cdtor]
+   89 |         asCSymbolTableIterator<T, T2>(asCSymbolTable<T> *table);
+      |                                       ^~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/angelscript/source/as_symboltable.h:89:39: note: remove the ‘< >’
+[ 14%] Linking CXX static library libangelscript.a
+[ 14%] Built target angelscript
+make: *** [Makefile:156: all] Error 2
