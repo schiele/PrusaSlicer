@@ -37,4 +37,4 @@ Call Stack (most recent call first):
 BUILD: 2.7.61.10-8-gd435649d968
 system: rolling
 date: Fri Jan 16 02:55:59 AM CET 2026
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
