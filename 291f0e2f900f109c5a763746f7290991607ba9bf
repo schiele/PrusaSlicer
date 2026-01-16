@@ -44,3 +44,29 @@ BUILD: version_2.7.2-rc1-2807-ge423423018c
 system: rolling
 date: Fri Jan 16 03:49:09 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+In file included from /home/rschiele/git/PrusaSlicer/src/admesh/stl_io.cpp:30:
+/home/rschiele/git/PrusaSlicer/src/admesh/stl.h:31:10: fatal error: Eigen/Geometry: No such file or directory
+   31 | #include <Eigen/Geometry>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [src/admesh/CMakeFiles/admesh.dir/build.make:121: src/admesh/CMakeFiles/admesh.dir/stl_io.cpp.o] Error 1
+[  7%] Building CXX object src/admesh/CMakeFiles/admesh.dir/stlinit.cpp.o
+In file included from /home/rschiele/git/PrusaSlicer/src/admesh/stlinit.cpp:33:
+/home/rschiele/git/PrusaSlicer/src/admesh/stl.h:31:10: fatal error: Eigen/Geometry: No such file or directory
+   31 | #include <Eigen/Geometry>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [src/admesh/CMakeFiles/admesh.dir/build.make:135: src/admesh/CMakeFiles/admesh.dir/stlinit.cpp.o] Error 1
+[  9%] Building CXX object src/admesh/CMakeFiles/admesh.dir/util.cpp.o
+In file included from /home/rschiele/git/PrusaSlicer/src/admesh/util.cpp:30:
+/home/rschiele/git/PrusaSlicer/src/admesh/stl.h:31:10: fatal error: Eigen/Geometry: No such file or directory
+   31 | #include <Eigen/Geometry>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [src/admesh/CMakeFiles/admesh.dir/build.make:149: src/admesh/CMakeFiles/admesh.dir/util.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:917: src/admesh/CMakeFiles/admesh.dir/all] Error 2
+[  7%] Building CXX object src/occt_wrapper/CMakeFiles/OCCTWrapper.dir/OCCTWrapper.cpp.o
+[ 14%] Linking CXX static library OCCTWrapper.a
+[ 14%] Built target OCCTWrapper
+make: *** [Makefile:156: all] Error 2
