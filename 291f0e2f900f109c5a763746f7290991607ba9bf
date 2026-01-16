@@ -74,4 +74,4 @@ make: *** [Makefile:156: all] Error 2
 BUILD: version_2.7.2-rc1-2808-g5e7fb75d420
 system: rolling
 date: Fri Jan 16 03:51:05 AM CET 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
