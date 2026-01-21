@@ -69,3 +69,5 @@ Call Stack (most recent call first):
   CMakeLists.txt:177 (include)
 
 -- Configuring incomplete, errors occurred!
+======================================================================
+BUILD: version_2.9.4-13-geeca1b3e5fd
