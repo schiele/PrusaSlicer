@@ -167,3 +167,29 @@ BUILD: version_2.9.4-16-gf19e187ba74
 system: rolling
 date: Wed Jan 21 10:27:58 AM CET 2026
 tasks: configure_deps build_deps[failed]
+FAILED:
+      |                                                                                ^~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/build/deps/dep_GLEW-prefix/src/dep_GLEW/build/cmake/../../include/GL/eglew.h:2651:82: warning: ‘struct wl_display’ declared inside parameter list will not be visible outside of this definition or declaration
+ 2651 | typedef EGLBoolean ( * PFNEGLUNBINDWAYLANDDISPLAYWLPROC) (EGLDisplay dpy, struct wl_display* display);
+      |                                                                                  ^~~~~~~~~~
+[100%] Linking C shared library lib/libGLEW.so
+[100%] Linking C static library lib/libGLEW.a
+[100%] Built target glew_s
+[100%] Built target glew
+[ 53%] Performing install step for 'dep_GLEW'
+[100%] Built target glew_s
+[100%] Built target glew
+Install the project...
+-- Install configuration: "Release"
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/libGLEW.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/pkgconfig/glew.pc
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/GL/wglew.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/GL/glew.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/GL/glxew.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/glew/glew-targets.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/glew/glew-targets-release.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/glew/glew-config.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/glew/CopyImportedTargetProperties.cmake
+[ 56%] Completed 'dep_GLEW'
+[ 56%] Built target dep_GLEW
+make: *** [Makefile:136: all] Error 2
