@@ -100,3 +100,5 @@ Install the project...
 [ 56%] Completed 'dep_GLEW'
 [ 56%] Built target dep_GLEW
 make: *** [Makefile:136: all] Error 2
+======================================================================
+BUILD: version_2.9.4-14-g873e31ad92c
