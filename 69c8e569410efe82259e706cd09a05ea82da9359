@@ -463,4 +463,4 @@ make: *** [Makefile:136: all] Error 2
 BUILD: version_2.9.4-28-g2be5fb5c809
 system: rolling
 date: Wed Jan 21 01:08:18 PM CET 2026
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
