@@ -73,4 +73,4 @@ Call Stack (most recent call first):
 BUILD: version_2.9.4-13-geeca1b3e5fd
 system: rolling
 date: Wed Jan 21 10:20:02 AM CET 2026
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps[failed]
