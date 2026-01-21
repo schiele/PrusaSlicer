@@ -354,3 +354,5 @@ Install the project...
 [ 90%] Completed 'dep_LibBGCode'
 [ 90%] Built target dep_LibBGCode
 make: *** [Makefile:136: all] Error 2
+======================================================================
+BUILD: version_2.9.4-23-g21f7d499140
