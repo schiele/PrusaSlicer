@@ -44,3 +44,28 @@ BUILD: version_2.9.4-12-g9e92d22ee8c
 system: rolling
 date: Wed Jan 21 10:11:44 AM CET 2026
 tasks: configure_deps[failed]
+FAILED:
+-- Forcing CMAKE_BUILD_TYPE to Release as it was not specified.
+-- Found external package definitions: Blosc;Boost;CGAL;CURL;Catch2;Cereal;EXPAT;Eigen;GLEW;GMP;JPEG;LibBGCode;MPFR;NLopt;NanoSVG;OCCT;OpenCSG;OpenEXR;OpenSSL;OpenVDB;PNG;Qhull;TBB;ZLIB;glad;heatshrink;json;wxWidgets;z3
+-- Found Git: /usr/bin/git (found version "2.52.0")
+CMake Error at /usr/share/cmake/Modules/ExternalProject/shared_internal_commands.cmake:1308 (message):
+  No download info given for 'dep_glad' and its source directory:
+
+   /home/rschiele/git/PrusaSlicer/build/deps/dep_glad-prefix/src/dep_glad
+
+  is not an existing non-empty directory.  Please specify one of:
+
+   * SOURCE_DIR with an existing non-empty directory
+   * DOWNLOAD_COMMAND
+   * URL
+   * GIT_REPOSITORY
+   * SVN_REPOSITORY
+   * HG_REPOSITORY
+   * CVS_REPOSITORY and CVS_MODULE
+Call Stack (most recent call first):
+  /usr/share/cmake/Modules/ExternalProject.cmake:3258 (_ep_add_download_command)
+  /home/rschiele/git/PrusaSlicer/cmake/modules/AddCMakeProject.cmake:59 (ExternalProject_Add)
+  +glad/glad.cmake:1 (add_cmake_project)
+  CMakeLists.txt:177 (include)
+
+-- Configuring incomplete, errors occurred!
