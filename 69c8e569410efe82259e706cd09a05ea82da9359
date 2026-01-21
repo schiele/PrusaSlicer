@@ -469,4 +469,4 @@ SUCCESS
 BUILD: version_2.9.4-29-g90b11f6c13b
 system: rolling
 date: Wed Jan 21 01:12:19 PM CET 2026
-tasks:[incomplete]
+tasks: configure_deps[incomplete]
