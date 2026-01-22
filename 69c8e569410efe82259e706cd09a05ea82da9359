@@ -568,3 +568,29 @@ BUILD: version_2.9.4-33-gd0aa9d681f5
 system: rolling
 date: Thu Jan 22 06:41:52 AM CET 2026
 tasks: configure_deps build_deps[failed]
+FAILED:
+[ 28%] Built target bgcode_core
+[ 71%] Built target bgcode_binarize
+[100%] Built target bgcode_convert
+Install the project...
+-- Install configuration: "Release"
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/libbgcode_core.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/LibBGCode/core/core.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/LibBGCode/core/export.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeCoreTargets.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeCoreTargets-release.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/libbgcode_binarize.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/LibBGCode/binarize/binarize.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/LibBGCode/binarize/export.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeBinarizeTargets.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeBinarizeTargets-release.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/libbgcode_convert.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/LibBGCode/convert/convert.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/LibBGCode/convert/export.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeConvertTargets.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeConvertTargets-release.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeConfig.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeConfigVersion.cmake
+[ 90%] Completed 'dep_LibBGCode'
+[ 90%] Built target dep_LibBGCode
+make: *** [Makefile:136: all] Error 2
