@@ -86,4 +86,4 @@ SUCCESS
 BUILD: version_2.7.2-rc1-2810-g880e2193d02
 system: rolling
 date: Thu Jan 22 10:08:47 AM CET 2026
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
