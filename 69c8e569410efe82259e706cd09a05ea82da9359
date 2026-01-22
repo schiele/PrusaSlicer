@@ -824,3 +824,29 @@ BUILD: version_2.9.4-45-gf65c491fbb6
 system: rolling
 date: Thu Jan 22 09:38:45 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+  305 |     virtual std::string         serialize() const = 0;
+      |                                 ^~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:477:38: note:   by ‘void Slic3r::ConfigOptionSingle<T, NULLABLE>::serialize(Archive&) [with T = unsigned char; bool NULLABLE = false]’
+  477 |         template<class Archive> void serialize(Archive & ar) { ar(this->value); }
+      |                                      ^~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp: In instantiation of ‘class Slic3r::ConfigOptionSingle<Slic3r::FloatOrPercent, false>’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:554:43:   required from ‘void Slic3r::ConfigOptionVector<T>::set(const std::vector<const Slic3r::ConfigOption*>&) [with T = Slic3r::FloatOrPercent]’
+  554 |                 this->values.emplace_back(static_cast<const ConfigOptionSingle<T>*>(opt)->value);
+      |                                           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:543:10:   required from here
+  543 |     void set(const std::vector<const ConfigOption*> &rhs) override
+      |          ^~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:305:33: warning: ‘virtual std::string Slic3r::ConfigOption::serialize() const’ was hidden [-Woverloaded-virtual=]
+  305 |     virtual std::string         serialize() const = 0;
+      |                                 ^~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:477:38: note:   by ‘void Slic3r::ConfigOptionSingle<T, NULLABLE>::serialize(Archive&) [with T = Slic3r::FloatOrPercent; bool NULLABLE = false]’
+  477 |         template<class Archive> void serialize(Archive & ar) { ar(this->value); }
+      |                                      ^~~~~~~~~
+[100%] Linking CXX executable slic3rutils_tests
+/usr/bin/ld: ../../src/slic3r/liblibslic3r_gui.a(GLCanvas3D.cpp.o): undefined reference to symbol 'glEnable'
+/usr/bin/ld: /usr/lib/libOpenGL.so.0: error adding symbols: DSO missing from command line
+collect2: error: ld returned 1 exit status
+make[2]: *** [tests/slic3rutils/CMakeFiles/slic3rutils_tests.dir/build.make:275: tests/slic3rutils/slic3rutils_tests] Error 1
+make[1]: *** [CMakeFiles/Makefile2:2231: tests/slic3rutils/CMakeFiles/slic3rutils_tests.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
