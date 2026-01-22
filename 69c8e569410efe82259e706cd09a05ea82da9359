@@ -625,3 +625,5 @@ make[1]: *** [CMakeFiles/Makefile2:163: CMakeFiles/dep_glad.dir/all] Error 2
 make[1]: *** Waiting for unfinished jobs....
 [ 93%] Built target dep_LibBGCode
 make: *** [Makefile:136: all] Error 2
+======================================================================
+BUILD: version_2.9.4-35-g4cc6cac832a
