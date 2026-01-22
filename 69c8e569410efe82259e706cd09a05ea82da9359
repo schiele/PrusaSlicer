@@ -881,3 +881,5 @@ collect2: error: ld returned 1 exit status
 make[2]: *** [src/CMakeFiles/PrusaSlicer.dir/build.make:338: src/prusa-slicer] Error 1
 make[1]: *** [CMakeFiles/Makefile2:1474: src/CMakeFiles/PrusaSlicer.dir/all] Error 2
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: version_2.9.4-11-g60c47650afc
