@@ -854,4 +854,4 @@ make: *** [Makefile:146: all] Error 2
 BUILD: version_2.9.4-45-gf65c491fbb6
 system: rolling
 date: Thu Jan 22 09:44:06 AM CET 2026
-tasks: configure_deps build_deps configure build[incomplete]
+tasks: configure_deps build_deps configure build[failed]
