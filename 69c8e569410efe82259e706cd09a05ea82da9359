@@ -823,4 +823,4 @@ CMake Generate step failed.  Build files cannot be regenerated correctly.
 BUILD: version_2.9.4-45-gf65c491fbb6
 system: rolling
 date: Thu Jan 22 09:38:45 AM CET 2026
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
