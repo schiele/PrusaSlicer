@@ -599,3 +599,29 @@ BUILD: version_2.9.4-34-g3b1765bbcf1
 system: rolling
 date: Thu Jan 22 06:44:33 AM CET 2026
 tasks: configure_deps build_deps[failed]
+FAILED:
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeBinarizeTargets.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeBinarizeTargets-release.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/libbgcode_convert.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/LibBGCode/convert/convert.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/include/LibBGCode/convert/export.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeConvertTargets.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeConvertTargets-release.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeConfig.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/local/lib/cmake/LibBGCode/LibBGCodeConfigVersion.cmake
+[ 93%] Completed 'dep_LibBGCode'
+[ 90%] Performing build step for 'dep_glad'
+make[3]: warning: -j16 forced in submake: resetting jobserver mode.
+[ 50%] Building C object CMakeFiles/glad.dir/src/gl.c.o
+/home/rschiele/git/PrusaSlicer/build/deps/dep_glad-prefix/src/dep_glad/src/gl.c:7:10: fatal error: glad/gl.h: No such file or directory
+    7 | #include <glad/gl.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+make[5]: *** [CMakeFiles/glad.dir/build.make:79: CMakeFiles/glad.dir/src/gl.c.o] Error 1
+make[4]: *** [CMakeFiles/Makefile2:87: CMakeFiles/glad.dir/all] Error 2
+make[3]: *** [Makefile:136: all] Error 2
+make[2]: *** [CMakeFiles/dep_glad.dir/build.make:86: dep_glad-prefix/src/dep_glad-stamp/dep_glad-build] Error 2
+make[1]: *** [CMakeFiles/Makefile2:163: CMakeFiles/dep_glad.dir/all] Error 2
+make[1]: *** Waiting for unfinished jobs....
+[ 93%] Built target dep_LibBGCode
+make: *** [Makefile:136: all] Error 2
