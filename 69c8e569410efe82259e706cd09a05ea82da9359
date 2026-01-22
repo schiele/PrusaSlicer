@@ -790,3 +790,5 @@ Call Stack (most recent call first):
 
 -- Generating done (0.2s)
 CMake Generate step failed.  Build files cannot be regenerated correctly.
+======================================================================
+BUILD: version_2.9.4-43-g56860e03199
