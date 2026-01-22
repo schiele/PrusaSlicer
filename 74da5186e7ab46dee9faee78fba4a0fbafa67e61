@@ -80,4 +80,4 @@ SUCCESS
 BUILD: 2.7.61.10-11-g1b57d9e22dc
 system: rolling
 date: Thu Jan 22 10:15:34 AM CET 2026
-tasks: configure_deps build_deps configure build[incomplete]
+tasks: configure_deps build_deps configure build install[incomplete]
