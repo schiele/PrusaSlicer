@@ -503,7 +503,10 @@ if (SLIC3R_STATIC AND NOT SLIC3R_STATIC_EXCLUDE_GLEW)
     set(GLEW_VERBOSE ON)
 endif()
 
-find_package(GLEW REQUIRED)
+add_library(glad_gl STATIC ${CMAKE_CURRENT_SOURCE_DIR}/glad/src/gl.c)
+target_include_directories(glad_gl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/glad/include)
+add_library(GLAD::GL ALIAS glad_gl)
+add_library(GLEW::GLEW ALIAS glad_gl)
 
 # Find the Cereal serialization library
 find_package(cereal REQUIRED)
