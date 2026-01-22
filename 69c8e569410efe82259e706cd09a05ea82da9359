@@ -795,3 +795,27 @@ BUILD: version_2.9.4-43-g56860e03199
 system: rolling
 date: Thu Jan 22 09:34:12 AM CET 2026
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+-- Configuring done (2.0s)
+CMake Error at build/deps/destdir/usr/local/lib/cmake/GLEW/GLEWTargets.cmake:61 (set_target_properties):
+  The link interface of target "GLEW::GLEW" contains:
+
+    GLAD::GL
+
+  but the target was not found.  Possible reasons include:
+
+    * There is a typo in the target name.
+    * A find_package call is missing for an IMPORTED target.
+    * An ALIAS target is missing.
+
+Call Stack (most recent call first):
+  build/deps/destdir/usr/local/lib/cmake/GLEW/GLEWConfig.cmake:28 (include)
+  CMakeLists.txt:483 (find_package)
+
+-- Generating done (0.2s)
+CMake Generate step failed.  Build files cannot be regenerated correctly.
