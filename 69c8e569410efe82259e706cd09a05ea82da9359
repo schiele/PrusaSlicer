@@ -677,4 +677,4 @@ make: *** [Makefile:136: all] Error 2
 BUILD: version_2.9.4-39-g63f02cdf169
 system: rolling
 date: Thu Jan 22 09:25:54 AM CET 2026
-tasks:[incomplete]
+tasks: configure_deps[incomplete]
