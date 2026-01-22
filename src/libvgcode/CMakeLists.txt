@@ -1,21 +1,6 @@
 cmake_minimum_required(VERSION 3.13)
 project(libvgcode)
 
-# glad library
-if (EMSCRIPTEN OR SLIC3R_OPENGL_ES)
-    set(GLAD_SOURCES
-        glad/include/glad/gles2.h
-        glad/include/KHR/khrplatform.h
-        glad/src/gles2.c
-    )
-else ()
-    set(GLAD_SOURCES
-        glad/include/glad/gl.h
-        glad/include/KHR/khrplatform.h
-        glad/src/gl.c
-    )
-endif ()
-
 set(LIBVGCODE_SOURCES
 	# API
 	include/ColorPrint.hpp
@@ -59,7 +44,6 @@ set(LIBVGCODE_SOURCES
 	src/ViewerImpl.cpp
 	src/ViewRange.hpp
 	src/ViewRange.cpp
-	${GLAD_SOURCES}
 )
 
 add_library(libvgcode STATIC ${LIBVGCODE_SOURCES})
@@ -76,5 +60,4 @@ if (WIN32)
     endforeach()
 endif ()
 
-# glad includes
-include_directories(glad/include)
+target_link_libraries(libvgcode GLAD::GL)
