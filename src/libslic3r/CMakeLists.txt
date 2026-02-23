@@ -545,34 +545,7 @@ target_include_directories(libslic3r SYSTEM PUBLIC ${OpenCASCADE_INCLUDE_DIR})
 find_package(JPEG REQUIRED)
 find_package(draco REQUIRED)
 
-set(OCCT_LIBS
-    TKXDESTEP
-    TKSTEP
-    TKSTEP209
-    TKSTEPAttr
-    TKSTEPBase
-    TKXCAF
-    TKXSBase
-    TKVCAF
-    TKCAF
-    TKLCAF
-    TKCDF
-    TKV3d
-    TKService
-    TKMesh
-    TKBO
-    TKPrim
-    TKHLR
-    TKShHealing
-    TKTopAlgo
-    TKGeomAlgo
-    TKBRep
-    TKGeomBase
-    TKG3d
-    TKG2d
-    TKMath
-    TKernel
-)
+set(OCCT_LIBS TKDESTEP)
 
 target_link_libraries(libslic3r
     PUBLIC
