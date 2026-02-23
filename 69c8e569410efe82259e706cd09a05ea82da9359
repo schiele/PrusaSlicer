@@ -909,4 +909,4 @@ SUCCESS
 BUILD: version_2.9.4-11-g9c323fcb84
 system: rolling
 date: Mon Feb 23 07:50:53 AM CET 2026
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
