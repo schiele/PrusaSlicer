@@ -15,7 +15,9 @@
 #include <boost/nowide/cstdio.hpp>
 #include <boost/nowide/utf8_codecvt.hpp>
 #undef pid_t
-#include <boost/process.hpp>
+#define BOOST_PROCESS_VERSION 1
+#include <boost/process/v1/child.hpp>
+#include <boost/process/v1/pipe.hpp>
 #ifdef __WIN32__
 #include <boost/process/windows.hpp>
 #else
