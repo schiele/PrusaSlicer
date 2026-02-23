@@ -13,7 +13,7 @@
 
 #include "FuzzySkin.hpp"
 
-#include "libnoise/noise.h"
+#include "noise/noise.h"
 
 // #define DEBUG_FUZZY
 
