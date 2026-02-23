@@ -553,7 +553,9 @@ target_link_libraries(libslic3r
         libigl
         libnest2d
         miniz
-	#opencv_world
+	opencv_core
+	opencv_imgproc
+	opencv_imgcodecs
     PRIVATE
         ${CMAKE_DL_LIBS}
         ${EXPAT_LIBRARIES}
