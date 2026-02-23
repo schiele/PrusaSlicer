@@ -8,6 +8,7 @@
 #define GLEW_EXT_framebuffer_object GLAD_GL_EXT_framebuffer_object
 #define GLEW_KHR_debug GLAD_GL_KHR_debug
 #define GLEW_OK 0
+#define GLEW_EGL 1
 static unsigned char glewExperimental __attribute__((unused));
 static inline unsigned int __attribute__((unused)) glewInit() { return gladLoaderLoadGL() == 0; }
 static inline const char* __attribute__((unused)) glewGetErrorString(unsigned int) { return "glad loader failed"; }
