@@ -17,7 +17,10 @@
 #undef pid_t
 #define BOOST_PROCESS_VERSION 1
 #include <boost/process/v1/child.hpp>
+#include <boost/process/v1/handles.hpp>
+#include <boost/process/v1/io.hpp>
 #include <boost/process/v1/pipe.hpp>
+#include <boost/process/v1/start_dir.hpp>
 #ifdef __WIN32__
 #include <boost/process/windows.hpp>
 #else
