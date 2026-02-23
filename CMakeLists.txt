@@ -771,7 +771,7 @@ find_package(NLopt 1.4 REQUIRED)
 
 
 if(SLIC3R_STATIC)
-    set(OPENVDB_USE_STATIC_LIBS ON)
+	#set(OPENVDB_USE_STATIC_LIBS ON)
     set(USE_BLOSC TRUE)
 endif ()
 
