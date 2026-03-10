@@ -2010,7 +2010,7 @@ void ViewerImpl::update_color_ranges()
     m_width_range.finalize();
     m_speed_range.finalize();
     m_actual_speed_range.finalize();
-    m_fan_speed_range.finalize();
+    m_fan_speed_range.finalize_fixed_bands(10, 0.0f, 100.0f);
     m_temperature_range.finalize();
     m_volumetric_rate_range.finalize();
     m_actual_volumetric_rate_range.finalize();

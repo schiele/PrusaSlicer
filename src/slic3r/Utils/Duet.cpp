@@ -443,6 +443,24 @@ bool Duet::send_gcode(const std::string &gcode, std::string &response, wxString 
     bool success = false;
     bool dsf = (connectionType == ConnectionType::dsf);
 
+    // preFlight: For standalone RRF, drain any stale replies from the rr_reply queue
+    // before sending our command. The queue is shared with all HTTP clients (e.g. DWC)
+    // and may contain leftover responses from retries or other sessions.
+    if (!dsf)
+    {
+        auto drain_url = (boost::format("%1%rr_reply") % get_base_url()).str();
+        for (int drain = 0; drain < 5; ++drain)
+        {
+            bool had_content = false;
+            Http::get(drain_url)
+                .on_complete([&](std::string body, unsigned) { had_content = !body.empty(); })
+                .on_error([](std::string, std::string, unsigned) {})
+                .perform_sync();
+            if (!had_content)
+                break;
+        }
+    }
+
     // Build URL based on connection type
     auto url = dsf ? (boost::format("%1%machine/code") % get_base_url()).str()
                    : (boost::format("%1%rr_gcode?gcode=%2%") % get_base_url() % Http::url_encode(gcode)).str();
@@ -482,8 +500,8 @@ bool Duet::send_gcode(const std::string &gcode, std::string &response, wxString 
     // The actual G-code reply text must be fetched separately via GET /rr_reply.
     if (success && !dsf)
     {
-        // Brief delay to let firmware process the command and buffer the reply
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        // Wait for firmware to process the command and buffer the reply
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
         auto reply_url = (boost::format("%1%rr_reply") % get_base_url()).str();
         auto reply_http = Http::get(std::move(reply_url));
@@ -519,12 +537,18 @@ std::string Duet::parse_mcode_response(const std::string &response, const std::s
 
     if (mcode == "M566")
     {
+        // Validate response is actually from M566 - standalone rr_reply queue can return
+        // stale responses from other commands due to race conditions with DWC or retries
+        if (response.find("jerk") == std::string::npos)
+            return result;
+
         // Parse: "Maximum jerk rates (mm/min): X: 600.0, Y: 600.0, Z: 600.0, E: 3600.0, jerk policy: 1"
         // Or DSF JSON response
         float x = 0, y = 0, z = 0, e = 0;
         int policy = 0;
 
-        // Try to parse axis values
+        // Try to parse axis values (returns 0 if axis is missing or has no numeric value,
+        // e.g. "E:," when no extruder is defined)
         auto parse_axis = [&response](const std::string &axis) -> float
         {
             std::string pattern = axis + ": ";
@@ -532,7 +556,14 @@ std::string Duet::parse_mcode_response(const std::string &response, const std::s
             if (pos != std::string::npos)
             {
                 pos += pattern.length();
-                return std::stof(response.substr(pos));
+                try
+                {
+                    return std::stof(response.substr(pos));
+                }
+                catch (...)
+                {
+                    return 0;
+                }
             }
             // Also try format "X600" without colon
             pattern = axis;
@@ -547,7 +578,14 @@ std::string Duet::parse_mcode_response(const std::string &response, const std::s
                         pos++;
                     if (pos < response.length())
                     {
-                        return std::stof(response.substr(pos));
+                        try
+                        {
+                            return std::stof(response.substr(pos));
+                        }
+                        catch (...)
+                        {
+                            return 0;
+                        }
                     }
                 }
             }
@@ -581,6 +619,10 @@ std::string Duet::parse_mcode_response(const std::string &response, const std::s
     }
     else if (mcode == "M201")
     {
+        // Validate response is actually from M201 (plural "Accelerations", not M204's singular "acceleration")
+        if (response.find("ccelerations") == std::string::npos)
+            return result;
+
         // Parse: "Accelerations (mm/s^2): X: 6000.0, Y: 6000.0, Z: 1200.0, E: 6000.0"
         float x = 0, y = 0, z = 0, e = 0;
 
@@ -591,7 +633,14 @@ std::string Duet::parse_mcode_response(const std::string &response, const std::s
             if (pos != std::string::npos)
             {
                 pos += pattern.length();
-                return std::stof(response.substr(pos));
+                try
+                {
+                    return std::stof(response.substr(pos));
+                }
+                catch (...)
+                {
+                    return 0;
+                }
             }
             return 0;
         };
@@ -608,6 +657,10 @@ std::string Duet::parse_mcode_response(const std::string &response, const std::s
     }
     else if (mcode == "M203")
     {
+        // Validate response is actually from M203
+        if (response.find("speed") == std::string::npos && response.find("Speed") == std::string::npos)
+            return result;
+
         // Parse: "Maximum speeds (mm/min): X: 24000.0, Y: 24000.0, Z: 3000.0, E: 6000.0"
         float x = 0, y = 0, z = 0, e = 0;
 
@@ -618,7 +671,14 @@ std::string Duet::parse_mcode_response(const std::string &response, const std::s
             if (pos != std::string::npos)
             {
                 pos += pattern.length();
-                return std::stof(response.substr(pos));
+                try
+                {
+                    return std::stof(response.substr(pos));
+                }
+                catch (...)
+                {
+                    return 0;
+                }
             }
             return 0;
         };

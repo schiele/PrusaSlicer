@@ -35,6 +35,7 @@
 #include "libslic3r/ExtrusionEntityCollection.hpp"
 #include "libslic3r/LayerRegion.hpp"
 #include "libslic3r/PerimeterGenerator.hpp"
+
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/Surface.hpp"
 #include "libslic3r/SurfaceCollection.hpp"
@@ -1559,10 +1560,11 @@ void Layer::RoleIndex::build_from_layer(const Layer *layer)
     auto it_interlock = role_regions.find(ExtrusionRole::InterlockingPerimeter);
     if (it_interlock != role_regions.end() && !it_interlock->second.empty())
     {
-        // Gap fill distance: 2x perimeter width to properly fill -100% overlap gaps between beads
-        // Interlocking uses 2x spacing, so gaps between bead edges = 1x width
-        // Use 2x to ensure complete filling even with slight variations
-        coord_t gap_fill = scale_(perimeter_width_mm * 2.0);
+        // Gap fill distance: 3x perimeter width to cover the interlocking zone fully.
+        // The interlocking pattern has gapped spacing ~2.4x pw with edge gaps ~1.0-1.1x pw,
+        // and beads shift position between layers. At curves, the zone boundaries diverge.
+        // 3x pw ensures the morphological close covers all gaps and boundary shifts.
+        coord_t gap_fill = scale_(perimeter_width_mm * 3.0);
 
         // Expand to fill gaps, then shrink back to get zone boundary
         Polygons expanded = offset(to_polygons(it_interlock->second), gap_fill);

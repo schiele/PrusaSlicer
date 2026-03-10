@@ -200,6 +200,9 @@ BeadingStrategy::Beading RedistributeBeadingStrategy::compute(coord_t thickness,
         // WARNING: Using spacing-based which assumes symmetric layout!
         // Branch 1 may create asymmetric layouts with custom spacing
         ret.left_over = spacing_based_leftover;
+
+        if (innermost_spacing > 0)
+            ret.preserve_innermost_position = true;
     }
     else
     {

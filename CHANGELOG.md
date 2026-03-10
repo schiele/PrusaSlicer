@@ -1,5 +1,35 @@
 # preFlight Changelog
 
+## v0.9.8
+
+### Interlocking Perimeters
+- Replaced polygon-offset shell generation with Athena's skeletal trapezoidation engine for interlocking perimeters - naturally handles narrow channels and bead count transitions
+- Redesigned interlocking bead geometry to use three flow-scaled tiers (100%, ~146%, 200%) - the ~146% boundary bead width is derived so outer edges align with the 100% boundary bead on alternate layers to keep inter-shell gaps uniform
+- Replaced flow-rate overlap with geometric centerline spacing modification - overlap bonding now works the same way as perimeter-to-perimeter overlap, eliminating over-extrusion at shell boundaries
+
+### Alternating Nip/Tuck Seams
+- Added Alt. Nip/Tuck seam type - alternates between Nip on even layers and Tuck on odd layers to distribute seam disturbance across both sides of the junction
+
+### Orca Import
+- Added warning dialog before OrcaSlicer profile import informing users that imported profiles will need careful review due to differences between applications
+
+### Print Host
+- Fixed RRF standalone machine limits race condition where stale rr_reply queue entries caused values to be incorrectly applied to the wrong fields in stand-alone mode
+
+### Preview/Legend
+- Modified fan speed legend to always show 10 fixed bands (0-10%, 11-20%, ..., 91-100%) regardless of data distribution
+- Capped all range-based legends to 10 bands maximum - values exceeding 10 distinct groups are merged via frequency-weighted quantiles
+
+### Bug Fixes
+- Fixed slicing animation not switching to Preview tab during slice
+- Fixed accidental object deletion in Preview when pressing Delete/Backspace - objects are now deselected when slicing begins
+- Fixed empty sidebar groups not hiding on GTK/macOS due to spacers being counted as visible rows (thanks topisani!)
+- Accumulated partial scroll events on XWayland are no longer silently dropped (thanks topisani!)
+
+### UI
+- Added "View release page" hyperlink to the update available dialog
+
+
 ## v0.9.7
 
 ### Raspberry Pi
@@ -8,7 +38,7 @@
 - Now compatible with both Bookworm and Trixie
 
 ### macOS Support
-- ***preFlight for macOS is now digitally signed! Apple notarization is pending first-submission review***
+- preFlight for macOS is now digitally signed and notarized
 
 ### New Features
 - **Painted Seam Alignment**: Bidirectional blending system for stable vertical and diagonal seam tracking - forward pass tracks diagonal seams while filtering vertex noise, backward pass straightens early-layer convergence lag. Only activates for painted enforcers on smooth surfaces

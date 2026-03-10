@@ -251,7 +251,8 @@ CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(SeamPosition)
 static const t_config_enum_values s_keys_map_SeamNotchType{{"regular", sntRegular},
                                                            {"niptuck", sntNipTuck},
                                                            {"nip", sntNip},
-                                                           {"tuck", sntTuck}};
+                                                           {"tuck", sntTuck},
+                                                           {"alternating", sntAlternating}};
 
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(SeamNotchType)
 
@@ -3617,11 +3618,18 @@ void PrintConfigDef::init_fff_params()
                      "remains on the normal path. The inner perimeter is trimmed on the start side only.\n\n"
                      "Tuck - Only the end of the external perimeter is pushed inward at the seam. The start "
                      "remains on the normal path. The inner perimeter is trimmed on the end side only.\n\n"
+                     "Alt. Nip/Tuck - Alternates between Nip on even layers and Tuck on odd layers. "
+                     "This distributes the seam disturbance across both sides of the junction, preventing "
+                     "a consistent bulge on one side.\n\n"
                      "Note: All non-Regular modes require multiple perimeters and are not used in Spiral Vase mode.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<SeamNotchType>(sntRegular));
-    def->set_enum<SeamNotchType>(std::initializer_list<std::pair<std::string_view, std::string_view>>{
-        {"regular", L("Regular")}, {"niptuck", L("Nip/Tuck")}, {"nip", L("Nip")}, {"tuck", L("Tuck")}});
+    def->set_enum<SeamNotchType>(
+        std::initializer_list<std::pair<std::string_view, std::string_view>>{{"regular", L("Regular")},
+                                                                             {"niptuck", L("Nip/Tuck")},
+                                                                             {"nip", L("Nip")},
+                                                                             {"tuck", L("Tuck")},
+                                                                             {"alternating", L("Alt. Nip/Tuck")}});
 
     def = this->add("seam_notch_width", coFloat);
     def->label = L("Seam notch width");

@@ -332,7 +332,8 @@ enum SeamNotchType
     sntRegular,
     sntNipTuck,
     sntNip,
-    sntTuck
+    sntTuck,
+    sntAlternating
 };
 
 enum class ScarfSeamPlacement

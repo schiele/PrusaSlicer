@@ -192,12 +192,16 @@ void ScrollBar::OnMouseWheel(wxMouseEvent &event)
         return;
     }
 
-    int rotation = event.GetWheelRotation();
+    // Accumulate partial wheel rotations for XWayland compatibility (credit: topisani)
     int delta = event.GetWheelDelta();
-    int lines = rotation / delta;
+    if (delta == 0)
+        return;
+    m_sumWheelRotation += event.GetWheelRotation() * 3;
+    int scrollAmount = m_sumWheelRotation / delta;
+    m_sumWheelRotation -= scrollAmount * delta;
+    if (scrollAmount == 0)
+        return;
 
-    // Scroll 3 lines per wheel notch
-    int scrollAmount = lines * 3;
     SetThumbPosition(m_position - scrollAmount);
     NotifyScroll(wxEVT_SCROLL_THUMBTRACK);
 }

@@ -4593,7 +4593,7 @@ void GUI_App::app_updater(bool from_user)
     // dialog with new version info
     AppUpdateAvailableDialog dialog(*Semver::parse(SLIC3R_VERSION), *app_data.version, from_user,
                                     app_data.action == AppUpdaterURLAction::AUUA_OPEN_IN_BROWSER,
-                                    app_data.release_notes);
+                                    app_data.release_notes, app_data.release_page);
     auto dialog_result = dialog.ShowModal();
     // checkbox "do not show again"
     if (dialog.disable_version_check())

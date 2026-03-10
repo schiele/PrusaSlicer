@@ -235,7 +235,45 @@ void import_orca_bundle(wxWindow *parent)
     if (!wxGetApp().check_and_save_current_preset_changes(_L("Importing OrcaSlicer bundle"), "", false))
         return;
 
-    // Step 2: File picker
+    // Step 2: Warn the user that imported profiles will need manual review
+    {
+        wxDialog warn_dlg(parent, wxID_ANY, _L("OrcaSlicer Profile Import"), wxDefaultPosition, wxDefaultSize,
+                          wxDEFAULT_DIALOG_STYLE);
+        wxBoxSizer *sizer = new wxBoxSizer(wxVERTICAL);
+
+        sizer->Add(new wxStaticText(&warn_dlg, wxID_ANY,
+                                    _L("OrcaSlicer and preFlight use different parameter sets and defaults. "
+                                       "Imported profiles will likely not match OrcaSlicer output exactly.")),
+                   0, wxALL, 15);
+
+        sizer->Add(new wxStaticText(&warn_dlg, wxID_ANY,
+                                    _L("You must carefully review all imported profiles before printing.")),
+                   0, wxLEFT | wxRIGHT | wxBOTTOM, 15);
+
+        sizer->Add(new wxStaticText(&warn_dlg, wxID_ANY, _L("Do you want to proceed?")), 0, wxLEFT | wxRIGHT | wxBOTTOM,
+                   15);
+
+        wxBoxSizer *btn_sizer = new wxBoxSizer(wxHORIZONTAL);
+        btn_sizer->AddStretchSpacer();
+        wxButton *btn_yes = new wxButton(&warn_dlg, wxID_YES, _L("Yes"));
+        wxButton *btn_no = new wxButton(&warn_dlg, wxID_NO, _L("No"));
+        btn_no->SetFocus();
+        btn_no->SetDefault();
+        btn_sizer->Add(btn_yes, 0, wxLEFT, 5);
+        btn_sizer->Add(btn_no, 0, wxLEFT, 5);
+        btn_yes->Bind(wxEVT_BUTTON, [&warn_dlg](wxCommandEvent &) { warn_dlg.EndModal(wxID_YES); });
+        btn_no->Bind(wxEVT_BUTTON, [&warn_dlg](wxCommandEvent &) { warn_dlg.EndModal(wxID_NO); });
+
+        sizer->Add(btn_sizer, 0, wxEXPAND | wxALL, 10);
+        warn_dlg.SetSizerAndFit(sizer);
+        wxGetApp().UpdateDlgDarkUI(&warn_dlg);
+        warn_dlg.CenterOnParent();
+
+        if (warn_dlg.ShowModal() != wxID_YES)
+            return;
+    }
+
+    // Step 3: File picker
     wxFileDialog file_dlg(
         parent, _L("Select OrcaSlicer bundle to import:"), wxGetApp().app_config->get_last_dir(), "",
         "OrcaSlicer bundles (*.orca_printer;*.orca_filament;*.zip)|*.orca_printer;*.orca_filament;*.zip",
@@ -246,7 +284,7 @@ void import_orca_bundle(wxWindow *parent)
     wxString file_path = file_dlg.GetPath();
     wxGetApp().app_config->update_config_dir(boost::filesystem::path(file_path.ToUTF8().data()).parent_path().string());
 
-    // Step 3: Quick-read the manifest to show a preview dialog
+    // Step 4: Quick-read the manifest to show a preview dialog
     mz_zip_archive zip;
     memset(&zip, 0, sizeof(zip));
     if (!open_zip_reader(&zip, file_path.ToUTF8().data()))
@@ -290,7 +328,7 @@ void import_orca_bundle(wxWindow *parent)
         return;
     }
 
-    // Step 4: Show import options dialog
+    // Step 5: Show import options dialog
     wxDialog options_dlg(parent, wxID_ANY, _L("Import OrcaSlicer Bundle"), wxDefaultPosition, wxDefaultSize,
                          wxDEFAULT_DIALOG_STYLE);
     wxBoxSizer *dlg_sizer = new wxBoxSizer(wxVERTICAL);
@@ -342,7 +380,7 @@ void import_orca_bundle(wxWindow *parent)
     if (options_dlg.ShowModal() != wxID_OK)
         return;
 
-    // Step 5: Run the import
+    // Step 6: Run the import
     OrcaConfigImporter::ImportOptions opts;
     opts.import_printer = chk_printer->GetValue();
     opts.import_filaments = chk_filament->GetValue();
@@ -432,7 +470,7 @@ void import_orca_bundle(wxWindow *parent)
         import_result.errors.push_back(std::string("Import failed: ") + ex.what());
     }
 
-    // Step 6: Rebuild extruder filaments and reload presets into the GUI.
+    // Step 7: Rebuild extruder filaments and reload presets into the GUI.
     // The import added new presets to the collections, but ExtruderFilaments
     // still has the old count. Must resync before update_compatible or
     // load_current_presets iterate them (would crash on out-of-bounds access).
@@ -448,7 +486,7 @@ void import_orca_bundle(wxWindow *parent)
         import_result.errors.push_back(std::string("Warning during preset reload: ") + ex.what());
     }
 
-    // Step 7: Show results dialog
+    // Step 8: Show results dialog
     OrcaImportResultsDialog results_dlg(parent, import_result);
     results_dlg.ShowModal();
 }

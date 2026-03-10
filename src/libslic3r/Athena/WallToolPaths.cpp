@@ -59,6 +59,7 @@ WallToolPaths::WallToolPaths(const Polygons &outline, const coord_t bead_width_0
     , spacing_override_innermost(0)
     , debug_layer_id(layer_id)
     , thin_wall_snap_precision(10000)
+    , m_original_inset_count(inset_count)
 {
     assert(!print_config.nozzle_diameter.empty());
     this->min_nozzle_diameter = float(
@@ -132,6 +133,7 @@ WallToolPaths::WallToolPaths(const Polygons &outline, const coord_t bead_width_0
     , spacing_override_innermost(spacing_innermost)
     , debug_layer_id(layer_id)
     , thin_wall_snap_precision(thin_wall_snap_precision)
+    , m_original_inset_count(inset_count)
 {
     assert(!print_config.nozzle_diameter.empty());
     this->min_nozzle_diameter = float(
@@ -830,7 +832,7 @@ const std::vector<VariableWidthLines> &WallToolPaths::generate()
             bead_width_0, fixed_width_external, bead_width_x, fixed_width_internal, wall_transition_length,
             transitioning_angle, print_thin_walls, min_bead_width, min_feature_size, wall_split_middle_threshold,
             wall_add_middle_threshold, max_bead_count, wall_0_inset, wall_distribution_count, spacing_override_external,
-            spacing_override_innermost, coord_t(inset_count), debug_layer_id, thin_wall_snap_precision);
+            spacing_override_innermost, coord_t(m_original_inset_count), debug_layer_id, thin_wall_snap_precision);
         const coord_t transition_filter_dist = scaled<coord_t>(100.f);
         const coord_t allowed_filter_deviation = wall_transition_filter_deviation;
 

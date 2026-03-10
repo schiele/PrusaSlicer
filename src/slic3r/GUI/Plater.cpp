@@ -4167,7 +4167,10 @@ void Plater::priv::on_process_completed(SlicingProcessCompletedEvent &evt)
         {
             set_current_panel(view3D);
             if (wxGetApp().mainframe && wxGetApp().mainframe->m_modern_tabbar)
+            {
                 wxGetApp().mainframe->m_modern_tabbar->SelectTab(GUI::ModernTabBar::TAB_PREPARE);
+                wxGetApp().mainframe->m_modern_tabbar->EnableTab(GUI::ModernTabBar::TAB_PREVIEW, false);
+            }
         }
     }
     if (evt.cancelled())
@@ -7477,6 +7480,9 @@ void Plater::reslice()
     // There is "invalid data" button instead "slice now"
     if (!is_sliceable(s_print_statuses[s_multiple_beds.get_active_bed()]))
         return;
+
+    // Deselect all objects so Delete/Backspace in Preview won't remove platter objects
+    deselect_all();
 
     // In case SLA gizmo is in editing mode, refuse to continue
     // and notify user that he should leave it first.

@@ -199,10 +199,15 @@ void ScrollablePanel::OnMouseWheel(wxMouseEvent &event)
         return;
     }
 
-    int rotation = event.GetWheelRotation();
+    // Accumulate partial wheel rotations for XWayland compatibility (credit: topisani)
     int delta = event.GetWheelDelta();
+    if (delta == 0)
+        return;
+    m_sumWheelRotation += event.GetWheelRotation() * GetScaledScrollAmount();
+    int scrollAmount = m_sumWheelRotation / delta;
+    m_sumWheelRotation -= scrollAmount * delta;
+    if (scrollAmount == 0)
+        return;
 
-    // Scroll per wheel notch (scaled for DPI)
-    int scrollAmount = (rotation / delta) * GetScaledScrollAmount();
     ScrollToPosition(m_scrollPosition - scrollAmount);
 }

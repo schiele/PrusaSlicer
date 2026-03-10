@@ -136,6 +136,11 @@ private:
     // Called by ViewerImpl after all update() calls are complete.
     //
     void finalize();
+    //
+    // preFlight: Create fixed evenly-spaced bands (e.g. 0-10, 11-20, ..., 91-100 for fan speed).
+    // Use instead of finalize() when the value domain has known fixed ranges.
+    //
+    void finalize_fixed_bands(int num_bands, float min, float max);
 
     friend class ViewerImpl;
 };

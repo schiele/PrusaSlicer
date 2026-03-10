@@ -145,8 +145,8 @@ void ColorRange::reset()
 // preFlight: Compute frequency-based bands from collected value data.
 // Step 1: Merge nearby values (within ~2% tolerance) to prevent floating-point
 //         drift from creating false distinctions (e.g., 0.620 vs 0.630).
-// Step 2: If merged count <= palette_size: each merged group becomes a band.
-//         Otherwise: frequency-weighted quantile grouping into palette_size bands.
+// Step 2: If merged count <= 10: each merged group becomes a band.
+//         Otherwise: frequency-weighted quantile grouping into 10 bands.
 void ColorRange::finalize()
 {
     m_bands.clear();
@@ -187,10 +187,10 @@ void ColorRange::finalize()
     }
 
     const size_t n_groups = merged.size();
-    const size_t palette_size = m_palette.size();
+    const size_t max_bands = 10; // Target 10 legend bands; merge down if data exceeds this
     m_count = n_groups;
 
-    if (n_groups <= palette_size)
+    if (n_groups <= max_bands)
     {
         // Each merged group becomes its own band
         for (const auto &group : merged)
@@ -200,7 +200,7 @@ void ColorRange::finalize()
     }
     else
     {
-        // Frequency-weighted quantile grouping into palette_size bands.
+        // Frequency-weighted quantile grouping into max_bands bands.
         // Each band covers roughly equal total vertex count.
         size_t total_count = 0;
         for (const auto &group : merged)
@@ -208,7 +208,7 @@ void ColorRange::finalize()
             total_count += group.count;
         }
 
-        const size_t num_bands = palette_size;
+        const size_t num_bands = max_bands;
         size_t accumulated = 0;
         size_t band_idx = 0;
 
@@ -245,6 +245,34 @@ void ColorRange::finalize()
         {
             m_bands.push_back(current_band);
         }
+    }
+
+    m_finalized = true;
+}
+
+// preFlight: Create fixed evenly-spaced bands regardless of actual data distribution.
+// Used for fan speed (0-10%, 11-20%, ..., 91-100%) where consistent legend display matters.
+void ColorRange::finalize_fixed_bands(int num_bands, float min, float max)
+{
+    m_bands.clear();
+
+    const float band_width = (max - min) / static_cast<float>(num_bands);
+
+    for (int i = 0; i < num_bands; ++i)
+    {
+        ColorBand band;
+        band.low = (i == 0) ? min : min + i * band_width + 1.0f;
+        band.high = min + (i + 1) * band_width;
+        band.count = 0;
+
+        // Count vertices that fall in this band
+        for (const auto &[val, cnt] : m_value_counts)
+        {
+            if (val >= band.low && val <= band.high)
+                band.count += cnt;
+        }
+
+        m_bands.push_back(band);
     }
 
     m_finalized = true;

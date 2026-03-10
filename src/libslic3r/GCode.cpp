@@ -44,6 +44,7 @@
 #include "libslic3r/GCode/Travels.hpp"
 #include "Point.hpp"
 #include "Polygon.hpp"
+
 #include "PrintConfig.hpp"
 #include "ShortestPath.hpp"
 #include "TravelOptimization.hpp"
@@ -4182,7 +4183,8 @@ static void apply_notch_to_inner(GCode::SmoothPath &smooth_path, double start_ad
 // Apply seam notch to a single (external, inner) perimeter pair.
 // Modifies the external perimeter and optionally the first inner perimeter in-place.
 static void apply_seam_notch_pair(GCode::ExtrusionOrder::Perimeter &ext_perim,
-                                  GCode::ExtrusionOrder::Perimeter *inner_perim, const FullPrintConfig &config)
+                                  GCode::ExtrusionOrder::Perimeter *inner_perim, const FullPrintConfig &config,
+                                  int layer_index)
 {
     // Check corner sharpness at the seam — sharp corners naturally hide seams.
     // Extract the path directions arriving at and leaving the seam point, same vectors
@@ -4251,8 +4253,12 @@ static void apply_seam_notch_pair(GCode::ExtrusionOrder::Perimeter &ext_perim,
     if (inward.squaredNorm() < 0.5) // degenerate — can't determine direction
         return;
 
+    // Resolve alternating mode to Nip or Tuck based on layer parity
+    SeamNotchType notch_type = config.seam_type.value;
+    if (notch_type == sntAlternating)
+        notch_type = (layer_index % 2 == 0) ? sntNip : sntTuck;
+
     // Apply V-notch to external perimeter
-    const SeamNotchType notch_type = config.seam_type.value;
     apply_notch_to_external(ext_perim.smooth_path, half_width_scaled, depth_scaled, inward, notch_type);
 
     // For asymmetric modes, adjust the external perimeter's non-notched endpoint.
@@ -4327,7 +4333,8 @@ static void apply_seam_notch_pair(GCode::ExtrusionOrder::Perimeter &ext_perim,
 // Main entry point: apply seam notch to all external perimeters in an island.
 // Finds all external perimeters and matches each with its closest inner perimeter (index 1)
 // by seam start point proximity, then applies the notch to each pair.
-static void apply_seam_notch(std::vector<GCode::ExtrusionOrder::Perimeter> &perimeters, const FullPrintConfig &config)
+static void apply_seam_notch(std::vector<GCode::ExtrusionOrder::Perimeter> &perimeters, const FullPrintConfig &config,
+                             int layer_index)
 {
     using GCode::ExtrusionOrder::Perimeter;
 
@@ -4386,7 +4393,7 @@ static void apply_seam_notch(std::vector<GCode::ExtrusionOrder::Perimeter> &peri
 
         // Skip notch on single-perimeter regions (e.g. top_one_perimeter, only_one_perimeter_first_layer)
         if (best_inner != nullptr)
-            apply_seam_notch_pair(*ext, best_inner, config);
+            apply_seam_notch_pair(*ext, best_inner, config, layer_index);
     }
 }
 
@@ -4403,7 +4410,7 @@ std::string GCodeGenerator::extrude_perimeters(const PrintRegion &region,
     if (m_config.seam_type.value != sntRegular && m_config.perimeters.value > 1 && !m_config.spiral_vase &&
         !perimeters.empty())
     {
-        apply_seam_notch(perimeters, m_config);
+        apply_seam_notch(perimeters, m_config, m_layer_index);
     }
 
     std::string gcode{};
@@ -4800,39 +4807,13 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
         // 2. Layer parity (odd vs even layers have different interlocking patterns)
         // 3. What's below (reduce to 100% when over infill)
 
-        // Calculate overlap flow multiplier from interlock_perimeter_overlap setting.
-        // Interlocking shells are spaced apart; overlap adjusts bead size for bonding.
-        // Formula: overlap = width × (scale - 1), so scale = 1 + overlap/width
-        // Flow scales as scale², so: overlap_flow = (1 + overlap/width)²
-        // Positive = fatter beads (more overlap), Negative = thinner beads (gaps)
-        double overlap_flow_multiplier = 1.0;
-        const auto &overlap_setting = m_config.interlock_perimeter_overlap;
-        if (overlap_setting.value != 0 && base_width > 0)
-        {
-            double overlap_amount;
-            if (overlap_setting.percent)
-            {
-                // Percentage of layer height (ratio_over = "layer_height")
-                overlap_amount = (overlap_setting.value / 100.0) * base_height;
-            }
-            else
-            {
-                // Absolute mm value
-                overlap_amount = overlap_setting.value;
-            }
-            // Convert overlap to flow multiplier (works for positive and negative)
-            double width_scale = 1.0 + (overlap_amount / base_width);
-            // Clamp to avoid zero or negative flow
-            width_scale = std::max(width_scale, 0.1);
-            overlap_flow_multiplier = width_scale * width_scale;
-        }
-
-        // Base interlocking flow rates (strength forced to 100%, overlap handles bonding)
-        // base=1.0, outer=1.5, main=2.0
-        // Overlap multiplier is applied on top to fatten beads for bonding.
-        const double base_flow = 1.0 * overlap_flow_multiplier;
-        const double outer_flow_rate = 1.5 * overlap_flow_multiplier;
-        const double main_flow_rate = 2.0 * overlap_flow_multiplier;
+        // Base interlocking flow rates. Overlap bonding is handled geometrically
+        // in Fill.cpp via spacing reduction (like perimeter/perimeter overlap).
+        // Boundary flow (3 + 2*sqrt(2)) / 4 ~ 1.457: derived so outer edge aligns
+        // with 100% bead and gap to first 200% matches the 200%<->200% gap.
+        const double base_flow = 1.0;
+        const double outer_flow_rate = (3.0 + 2.0 * 1.41421356) / 4.0; // ~1.457
+        const double main_flow_rate = 2.0;
 
         // Determine if this is an odd layer
         const bool is_odd_layer = (m_layer->id() % 2) == 1;
@@ -4898,10 +4879,11 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
             segment_width_scales.resize(path.size(), scale_factor);
             segment_height_scales.resize(path.size(), scale_factor);
 
-            // Simple logic:
-            //   - Over interlocking below → full over-extrusion flow (for bonding)
-            //   - Over anything else (solid, bridge, sparse, perimeters) → 100% flow
-            // This ensures interlocking layers bond to each other, but don't over-extrude onto other features.
+            // Flow logic:
+            //   - Over interlocking below OR void (no feature) → full over-extrusion flow
+            //   - Over other features (solid, bridge, sparse, perimeters) → 100% flow
+            // Full flow over voids is needed because interlocking channels may not have
+            // material below but still need bonding with the layer above.
             const Layer::RoleIndex *index_below = nullptr;
             if (m_layer && m_layer->lower_layer)
             {
@@ -4910,7 +4892,7 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
 
             if (index_below)
             {
-                // Default to 100% flow (conservative), only over-extrude if over interlocking
+                // Default to 100% flow (conservative), only over-extrude when over interlocking
                 for (size_t i = 0; i < path.size(); ++i)
                 {
                     segment_flow_multipliers[i] = 1.0;
@@ -4921,8 +4903,8 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
                 // Initialize boundary crossing vectors - one list per segment
                 segment_boundary_crossings.resize(path.size());
 
-                // Check each point and detect boundary crossings
-                // PERF: Use fast point-in-polygon test against interlocking_zone instead of expensive query_role_at_point
+                // Check each point against the interlocking zone on the layer below.
+                // The zone covers beads + gaps via morphological close in Layer.cpp.
                 Point current_point = segment.points.empty() ? Point(0, 0) : segment.points[0];
                 bool current_over_interlocking = index_below->has_interlocking_zone() &&
                                                  Geometry::contains(index_below->interlocking_zone, current_point);
@@ -4931,7 +4913,6 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
                 {
                     Point end_point = path[i].point;
 
-                    // Check if endpoint is over interlocking zone on layer below (fast point-in-polygon)
                     bool end_over_interlocking = index_below->has_interlocking_zone() &&
                                                  Geometry::contains(index_below->interlocking_zone, end_point);
 

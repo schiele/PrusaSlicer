@@ -27,7 +27,9 @@
 #include "../ClipperUtils.hpp"
 #include "../Geometry.hpp"
 #include "../Layer.hpp"
+
 #include "../Print.hpp"
+#include "../PreciseWalls.hpp"
 #include "../PrintConfig.hpp"
 #include "../Surface.hpp"
 // for Arachne based infills
@@ -1639,30 +1641,46 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                 // Define spacing for BOTH layer types upfront for symmetry
                 const bool is_odd_layer = (this->id() % 2 == 1);
 
-                // Interlocking shell-to-shell overlap fraction.
-                // Zero overlap preserves the interlocking pattern geometry.
-                // Bead fattening for bonding is handled by interlock_perimeter_overlap in GCode.cpp.
-                constexpr double INTERLOCKING_OVERLAP_FRACTION = 0.0;
+                // Flow-scaled bead widths. GCode.cpp applies sqrt(flow) width scaling,
+                // so spacings must account for actual bead sizes, not nominal perimeter width.
+                const coord_t base_w = perimeter_scaled_width;                      // 1.0x flow
+                const coord_t main_w = coord_t(perimeter_scaled_width * sqrt(2.0)); // 2.0x flow
 
-                // External spacing for each layer type
-                const coord_t odd_external_spacing = coord_t(
-                    perimeter_scaled_width * (1.0 - INTERLOCKING_OVERLAP_FRACTION)); // 0% overlap (adjacent/touching)
-                const coord_t even_external_spacing = coord_t(
-                    perimeter_scaled_width * (2.0 - INTERLOCKING_OVERLAP_FRACTION)); // -100% overlap (full gap)
+                // Boundary bead flow: (3 + 2*sqrt(2)) / 4 ~ 1.457x
+                // Derived so that: (a) outer edge aligns with 100% bead's outer edge,
+                // and (b) gap to first 200% bead equals the 200%<->200% gap.
+                // This bead appears on shell 0 (even layers) and innermost (odd layers).
+                constexpr double BOUNDARY_FLOW = (3.0 + 2.0 * 1.41421356) / 4.0;
+                const coord_t boundary_w = coord_t(perimeter_scaled_width * sqrt(BOUNDARY_FLOW));
+                const coord_t boundary_shift = (boundary_w - base_w) / 2;
 
-                // Current layer's external spacing (alternates between layers)
+                // Overlap reduces centerline spacing for bonding (same as perimeter/perimeter overlap)
+                const auto &overlap_setting = layerm->region().config().interlock_perimeter_overlap;
+                const coord_t overlap_reduction = preFlight::PreciseWalls::calculate_perimeter_spacing(perimeter_flow,
+                                                                                                       overlap_setting);
+                const coord_t overlap_amount = perimeter_scaled_width - overlap_reduction;
+
+                // Adjacent: 100% and 200% beads just touch at 0% overlap
+                // Gapped = 2 * adjacent (maintains 2:1 ratio for interleaving of inner shells)
+                const coord_t adjacent = (base_w + main_w) / 2 - overlap_amount;
+                const coord_t gapped = 2 * adjacent;
+
+                // bead_width_0 = pw for BOTH layers so Athena's skeleton makes identical
+                // decisions. Even layer shell 0 (~146% boundary bead) is generated separately
+                // via polygon offset, not by Athena, so spacing_0 compensates for pw-based shell 0.
+                const coord_t odd_external_spacing = adjacent;
+                const coord_t even_external_spacing = gapped;
+
                 const coord_t external_spacing = is_odd_layer ? odd_external_spacing : even_external_spacing;
 
-                // Internal spacing (middle shells): gapped
-                const coord_t internal_spacing = coord_t(
-                    perimeter_scaled_width *
-                    (2.0 - INTERLOCKING_OVERLAP_FRACTION)); // -100% overlap (full gap between shells)
+                // Internal spacing (gapped): unchanged for perfect 200%<->200% interleaving
+                const coord_t internal_spacing = gapped;
 
-                // Innermost spacing: mirrors the opposite layer's external spacing for symmetry
-                // Odd layers get even layer's external spacing (gapped)
-                // Even layers get odd layer's external spacing (adjacent)
-                // This creates interlocking on BOTH outer and inner edges
-                const coord_t innermost_spacing = is_odd_layer ? even_external_spacing : odd_external_spacing;
+                // Innermost spacings equalize total span so innermost beads align between layers.
+                // Odd innermost (~146% bead) gets polygon offset by boundary_shift after Athena.
+                const coord_t odd_innermost_spacing = gapped - boundary_shift;
+                const coord_t even_innermost_spacing = adjacent - boundary_shift;
+                const coord_t innermost_spacing = is_odd_layer ? odd_innermost_spacing : even_innermost_spacing;
 
                 // Handle edge case: reduce shells if space is too constrained
                 BoundingBox sparse_bbox = get_extents(sparse_regions);
@@ -1677,91 +1695,10 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                         continue;
                 }
 
-                // The input polygons have coarse discretization from slicing (circles become ~8-32 vertex polygons).
-                // Athena uses Voronoi which inherently smooths, but our offset approach preserves vertices.
-                // Apply triple offset (morphological close+open) to smooth small irregularities,
-                // then simplify to clean up artifacts. This is what Athena does in WallToolPaths.cpp:585-594.
-                {
-                    const float epsilon = float(scale_(0.05)); // 50 micron smoothing
-                    ExPolygons smoothed;
-                    for (const ExPolygon &ep : sparse_regions)
-                    {
-                        // Triple offset: shrink, expand 2x, shrink (smooths corners and small features)
-                        ExPolygons step1 = offset_ex(ep, -epsilon);
-                        ExPolygons step2 = offset_ex(step1, epsilon * 2);
-                        ExPolygons step3 = offset_ex(step2, -epsilon);
-                        append(smoothed, step3);
-                    }
-                    // Simplify to remove unnecessary vertices (10 micron tolerance)
-                    sparse_regions = expolygons_simplify(smoothed, scale_(0.01));
-                }
-
-                // This approach bypasses Athena's skeleton-based generation which causes pinching.
-                //
-                // ITERATIVE ALGORITHM (like vector drawing tools):
-                // 1. Start with original shape (sparse_regions)
-                // 2. For each shell:
-                //    a. Offset boundary inward by step_offset
-                //    b. Offset holes outward by step_offset
-                //    c. Clip where they overlap
-                //    d. Create shell from clipped result
-                //    e. USE CLIPPED RESULT as input for next iteration
-                //
-                // INTERLOCKING PATTERN:
-                // ODD layers:  oo o o o o  (merged at outer, gapped toward inner)
-                //   - Shell 0: 1.0 flow, Shell 1: 50% str, rest: 100% str
-                //   - Spacing: half_width, adjacent, gapped, gapped, ...
-                // EVEN layers: o o o o oo  (gapped at outer, merged at inner)
-                //   - Shell N-1: 1.0 flow, Shell N-2: 50% str, rest: 100% str
-                //   - Spacing: half_width, gapped, ..., gapped, adjacent
-
-                // NOTE: Flow adjustments are handled in GCode generation (preFlight.GCode.cpp)
-                // Fill.cpp only handles geometry - all shells use base flow (1.0)
-
                 // Create an ExtrusionEntityCollection to hold all interlocking loops
                 ExtrusionEntityCollection interlocking_collection;
 
-                // Spacing constants (with overlap compensation)
                 const coord_t half_width = perimeter_scaled_width / 2;
-
-                // Position first shell with visual outer edge at sparse boundary (center at half_width).
-                // No overlap from interlocking side - let the perimeter's built-in overlap do the bonding.
-                const coord_t first_shell_offset = half_width;
-                const coord_t gapped_spacing = coord_t(
-                    perimeter_scaled_width * (2.0 - INTERLOCKING_OVERLAP_FRACTION)); // -100% overlap (full gap)
-                const coord_t adjacent_spacing = coord_t(
-                    perimeter_scaled_width * (1.0 - INTERLOCKING_OVERLAP_FRACTION)); // 0% overlap (touching)
-
-                // Build list of (step_offset, flow_ratio) for each shell
-                // step_offset is INCREMENTAL (from previous shell), not cumulative
-                // flow_ratio is always 1.0 - actual flow handled dynamically in GCode
-                std::vector<std::pair<coord_t, double>> shell_specs;
-
-                for (int shell_idx = 0; shell_idx < actual_shells; ++shell_idx)
-                {
-                    coord_t step_offset;
-
-                    if (shell_idx == 0)
-                    {
-                        step_offset = first_shell_offset; // Overlap with innermost normal perimeter
-                    }
-                    else if (shell_idx == 1)
-                    {
-                        step_offset = is_odd_layer ? adjacent_spacing : gapped_spacing;
-                    }
-                    else if (shell_idx == actual_shells - 1 && actual_shells > 2)
-                    {
-                        step_offset = is_odd_layer ? gapped_spacing : adjacent_spacing;
-                    }
-                    else
-                    {
-                        step_offset = gapped_spacing;
-                    }
-
-                    shell_specs.push_back({step_offset, 1.0}); // Flow handled in GCode
-                }
-
-                // Generate each shell using ITERATIVE geometric offsets
                 const bool prefer_clockwise = this->object()->print()->config().prefer_clockwise_movements;
 
                 // PROBLEM: Default generation order is depth-first:
@@ -1836,66 +1773,114 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                     all_loops.push_back(std::move(node));
                 };
 
-                // Generate all loops (depth-first order initially)
+                // Use Athena (skeletal trapezoidation) to generate interlocking shells.
+                // Athena naturally handles narrow channels by computing how many beads
+                // fit at each cross-section. No custom overlap detection needed.
+                //
+                // The spacing overrides control the interlocking pattern:
+                //   external_spacing = adjacent or gapped (alternates by layer parity)
+                //   internal_spacing = gapped (always)
+                //   innermost_spacing = mirrors opposite layer's external spacing
+                // Athena positions shell 0's center at bead_width_0/2 from the outline.
+                // No pre-offset needed - sparse_regions IS the boundary.
+                Polygons inset_outline = to_polygons(sparse_regions);
+                if (inset_outline.empty())
+                    continue;
+
+                // bead_width_0 = pw for BOTH layers so Athena's skeleton makes identical
+                // decisions. Even layer shell 0 is generated separately via polygon offset.
+                const coord_t bead_width_0 = perimeter_scaled_width;
+                Athena::WallToolPaths wall_tool_paths(
+                    inset_outline,
+                    bead_width_0,                      // bead_width_0: shell 0 position
+                    internal_spacing,                  // bead_width_x: internal shell spacing
+                    size_t(actual_shells),             // inset_count
+                    0,                                 // wall_0_inset
+                    layerm->layer()->height,           // layer_height
+                    this->object()->config(),          // print_object_config
+                    this->object()->print()->config(), // print_config
+                    perimeter_scaled_width,            // fixed_width_0: all shells use perimeter width
+                    perimeter_scaled_width,            // fixed_width_x: all shells use perimeter width
+                    external_spacing,                  // spacing_0: gap between shell 0 and shell 1 (alternates)
+                    internal_spacing,                  // spacing_x: internal spacing override
+                    innermost_spacing,                 // spacing_innermost: innermost spacing override
+                    (int) this->id(),                  // layer_id
+                    1.0,                               // min_bead_width_factor: no compression for interlocking
+                    10000);                            // thin_wall_snap_precision
+
+                const std::vector<Athena::VariableWidthLines> &toolpaths = wall_tool_paths.generate();
+
+                // Convert Athena's variable-width toolpaths to InterlockingPerimeter extrusions
                 ExPolygons last_shell_area;
-                ExPolygons current_regions = sparse_regions;
 
-                for (size_t shell_idx = 0; shell_idx < shell_specs.size(); ++shell_idx)
+                // Even layer shell 0: generate ~146% boundary bead via polygon offset
+                // instead of using Athena's shell 0 (which is at pw/2 for skeleton consistency).
+                // This places the boundary bead at boundary_w/2 from the outline.
+                if (!is_odd_layer)
                 {
-                    coord_t step_offset = shell_specs[shell_idx].first;
-                    double flow_ratio = shell_specs[shell_idx].second;
-
-                    ExPolygons next_regions;
-
-                    for (const ExPolygon &current : current_regions)
+                    Polygons boundary_shell = offset(inset_outline, -float(boundary_w) / 2);
+                    for (const Polygon &bp : boundary_shell)
                     {
-                        Polygons boundary_offset = offset(current.contour, -float(step_offset));
-                        Polygons holes_offset;
-                        if (!current.holes.empty())
-                        {
-                            holes_offset = offset(current.holes, -float(step_offset));
-                        }
-
-                        ExPolygons clipped_boundary;
-                        if (!boundary_offset.empty())
-                        {
-                            if (holes_offset.empty())
-                            {
-                                clipped_boundary = union_ex(boundary_offset);
-                            }
-                            else
-                            {
-                                Polygons expanded_holes_positive = holes_offset;
-                                for (Polygon &p : expanded_holes_positive)
-                                {
-                                    p.reverse();
-                                }
-                                clipped_boundary = diff_ex(boundary_offset, expanded_holes_positive);
-                            }
-
-                            for (const ExPolygon &ep : clipped_boundary)
-                            {
-                                collect_loop(ep.contour, flow_ratio, shell_idx, false);
-                                for (const Polygon &hole : ep.holes)
-                                {
-                                    Polygon hole_as_contour = hole;
-                                    hole_as_contour.reverse();
-                                    collect_loop(hole_as_contour, flow_ratio, shell_idx, true);
-                                }
-                            }
-                        }
-
-                        if (!clipped_boundary.empty())
-                        {
-                            append(next_regions, clipped_boundary);
-                        }
+                        if (bp.size() >= 3)
+                            collect_loop(bp, 1.0, 0, false);
                     }
+                }
 
-                    current_regions = std::move(next_regions);
-                    if (shell_idx == shell_specs.size() - 1)
+                for (size_t inset_idx = 0; inset_idx < toolpaths.size(); ++inset_idx)
+                {
+                    // Cap at requested shell count - Athena may generate extra beads
+                    if (inset_idx >= size_t(actual_shells))
+                        break;
+
+                    size_t shell_idx = inset_idx;
+
+                    // Skip Athena's shell 0 on even layers - we generated it above
+                    if (!is_odd_layer && inset_idx == 0)
+                        continue;
+
+                    const Athena::VariableWidthLines &lines = toolpaths[inset_idx];
+
+                    for (const Athena::ExtrusionLine &line : lines)
                     {
-                        last_shell_area = current_regions;
+                        if (line.empty() || line.size() < 2)
+                            continue;
+
+                        // Skip thin wall fills and open paths - interlocking only needs closed loops
+                        if (line.is_odd || !line.is_closed)
+                            continue;
+
+                        // Convert Athena ExtrusionLine to a Polygon for collect_loop
+                        Polygon poly;
+                        for (const Athena::ExtrusionJunction &j : line.junctions)
+                            poly.points.push_back(j.p);
+
+                        if (poly.size() < 3)
+                            continue;
+
+                        // Odd layer innermost shell is the ~146% boundary bead.
+                        // Shift it inward by boundary_shift so its outer edge aligns
+                        // with the 100% bead's outer edge on the even layer.
+                        if (is_odd_layer && shell_idx == size_t(actual_shells) - 1)
+                        {
+                            Polygons shifted = offset(Polygons{poly}, -float(boundary_shift));
+                            if (!shifted.empty())
+                                poly = shifted.front();
+                        }
+
+                        collect_loop(poly, 1.0, shell_idx, false);
                     }
+                }
+
+                // Compute infill boundary from actual innermost shell centerlines rather
+                // than Athena's getInnerContour(), which doesn't account for boundary bead
+                // repositioning (even shell 0 separate, odd innermost offset).
+                {
+                    Polygons innermost_shells;
+                    for (const LoopNode &node : all_loops)
+                        if (node.shell_idx == size_t(actual_shells) - 1)
+                            innermost_shells.push_back(node.polygon);
+                    if (!innermost_shells.empty())
+                        last_shell_area = union_ex(innermost_shells);
                 }
 
                 // Build containment tree: for each loop, find smallest containing parent OF SAME TYPE
@@ -2057,8 +2042,8 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                 // CRITICAL: Perimeters structure is Collection-of-Collections, must wrap in ExtrusionEntityCollection
                 if (!interlocking_collection.empty())
                 {
-                    // Chain interlocking perimeters by nearest-neighbor for minimal travel
-                    chain_and_reorder_extrusion_entities(interlocking_collection.entities);
+                    // Containment tree already ordered loops outside-in per region
+                    // with nearest-neighbor between roots. Do NOT re-sort.
 
                     // Wrap interlocking perimeters in collection (perimeters require nested collections)
                     ExtrusionEntityCollection *perimeter_collection = new ExtrusionEntityCollection();
@@ -2118,9 +2103,13 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                     }
                 }
 
-                // inner_area was calculated above in INTERLOCK-GEOMETRIC-OFFSET
+                // inner_area was calculated above from innermost shell centerlines.
                 // Use union_ex() to properly pair holes with their parent contours.
-                ExPolygons updated_sparse_regions = union_ex(inner_area);
+                // When shell count was reduced (area too narrow for all requested shells),
+                // consume the entire sparse region - no sparse infill in partially-filled zones.
+                ExPolygons updated_sparse_regions;
+                if (actual_shells >= num_interlocking_shells)
+                    updated_sparse_regions = union_ex(inner_area);
 
                 // The interlocking perimeters have consumed the outer area of sparse regions for THIS island.
                 // Update the stInternal surface_fill entries to remove the consumed area.

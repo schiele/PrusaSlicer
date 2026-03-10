@@ -51,7 +51,7 @@ class AppUpdateAvailableDialog : public MsgDialog
 {
 public:
     AppUpdateAvailableDialog(const Semver &ver_current, const Semver &ver_online, bool from_user, bool browser_on_next,
-                             const std::string &release_notes = "");
+                             const std::string &release_notes = "", const std::string &release_page = "");
     AppUpdateAvailableDialog(AppUpdateAvailableDialog &&) = delete;
     AppUpdateAvailableDialog(const AppUpdateAvailableDialog &) = delete;
     AppUpdateAvailableDialog &operator=(AppUpdateAvailableDialog &&) = delete;

@@ -1557,6 +1557,14 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
         return;
     }
 
+    // Interlocking perimeters use fixed bead widths/positions from the beading strategy.
+    // Skip all adjustments to prevent skeleton pinching in tight geometry.
+    if (beading.preserve_innermost_position)
+    {
+        beading.left_over = 0;
+        return;
+    }
+
     double add_middle_threshold = beading_strategy.getAddMiddleThreshold();
     double split_middle_threshold = beading_strategy.getSplitMiddleThreshold();
     coord_t expand_gap_threshold = coord_t(nominal_spacing * add_middle_threshold);

@@ -991,7 +991,8 @@ void TabbedSettingsPanel::UpdateSidebarVisibility()
                 for (size_t ri = 0; ri < group_sizer->GetItemCount(); ++ri)
                 {
                     wxSizerItem *row_item = group_sizer->GetItem(ri);
-                    if (row_item && row_item->IsShown())
+                    if (row_item && row_item->IsShown() &&
+                        !row_item->IsSpacer()) // Exclude spacers from visibility check (credit: topisani)
                     {
                         any_row_visible = true;
                         break;
@@ -1031,7 +1032,8 @@ void TabbedSettingsPanel::UpdateSidebarVisibility()
                                 for (size_t ri = 0; ri < sub_sizer->GetItemCount(); ++ri)
                                 {
                                     wxSizerItem *ri_item = sub_sizer->GetItem(ri);
-                                    if (ri_item && ri_item->IsShown())
+                                    if (ri_item && ri_item->IsShown() &&
+                                        !ri_item->IsSpacer()) // Exclude spacers (credit: topisani)
                                     {
                                         any_sub_row = true;
                                         break;

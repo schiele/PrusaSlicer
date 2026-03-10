@@ -27,6 +27,10 @@
 
 #include "libslic3r/Utils.hpp"
 
+#ifdef __linux__
+#include <sys/utsname.h>
+#endif
+
 #ifdef _WIN32
 #include <shellapi.h>
 #include <Shlobj_core.h>
@@ -494,15 +498,21 @@ void AppUpdater::priv::parse_version_string(const std::string &body)
         std::string section_name = section.first;
 
         // online release version info
-        if (section_name ==
+        // Determine platform section name
+        std::string platform_section;
 #ifdef _WIN32
-            "release:win64"
+        platform_section = "release:win64";
 #elif __APPLE__
-            "release:osx"
+        platform_section = "release:osx";
 #else
-            "release:linux"
+        {
+            // Use arch-specific section (e.g. release:linux-x86_64, release:linux-aarch64)
+            struct utsname uts;
+            if (uname(&uts) == 0)
+                platform_section = std::string("release:linux-") + uts.machine;
+        }
 #endif
-        )
+        if (section_name == platform_section)
         {
             for (const auto &data : section.second)
             {
@@ -525,6 +535,16 @@ void AppUpdater::priv::parse_version_string(const std::string &body)
                         new_data.action = AppUpdaterURLAction::AUUA_OPEN_IN_BROWSER;
                     }
                 }
+            }
+        }
+
+        // Release page URL (from release:url section)
+        if (section_name == "release:url")
+        {
+            for (const auto &data : section.second)
+            {
+                if (data.first == "url")
+                    new_data.release_page = data.second.data();
             }
         }
 

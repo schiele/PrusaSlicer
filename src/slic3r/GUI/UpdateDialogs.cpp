@@ -106,7 +106,8 @@ bool MsgUpdateSlic3r::disable_version_check() const
 wxSize AppUpdateAvailableDialog::AUAD_size;
 // AppUpdater
 AppUpdateAvailableDialog::AppUpdateAvailableDialog(const Semver &ver_current, const Semver &ver_online, bool from_user,
-                                                   bool browser_on_next, const std::string &release_notes)
+                                                   bool browser_on_next, const std::string &release_notes,
+                                                   const std::string &release_page)
     : MsgDialog(nullptr, _(L("App Update available")),
                 wxString::Format(_(L("New version of %s is available.\nDo you wish to download it?")), SLIC3R_APP_NAME))
 {
@@ -117,6 +118,20 @@ AppUpdateAvailableDialog::AppUpdateAvailableDialog(const Semver &ver_current, co
     versions->Add(new wxStaticText(this, wxID_ANY, ver_online.to_string()));
     content_sizer->Add(versions);
     content_sizer->AddSpacer(GetScaledVertSpacing());
+
+    // Link to the release page (from release:url section in version file)
+    if (!release_page.empty())
+    {
+        auto *link_release = new wxHyperlinkCtrl(this, wxID_ANY, _(L("View release page")), from_u8(release_page));
+        link_release->Bind(wxEVT_HYPERLINK,
+                           [](wxHyperlinkEvent &evt)
+                           {
+                               evt.Skip(false);
+                               wxLaunchDefaultBrowser(evt.GetURL());
+                           });
+        content_sizer->Add(link_release);
+        content_sizer->AddSpacer(GetScaledVertSpacing());
+    }
 
     // Release notes section - preFlight: use ScrollablePanel for themed scrollbar
     if (!release_notes.empty())
@@ -169,14 +184,6 @@ AppUpdateAvailableDialog::AppUpdateAvailableDialog(const Semver &ver_current, co
         content_sizer->Add(cbox);
     }
     content_sizer->AddSpacer(GetScaledVertSpacing());
-
-    if (browser_on_next)
-    {
-        content_sizer->Add(new wxStaticText(
-            this, wxID_ANY,
-            _L("Clicking \'Next\' will open a browser window where you can select which variant of preFlight you want to download.")));
-        content_sizer->AddSpacer(GetScaledVertSpacing());
-    }
 
     AUAD_size = content_sizer->GetSize();
 

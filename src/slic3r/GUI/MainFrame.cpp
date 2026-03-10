@@ -1053,6 +1053,7 @@ void MainFrame::init_tabpanel()
                         m_plater->Show();
                         Layout();
                     }
+                    m_modern_tabbar->EnableTab(ModernTabBar::TAB_PREVIEW, true);
                     m_modern_tabbar->SelectTab(ModernTabBar::TAB_PREVIEW);
                     m_plater->reslice();
                 }

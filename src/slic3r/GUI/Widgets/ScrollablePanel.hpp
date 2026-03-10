@@ -69,10 +69,11 @@ private:
     void OnScroll(wxScrollEvent &event);
     void OnMouseWheel(wxMouseEvent &event);
 
-    wxPanel *m_content;     // The content panel (can be taller than visible)
-    ScrollBar *m_scrollbar; // Custom scrollbar
-    int m_scrollPosition;   // Current scroll position in pixels
-    int m_contentHeight;    // Cached content height
+    wxPanel *m_content;        // The content panel (can be taller than visible)
+    ScrollBar *m_scrollbar;    // Custom scrollbar
+    int m_scrollPosition;      // Current scroll position in pixels
+    int m_contentHeight;       // Cached content height
+    int m_sumWheelRotation{0}; // Accumulator for partial wheel events (XWayland)
 
     wxDECLARE_EVENT_TABLE();
 };

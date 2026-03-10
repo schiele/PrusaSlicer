@@ -927,11 +927,15 @@ private:
         if (totalHeight <= visibleHeight)
             return;
 
-        int rotation = event.GetWheelRotation();
+        // Accumulate partial wheel rotations for XWayland compatibility (credit: topisani)
         int delta = event.GetWheelDelta();
         if (delta == 0)
             return;
-        int scrollAmount = (rotation / delta) * RowHeight() * 3;
+        m_sumWheelRotation += event.GetWheelRotation() * RowHeight() * 3;
+        int scrollAmount = m_sumWheelRotation / delta;
+        m_sumWheelRotation -= scrollAmount * delta;
+        if (scrollAmount == 0)
+            return;
 
         int maxScroll = std::max(0, totalHeight - visibleHeight);
         m_scroll_offset = std::max(0, std::min(m_scroll_offset - scrollAmount, maxScroll));
@@ -990,6 +994,7 @@ private:
     int m_selected{-1};
     int m_hovered{-1};
     int m_scroll_offset{0};
+    int m_sumWheelRotation{0}; // Accumulator for partial wheel events (XWayland)
 
     ScrollBar *m_scrollbar{nullptr};
 };

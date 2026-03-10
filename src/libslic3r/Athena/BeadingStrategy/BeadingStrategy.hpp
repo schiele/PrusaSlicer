@@ -45,6 +45,7 @@ public:
         std::vector<coord_t> bead_widths;        //! The line width of each bead from the outer inset inward
         std::vector<coord_t> toolpath_locations; //! The distance of the toolpath location of each bead from the outline
         coord_t left_over;                       //! The distance not covered by any bead; gap area.
+        bool preserve_innermost_position = false; // Interlocking: skip bead width adjustments
     };
 
     BeadingStrategy(coord_t bead_spacing, coord_t extrusion_width, double wall_split_middle_threshold,

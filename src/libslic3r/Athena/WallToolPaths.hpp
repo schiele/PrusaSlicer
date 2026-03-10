@@ -165,6 +165,7 @@ private:
     int debug_layer_id;                 //<! Layer ID for debug output (-1 = unknown)
     coord_t thin_wall_snap_precision;   //<! Snap grid for thin wall width rounding (nanometers)
     bool m_thin_contour_regeneration_attempted{false}; //<! Prevents infinite regeneration loops
+    size_t m_original_inset_count{0};                  //<! Original inset_count before thin-contour regeneration
 };
 
 } // namespace Slic3r::Athena

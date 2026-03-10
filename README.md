@@ -1,5 +1,15 @@
 <p align="center">
-  <img src="resources/icons/preFlight.png" alt="preFlight logo" width="600">
+  <img src="resources/images/preFlight.png" alt="preFlight logo" width="600">
+  <br><br>
+  <a href="resources/images/gui.png"><img src="resources/images/gui.png" alt="preFlight interface" width="800"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/oozebot/preFlight/releases"><img src="https://img.shields.io/github/v/release/oozebot/preFlight?label=Latest%20Release" alt="Latest Release"></a>
+  <a href="https://github.com/oozebot/preFlight/releases"><img src="https://img.shields.io/github/downloads/oozebot/preFlight/total?label=Downloads" alt="Downloads"></a>
+  <a href="https://github.com/oozebot/preFlight/stargazers"><img src="https://img.shields.io/github/stars/oozebot/preFlight?style=flat&label=Stars" alt="GitHub Stars"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/oozebot/preFlight" alt="License"></a>
+  <a href="https://donate.stripe.com/eVqfZbgoVf9y1c1aXe63K00"><img src="https://img.shields.io/badge/Donate-Support%20preFlight-blue?logo=stripe" alt="Donate"></a>
 </p>
 
 # preFlight
@@ -29,18 +39,19 @@ While preFlight is open-source and free for everyone, your support helps us main
 
 **Linux:** Download the AppImage from [GitHub Releases](https://github.com/oozebot/preFlight/releases), make it executable (`chmod +x`), and run. No installation required.
 
-**macOS:** Download the DMG from [GitHub Releases](https://github.com/oozebot/preFlight/releases). Requires macOS 11.0+ (Big Sur or later). Apple Silicon and Intel supported. *macOS builds are not yet digitally signed - you may need to right-click > Open on first launch.*
+**macOS:** Download the DMG from [GitHub Releases](https://github.com/oozebot/preFlight/releases). Requires macOS 11.0+ (Big Sur or later). Apple Silicon and Intel supported. All builds are signed and notarized by Apple.
 
 **Raspberry Pi:** RPi 5 running Raspberry Pi OS Trixie (aarch64). Download the aarch64 AppImage from [GitHub Releases](https://github.com/oozebot/preFlight/releases).
 
 ## Security & Authenticity
 
-To ensure the integrity of your installation and protect yourself, please following these security guidelines:
+To ensure the integrity of your installation and protect yourself, please follow these security guidelines:
 
 * **Official Downloads:** Only download preFlight binaries directly from our [GitHub Releases](https://github.com/oozebot/preFlight/releases) page. We do not distribute preFlight through third-party mirror sites.
 * **Verified Signature:** All official Windows binaries are digitally signed by **oozeBot, LLC** using an **Organization Validation (OV) Code Signing Certificate**. 
 * **Verification:** Before running the installer, right-click the file, select **Properties**, and navigate to the **Digital Signatures** tab. Ensure the "Name of signer" is explicitly listed as **oozeBot, LLC**.
 * **Safety First:** If you receive a "Windows protected your PC" (SmartScreen) warning on a file that is *not* signed by oozeBot, LLC, do not proceed with the installation and [report the issue](https://github.com/oozebot/preFlight/issues) immediately.
+* **macOS Notarization:** All official macOS DMGs are signed with an **Apple Developer ID** certificate and notarized by Apple. macOS will verify the signature and notarization automatically on first launch. If Gatekeeper warns that the app is from an unidentified developer, the DMG is not an official release.
 
 ## Why preFlight?
 
@@ -92,9 +103,9 @@ We forked Arachne to modernize it in several ways. Athena uses **fixed extrusion
 A novel approach to layer bonding using **spacing variation and compression bonding** - fundamentally different from "brick layers".
 
 **How it works:**
-- Alternates perimeter spacing between layers (X/Y axis manipulation)
-- Over-extrusion compresses material into horizontal gaps
-- Creates diagonal bonding surfaces as material compresses into gaps
+- Uses Athena's skeletal trapezoidation engine to generate interlocking shells - naturally handles narrow channels and bead count transitions
+- Three bead width tiers that alternate between layers, keeping inter-shell gaps uniform
+- Geometric centerline spacing for overlap bonding - no over-extrusion at shell boundaries
 - All beads printed at **constant layer height** (no Z-axis manipulation)
 
 **Key distinction from "brick layers":**
@@ -108,7 +119,6 @@ A novel approach to layer bonding using **spacing variation and compression bond
 - 5-15% strength increase (estimated)
 - No material or time penalty at 100% strength
 - Maintains dimensional accuracy (constant layer heights)
-- Requires Athena perimeter generator
 
 ---
 
@@ -148,8 +158,29 @@ Zero temp files during slicing:
 
 Strong supports under critical overhangs, easy-to-remove supports elsewhere. All on one print.
 
-### Paint-on Seams Line Drawing Mode
-- Draw straight seam lines between points instead of painting freehand. Perfect for placing seams along edges or in straight grooves. Includes Z-axis snapping (within 5°) for vertical lines.
+### Seam System
+
+A comprehensive seam management system for hiding layer start/stop points.
+
+**Nip and Tuck Seams:**
+
+Seam shaping modes that push the external perimeter inward at the seam point, creating a V-shaped channel that absorbs start/stop blobs. The first inner perimeter is automatically trimmed to accommodate the disturbance.
+
+| Mode | Behavior |
+|------|----------|
+| **Nip/Tuck** | Both start and end pushed inward - full V-notch |
+| **Nip** | Only start pushed inward - conceals the start point |
+| **Tuck** | Only end pushed inward - conceals the end point |
+| **Alt. Nip/Tuck** | Alternates Nip and Tuck per layer - distributes disturbance across both sides |
+
+Configurable notch width (1-3x extrusion width) and corner threshold angle. Automatically skipped at sharp corners where the geometry already hides the seam.
+
+**Painted Seam Alignment:**
+
+Bidirectional blending system for stable vertical and diagonal seam tracking on painted enforcer regions. Forward pass tracks diagonal seams while filtering vertex noise, backward pass straightens early-layer convergence lag.
+
+**Paint-on Seams Line Drawing Mode:**
+- Draw straight seam lines between points instead of painting freehand. Perfect for placing seams along edges or in straight grooves. Includes Z-axis snapping (within 5 degrees) for vertical lines.
 - Minimum brush size reduced to 0.1mm
 
 ### 2-opt Travel Optimization
@@ -162,7 +193,6 @@ Intelligent perimeter ordering eliminates crossing travel paths:
 ### Region-Aware Infill Ordering
 
 Intelligent print ordering minimizes travel:
-- Interlocking perimeters build containment tree
 - Concentric fill uses depth-first traversal
 - Sparse infill uses union-find clustering
 - 30-50% reduction in travel distance for gyroid on multi-island layers
@@ -217,6 +247,23 @@ Hover over the G-code window and scroll to scrub through commands in real-time. 
 - **Full Manual Fan Control** - Complete manual cooling control for each feature type
 - **Fan Spin-Up Options** - Configure fan spin-up timing for precise cooling with overhang perimeters and bridge infill
 - **Wipe Enhancements** - Improved wipe/retraction behavior
+
+### OrcaSlicer Profile Import
+
+Import printer, filament, and process profiles from `.orca_printer`, `.orca_filament`, and `.zip` bundles via File > Import > Import OrcaSlicer Bundle. Includes key mapping with value transforms, bed temperature plate selection, G-code macro translation, and a results dialog showing imported profiles, lossy mappings, dropped settings, and G-code warnings.
+
+### Preview Clipping Plane
+
+Right-click any object in sliced preview to activate an interactive cross-section plane that cuts through toolpaths and shell meshes. Useful for inspecting internal structure, verifying infill patterns, and diagnosing print issues before sending to the printer.
+
+### Customizable Sidebar
+
+Two layout modes to suit your workflow:
+
+- **Accordion** - Collapsible sections with inline settings editing. All groups visible in a single scrollable list.
+- **Tabbed** - Traditional tabbed layout as an alternative. Toggle between modes via Preferences > GUI.
+
+Per-option visibility checkboxes let you show or hide individual settings to keep the sidebar focused on what matters to you.
 
 ### Additional Features
 
