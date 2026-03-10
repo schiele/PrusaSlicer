@@ -35,13 +35,13 @@ While preFlight is open-source and free for everyone, your support helps us main
 
 **Windows, Linux, macOS, and Raspberry Pi.**
 
-**Windows:** [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe) - Install this first if preFlight won't launch.
+**Windows:** Download the portable zip from [GitHub Releases](https://github.com/oozebot/preFlight/releases) and extract. Requires the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe) - install this first if preFlight won't launch.
+
+**macOS:** Download the DMG from [GitHub Releases](https://github.com/oozebot/preFlight/releases). Requires macOS 11.0+ (Big Sur or later), Apple Silicon only. All builds are signed and notarized by Apple.
 
 **Linux:** Download the AppImage from [GitHub Releases](https://github.com/oozebot/preFlight/releases), make it executable (`chmod +x`), and run. No installation required.
 
-**macOS:** Download the DMG from [GitHub Releases](https://github.com/oozebot/preFlight/releases). Requires macOS 11.0+ (Big Sur or later). Apple Silicon and Intel supported. All builds are signed and notarized by Apple.
-
-**Raspberry Pi:** RPi 5 running Raspberry Pi OS Trixie (aarch64). Download the aarch64 AppImage from [GitHub Releases](https://github.com/oozebot/preFlight/releases).
+**Raspberry Pi:** RPi 5 running 64-bit Raspberry Pi OS (Bookworm or Trixie). Download the aarch64 .deb package from [GitHub Releases](https://github.com/oozebot/preFlight/releases).
 
 ## Security & Authenticity
 
