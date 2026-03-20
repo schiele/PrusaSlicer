@@ -530,6 +530,9 @@ private:
 #endif
     bool m_in_render;
 
+    // Real-time boolean preview for objects with negative volumes
+    std::unique_ptr<class CSGPreviewManager> m_csg_preview;
+
     wxTimer m_timer;
     LayersEditing m_layers_editing;
     Mouse m_mouse;
@@ -821,6 +824,7 @@ public:
 
     const GLGizmosManager &get_gizmos_manager() const { return m_gizmos; }
     GLGizmosManager &get_gizmos_manager() { return m_gizmos; }
+    CSGPreviewManager *get_csg_preview() { return m_csg_preview.get(); }
 
     void bed_shape_changed();
 

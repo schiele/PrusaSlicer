@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 128 128">
+  <!-- Generator: Adobe Illustrator 29.8.5, SVG Export Plug-In . SVG Version: 2.1.1 Build 2)  -->
+  <g id="Layer_4" display="none">
+    <rect width="128" height="128" fill="#7f7f7f"/>
+  </g>
+  <g id="Layer_1" display="none">
+    <path d="M37.15,90.51l-28.49,28.49h110V9l-28.49,28.49" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"/>
+    <path d="M37.15,90.52c6.79,6.79,16.16,10.98,26.52,10.98,20.71,0,37.5-16.79,37.5-37.5,0-10.36-4.2-19.73-10.98-26.52" fill="none" stroke="#eaa032" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"/>
+    <path d="M90.18,37.48c-6.79-6.79-16.16-10.98-26.52-10.98-20.71,0-37.5,16.79-37.5,37.5,0,10.36,4.2,19.73,10.98,26.52" fill="none" stroke="#eaa032" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"/>
+  </g>
+  <g id="Layer_5">
+    <circle cx="64" cy="64" r="55" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"/>
+    <line x1="64" y1="14" x2="64" y2="114" fill="none" stroke="#eaa032" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"/>
+    <line x1="14" y1="64" x2="114" y2="64" fill="none" stroke="#eaa032" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"/>
+  </g>
+</svg>

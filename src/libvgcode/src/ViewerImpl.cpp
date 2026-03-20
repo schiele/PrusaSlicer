@@ -1997,11 +1997,14 @@ void ViewerImpl::update_color_ranges()
     }
 
     const std::vector<float> times = m_layers.get_times(m_settings.time_mode);
+    // Bin layer times to integer seconds so sub-second variation
+    // doesn't create false distinctions in the legend (e.g. 10.39s and
+    // 10.61s both belong in the "10s" bucket).
     for (size_t i = 0; i < m_layer_time_range.size(); ++i)
     {
         for (float t : times)
         {
-            m_layer_time_range[i].update(round_to_bin(t));
+            m_layer_time_range[i].update(std::floor(t));
         }
     }
 

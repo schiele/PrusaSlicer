@@ -891,6 +891,11 @@ public:
             this->copy_timestamp(rhs);
         }
     }
+
+    // Assign painting data from source, remapping triangle indices via the provided mapping.
+    // mapping[new_face_idx] = old_face_idx. Only painted triangles present in the mapping are kept.
+    void assign_remapped(const TriangleSelector::TriangleSplittingData &source,
+                         const std::vector<int> &new_to_old_face_mapping);
     const TriangleSelector::TriangleSplittingData &get_data() const noexcept { return m_data; }
     bool set(const TriangleSelector &selector);
     indexed_triangle_set get_facets(const ModelVolume &mv, TriangleStateType type) const;

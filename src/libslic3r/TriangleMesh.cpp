@@ -469,6 +469,23 @@ std::vector<TriangleMesh> TriangleMesh::split() const
     return out;
 }
 
+std::vector<SplitResultMesh> split_mesh_with_mapping(const TriangleMesh &mesh)
+{
+    std::vector<SplitResultIts> its_results = its_split_with_mapping(mesh.its);
+    std::vector<SplitResultMesh> out;
+    out.reserve(its_results.size());
+    for (SplitResultIts &r : its_results)
+    {
+        SplitResultMesh sr;
+        sr.mesh = TriangleMesh(std::move(r.mesh));
+        if (sr.mesh.volume() < 0)
+            sr.mesh.flip_triangles();
+        sr.face_mapping = std::move(r.face_mapping);
+        out.emplace_back(std::move(sr));
+    }
+    return out;
+}
+
 void TriangleMesh::merge(const TriangleMesh &mesh)
 {
     its_merge(this->its, mesh.its);

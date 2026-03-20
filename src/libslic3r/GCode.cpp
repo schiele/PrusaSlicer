@@ -4426,7 +4426,13 @@ std::string GCodeGenerator::extrude_perimeters(const PrintRegion &region,
                                    ExtrusionRole::InterlockingPerimeter;
 
         if (!is_interlocking && perimeter.extrusion_entity->length() <= SMALL_PERIMETER_LENGTH)
-            speed = m_config.small_perimeter_speed.get_abs_value(m_config.perimeter_speed);
+        {
+            // Resolve percentage against the correct base speed for this perimeter type
+            double base_speed = perimeter.extrusion_entity->role().is_external_perimeter()
+                                    ? m_config.external_perimeter_speed.get_abs_value(m_config.perimeter_speed)
+                                    : m_config.perimeter_speed;
+            speed = m_config.small_perimeter_speed.get_abs_value(base_speed);
+        }
         gcode += this->extrude_smooth_path(perimeter.smooth_path, perimeter.extrusion_entity->is_loop(),
                                            comment_perimeter, speed, perimeter.wipe_offset);
         this->m_travel_obstacle_tracker.mark_extruded(perimeter.extrusion_entity,
@@ -4885,10 +4891,11 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
             // Full flow over voids is needed because interlocking channels may not have
             // material below but still need bonding with the layer above.
             const Layer::RoleIndex *index_below = nullptr;
+            const Layer::RoleIndex *index_above = nullptr;
             if (m_layer && m_layer->lower_layer)
-            {
                 index_below = &m_layer->get_role_index_for_layer(m_layer->lower_layer);
-            }
+            if (m_layer && m_layer->upper_layer)
+                index_above = &m_layer->get_role_index_for_layer(m_layer->upper_layer);
 
             if (index_below)
             {
@@ -4903,27 +4910,36 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
                 // Initialize boundary crossing vectors - one list per segment
                 segment_boundary_crossings.resize(path.size());
 
-                // Check each point against the interlocking zone on the layer below.
-                // The zone covers beads + gaps via morphological close in Layer.cpp.
+                // Check each point against the interlocking zone on layers below AND above.
+                // Elevated flow only when interlocking exists both below (for bonding) and
+                // above (so extra material is absorbed). The top layer of interlocking prints
+                // at 100% flow to avoid over-extrusion on the final interlocking surface.
+                const bool has_zone_below = index_below->has_interlocking_zone();
+                const bool has_zone_above = index_above && index_above->has_interlocking_zone();
+
                 Point current_point = segment.points.empty() ? Point(0, 0) : segment.points[0];
-                bool current_over_interlocking = index_below->has_interlocking_zone() &&
+                bool current_over_interlocking = has_zone_below &&
                                                  Geometry::contains(index_below->interlocking_zone, current_point);
 
                 for (size_t i = 0; i < path.size(); ++i)
                 {
                     Point end_point = path[i].point;
 
-                    bool end_over_interlocking = index_below->has_interlocking_zone() &&
-                                                 Geometry::contains(index_below->interlocking_zone, end_point);
+                    bool over_il_below = has_zone_below &&
+                                         Geometry::contains(index_below->interlocking_zone, end_point);
+                    bool over_il_above = has_zone_above &&
+                                         Geometry::contains(index_above->interlocking_zone, end_point);
 
-                    if (end_over_interlocking)
+                    if (over_il_below && over_il_above)
                     {
-                        // Over interlocking - use full over-extrusion for bonding
+                        // Interlocking both below and above - full over-extrusion for bonding
                         segment_flow_multipliers[i] = base_over_extrusion_multiplier;
                         segment_width_scales[i] = scale_factor;
                         segment_height_scales[i] = scale_factor;
                     }
-                    // Otherwise keep 100% flow (already set above)
+                    // Otherwise keep 100% flow (no interlocking below, or top layer of interlocking)
+
+                    bool end_over_interlocking = over_il_below && over_il_above;
 
                     // When sampling detects a transition, use binary search to find the EXACT boundary point.
                     // This is similar to fuzzy skin's visibility boundary detection - we track
@@ -5493,9 +5509,16 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
             {
                 segment_e_per_mm *= segment_flow_multipliers[dest_index];
 
-                // Update width/height metadata when flow changes (for segment splitting)
-                // Use base dimensions to avoid double-scaling
-                if (dest_index < segment_width_scales.size() && dest_index < segment_height_scales.size())
+                // Update width/height metadata when flow changes (for segment splitting).
+                // Skip if this segment has boundary crossings - the sub-segment code
+                // will emit its own comments to avoid stale values before the G1 move.
+                const bool has_crossings_here = !segment_boundary_crossings.empty() &&
+                                                path_attr.role == ExtrusionRole::InterlockingPerimeter &&
+                                                dest_index < segment_boundary_crossings.size() &&
+                                                !segment_boundary_crossings[dest_index].empty();
+
+                if (dest_index < segment_width_scales.size() && dest_index < segment_height_scales.size() &&
+                    !has_crossings_here)
                 {
                     float new_width = base_width * segment_width_scales[dest_index];
                     float new_height = base_height * segment_height_scales[dest_index];
@@ -5513,8 +5536,7 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
                                  float_to_string_decimal_point(m_last_height) + "\n";
                     }
 
-                    // For interlocking perimeters, emit debug comments showing flow and speed adjustments
-                    // Only emit when flow multiplier changes to avoid redundant output
+                    // For interlocking perimeters, emit comments showing flow and speed adjustments
                     if (path_attr.role == ExtrusionRole::InterlockingPerimeter &&
                         dest_index < segment_flow_multipliers.size())
                     {
@@ -5612,9 +5634,29 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
                             if (subseg_length <= 0)
                                 return;
 
-                            // Calculate flow for this sub-segment
-                            double flow = over_interlocking ? base_over_extrusion_multiplier : 1.0;
-                            double scale = over_interlocking ? std::sqrt(flow) : 1.0;
+                            // Calculate flow for this sub-segment.
+                            // Over-extrude only when interlocking exists both below AND above.
+                            // Top layer of interlocking gets 100% flow (no layer above to absorb extra).
+                            bool apply_elevated_flow = over_interlocking;
+                            if (apply_elevated_flow && m_layer && m_layer->upper_layer)
+                            {
+                                const auto &idx_above = m_layer->get_role_index_for_layer(m_layer->upper_layer);
+                                if (idx_above.has_interlocking_zone())
+                                {
+                                    Point mid((coord_t) ((from.x() + to.x()) / 2), (coord_t) ((from.y() + to.y()) / 2));
+                                    apply_elevated_flow = Geometry::contains(idx_above.interlocking_zone, mid);
+                                }
+                                else
+                                {
+                                    apply_elevated_flow = false;
+                                }
+                            }
+                            else if (apply_elevated_flow)
+                            {
+                                apply_elevated_flow = false;
+                            }
+                            double flow = apply_elevated_flow ? base_over_extrusion_multiplier : 1.0;
+                            double scale = apply_elevated_flow ? std::sqrt(flow) : 1.0;
                             float width = base_width * scale;
                             float height = base_height * scale;
                             double subseg_e_per_mm = e_per_mm * flow;

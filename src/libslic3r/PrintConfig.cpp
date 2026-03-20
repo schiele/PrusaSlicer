@@ -3236,6 +3236,26 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionInt(5));
 
+    def = this->add("interlock_solid_layers_top", coInt);
+    def->label = L("Above");
+    def->full_label = L("Solid layers above interlocking");
+    def->category = L("Layers and Perimeters");
+    def->tooltip = L("Number of solid layers between interlocking perimeters and a top surface. "
+                     "Ensures the interlocking pattern is fully hidden inside the object.");
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(3));
+
+    def = this->add("interlock_solid_layers_bottom", coInt);
+    def->label = L("Below");
+    def->full_label = L("Solid layers below interlocking");
+    def->category = L("Layers and Perimeters");
+    def->tooltip = L("Number of solid layers between interlocking perimeters and a bottom surface. "
+                     "Ensures the interlocking pattern is fully hidden inside the object.");
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(3));
+
     def = this->add("interlock_perimeter_strength", coPercent);
     def->label = L("Interlocking strength");
     def->category = L("Layers and Perimeters");
@@ -4615,22 +4635,23 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
-    def = this->add("narrow_solid_infill_concentric", coBool);
-    def->label = L("Narrow solid to concentric");
+    def = this->add("narrow_to_athena", coBool);
+    def->label = L("Narrow to Athena");
     def->category = L("Infill");
-    def->tooltip = L("Speed up printing of narrow solid infill areas by replacing zigzag patterns "
-                     "with concentric fill. Areas narrower than the Narrow threshold will be converted. "
-                     "Applies to internal solid, top solid, and bottom solid infill. Does not affect bridge infill. "
-                     "Has no effect when the fill pattern is already set to Concentric.");
+    def->tooltip = L("Replace zigzag patterns in narrow solid infill areas with Athena variable-width fill. "
+                     "Athena generates clean adaptive-width paths that follow the contour of narrow regions "
+                     "without zigzags or tight loop artifacts. Areas narrower than the Narrow threshold "
+                     "will be converted. Applies to internal solid, top solid, and bottom solid infill. "
+                     "Does not affect bridge infill.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
-    def = this->add("narrow_solid_infill_threshold", coFloat);
+    def = this->add("narrow_to_athena_threshold", coFloat);
     def->label = L("Narrow threshold");
     def->category = L("Infill");
-    def->tooltip = L(
-        "Solid infill areas (internal, top, and bottom) narrower than this many extrusion widths will use concentric pattern "
-        "instead of the configured fill pattern. Only applies when 'Narrow solid to concentric' is enabled.");
+    def->tooltip = L("Solid infill areas (internal, top, and bottom) narrower than this many extrusion widths will use "
+                     "Athena variable-width fill instead of the configured fill pattern. Only applies when "
+                     "'Narrow to Athena' is enabled.");
     def->sidetext = L("x extrusion width");
     def->min = 1.0;
     def->max = 10.0;
@@ -6072,9 +6093,13 @@ void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &va
     {
         try
         {
-            // fill_density was turned into a percent value
+            // fill_density is a percent (0-100). Ancient Slic3r stored it as a decimal (0-1).
+            // Values > 1 are already percentages (modern configs omitting the % sign).
+            // Values <= 1 are legacy decimals that need conversion.
             float v = boost::lexical_cast<float>(value);
-            value = boost::lexical_cast<std::string>(v * 100) + "%";
+            if (v > 0 && v <= 1)
+                v *= 100;
+            value = boost::lexical_cast<std::string>(v) + "%";
         }
         catch (boost::bad_lexical_cast &)
         {
@@ -6125,6 +6150,14 @@ void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &va
         // gcode_label_objects used to be a bool (the behavior was nothing or "octoprint"), it is
         // Legacy: converted to enum.
         value = value == "1" ? "octoprint" : "disabled";
+    }
+    else if (opt_key == "narrow_solid_infill_concentric")
+    {
+        opt_key = "narrow_to_athena";
+    }
+    else if (opt_key == "narrow_solid_infill_threshold")
+    {
+        opt_key = "narrow_to_athena_threshold";
     }
     else if (opt_key == "octoprint_host")
     {

@@ -1559,8 +1559,9 @@ void GCodeProcessor::process_M207(const GCodeReader::GCodeLine &line)
     if (line.has_value('T', value))
         m_firmware_retraction.unretract_feedrate = value * MMMIN_TO_MMSEC; // Convert mm/min to mm/s
 
-    if (line.has_value('Z', value))
-        m_firmware_retraction.retract_zlift = value;
+    // Don't set retract_zlift from M207 Z. The slicer handles Z-lift via explicit G1 Z
+    // moves, so process_G10/G11 should not apply its own internal Z-lift on top of that.
+    // (Same reasoning as the config.retract_lift exclusion above in apply_config.)
 }
 
 void GCodeProcessor::reset()

@@ -2366,11 +2366,6 @@ void ObjectList::split()
 
     take_snapshot(_(L("Split to Parts")));
 
-    // Before splitting volume we have to remove all custom supports, seams, fuzzy skin and multi-material painting.
-    wxGetApp().plater()->clear_before_change_mesh(
-        obj_idx, _u8L("Custom supports, seams, fuzzy skin and multi-material painting were "
-                      "removed after splitting the object."));
-
     ModelProcessing::split(volume, nozzle_dmrs_cnt);
 
     (*m_objects)[obj_idx]->input_file.clear();
@@ -2383,8 +2378,7 @@ void ObjectList::split()
     // update printable state for new volumes on canvas3D
     wxGetApp().plater()->canvas3D()->update_instance_printable_state_for_object(obj_idx);
 
-    // After removing custom supports, seams, fuzzy skin, and multi-material painting, we have to update info about the object to remove information about
-    // custom supports, seams, fuzzy skin, and multi-material painting in the right panel.
+    // Update info items to reflect that custom supports were cleared (seams, fuzzy skin, MMU painting preserved).
     wxGetApp().obj_list()->update_info_items(obj_idx);
 }
 

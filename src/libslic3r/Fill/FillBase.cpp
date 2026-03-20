@@ -134,7 +134,27 @@ Polylines Fill::fill_surface(const Surface *surface, const FillParams &params)
     // Perform offset.
     // For bridges: bounding_width = original flow width, independent of line spacing
     // For non-bridges: bounding_width = spacing (normal behavior)
-    Slic3r::ExPolygons expp = offset_ex(surface->expolygon, float(scale_(this->overlap - 0.5 * this->bounding_width)));
+    float offset = float(scale_(this->overlap - 0.5 * this->bounding_width));
+    Slic3r::ExPolygons expp = offset_ex(surface->expolygon, offset);
+
+    // For solid fills, thin strips collapse under the standard 0.5*spacing offset.
+    // Retry with FillRectilinear's outer offset (0.05*spacing) so a single fill line
+    // can still be generated through the thin region.
+    if (params.full_infill())
+    {
+        double orig_area = std::abs(surface->expolygon.area());
+        double offset_area = 0;
+        for (const ExPolygon &ep : expp)
+            offset_area += std::abs(ep.area());
+        if (orig_area > 0 && offset_area < orig_area * 0.01)
+        {
+            constexpr float INFILL_OVERLAP_OVER_SPACING = 0.45f;
+            float thin_offset = float(
+                scale_(this->overlap - (0.5 - INFILL_OVERLAP_OVER_SPACING) * this->bounding_width));
+            expp = offset_ex(surface->expolygon, thin_offset);
+        }
+    }
+
     // Create the infills for each of the regions.
     Polylines polylines_out;
     for (ExPolygon &expoly : expp)
@@ -146,7 +166,25 @@ Polylines Fill::fill_surface(const Surface *surface, const FillParams &params)
 ThickPolylines Fill::fill_surface_advanced(const Surface *surface, const FillParams &params)
 {
     // Perform offset.
-    Slic3r::ExPolygons expp = offset_ex(surface->expolygon, float(scale_(this->overlap - 0.5 * this->bounding_width)));
+    float offset = float(scale_(this->overlap - 0.5 * this->bounding_width));
+    Slic3r::ExPolygons expp = offset_ex(surface->expolygon, offset);
+
+    // Same thin-strip retry as fill_surface
+    if (params.full_infill())
+    {
+        double orig_area = std::abs(surface->expolygon.area());
+        double offset_area = 0;
+        for (const ExPolygon &ep : expp)
+            offset_area += std::abs(ep.area());
+        if (orig_area > 0 && offset_area < orig_area * 0.01)
+        {
+            constexpr float INFILL_OVERLAP_OVER_SPACING = 0.45f;
+            float thin_offset = float(
+                scale_(this->overlap - (0.5 - INFILL_OVERLAP_OVER_SPACING) * this->bounding_width));
+            expp = offset_ex(surface->expolygon, thin_offset);
+        }
+    }
+
     // Create the infills for each of the regions.
     ThickPolylines thick_polylines_out;
     for (ExPolygon &expoly : expp)

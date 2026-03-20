@@ -261,6 +261,17 @@ bool PlaterDropTarget::OnDropFiles(wxCoord x, wxCoord y, const wxArrayString &fi
         }
     }
     bool res = m_plater.load_files(filenames);
+#ifdef __APPLE__
+    // The modal progress dialog during loading can disrupt the GL canvas state on macOS.
+    // Force a full refresh so the loaded model is visible immediately.
+    if (auto *canvas = m_plater.canvas3D())
+    {
+        canvas->ensure_gl_current();
+        canvas->reset_old_size();
+        canvas->set_as_dirty();
+    }
+    m_plater.GetParent()->Layout();
+#endif
     m_mainframe.update_title();
     return res;
 }
@@ -2503,11 +2514,6 @@ void Plater::priv::split_object()
     // into the same model object, thus causing duplicates when we call load_model_objects()
     Model new_model = model;
     ModelObject *current_model_object = new_model.objects[obj_idx];
-
-    // Before splitting object we have to remove all custom supports, seams, and multimaterial painting.
-    wxGetApp().plater()->clear_before_change_mesh(obj_idx,
-                                                  _u8L("Custom supports, seams and multimaterial painting were "
-                                                       "removed after splitting the object."));
 
     wxBusyCursor wait;
     ModelObjectPtrs new_objects;
@@ -7484,6 +7490,12 @@ void Plater::reslice()
     // Deselect all objects so Delete/Backspace in Preview won't remove platter objects
     deselect_all();
 
+    // Reset preview clipping plane so the slicing shell animation shows full objects
+    GCodeViewer &gcode_viewer = p->preview->get_canvas3d()->get_gcode_viewer();
+    if (gcode_viewer.get_preview_clip_controller().is_active())
+        gcode_viewer.get_preview_clip_controller().deactivate();
+    gcode_viewer.reset_preview_clipping_plane();
+
     // In case SLA gizmo is in editing mode, refuse to continue
     // and notify user that he should leave it first.
     if (canvas3D()->get_gizmos_manager().is_in_editing_mode(true))
@@ -8158,8 +8170,13 @@ void Plater::on_activate(bool active)
     }
     else
     {
+        // preFlight: Don't pause rendering during slicing - the shell progress
+        // animation and notification bar need continuous rendering.
+        // The idle loop naturally winds down after slicing completes.
+        if (is_slicing())
+            return;
+
         // preFlight: Pause rendering on both canvases when the application loses focus.
-        // No reason to burn GPU cycles while the user is in another application.
         // on_idle checks m_rendering_paused and returns immediately. Any state changes
         // (slicing completion, notifications) set m_dirty, which is picked up when
         // resume_rendering() re-enables on_idle and sets m_dirty = true.

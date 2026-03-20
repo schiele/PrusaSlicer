@@ -50,7 +50,9 @@
 #include "Arachne/utils/ExtrusionJunction.hpp"
 #include "libslic3r.h"
 #include "libslic3r/Flow.hpp"
+#include "libslic3r/Layer.hpp"
 #include "libslic3r/LayerRegion.hpp"
+#include "Print.hpp"
 #include "libslic3r/Line.hpp"
 #include "libslic3r/Print.hpp"
 
@@ -2893,6 +2895,428 @@ void PerimeterGenerator::process_athena(
     const coord_t spacing = (perimeters.size() == 1) ? ext_perimeter_spacing2 : perimeter_spacing;
     if (offset_ex(infill_contour, -float(spacing / 2.)).empty())
         infill_contour.clear(); // Infill region is too small, so let's filter it out.
+
+    // ===================== INTERLOCKING PERIMETER GENERATION =====================
+    // Interlocking shells are true perimeters generated from infill_contour (the area inside
+    // regular perimeters). They consume space from infill_contour, and infill fills whatever
+    // remains. The Visibility API excludes areas near top/bottom surfaces.
+    if (params.config.interlock_perimeters_enabled && !infill_contour.empty() && params.layer != nullptr)
+    {
+        const int num_interlocking_shells = params.config.interlock_perimeter_count.value;
+        if (num_interlocking_shells > 0)
+        {
+            // Visibility check: exclude areas near visible surfaces
+            const int margin_top = params.config.interlock_solid_layers_top.value;
+            const int margin_bottom = params.config.interlock_solid_layers_bottom.value;
+
+            // Polygon-level visibility: walk layers upward/downward from the current layer.
+            // At each step, areas of infill_contour that lose coverage become the visibility zone.
+            // Subtract the visibility zone from infill_contour to get il_regions.
+            // Interlocking naturally reduces its area near visible surfaces instead of
+            // disappearing entirely.
+            ExPolygons il_regions;
+            ExPolygons non_il_regions;
+            {
+                const auto &all_layers = params.layer->object()->layers();
+                const size_t current_idx = params.layer->id();
+
+                ExPolygons visibility_zone;
+
+                // Top: walk upward, track what parts of infill_contour lose coverage
+                if (margin_top > 0)
+                {
+                    ExPolygons covered = infill_contour;
+                    for (int k = 1; k <= margin_top && !covered.empty() && (current_idx + k) < all_layers.size(); ++k)
+                    {
+                        ExPolygons still_covered = intersection_ex(covered, all_layers[current_idx + k]->lslices);
+                        ExPolygons newly_exposed = diff_ex(covered, all_layers[current_idx + k]->lslices);
+                        append(visibility_zone, newly_exposed);
+                        covered = std::move(still_covered);
+                    }
+                    // Ran out of layers = top of object, everything remaining is visible
+                    if (!covered.empty() && (current_idx + margin_top) >= all_layers.size())
+                        append(visibility_zone, covered);
+                }
+
+                // Bottom: walk downward
+                if (margin_bottom > 0)
+                {
+                    ExPolygons covered = infill_contour;
+                    for (int k = 1; k <= margin_bottom && !covered.empty() && current_idx >= static_cast<size_t>(k);
+                         ++k)
+                    {
+                        ExPolygons still_covered = intersection_ex(covered, all_layers[current_idx - k]->lslices);
+                        ExPolygons newly_exposed = diff_ex(covered, all_layers[current_idx - k]->lslices);
+                        append(visibility_zone, newly_exposed);
+                        covered = std::move(still_covered);
+                    }
+                    // Ran out of layers = bottom of object
+                    if (!covered.empty() && current_idx < static_cast<size_t>(margin_bottom))
+                        append(visibility_zone, covered);
+                }
+
+                if (!visibility_zone.empty())
+                {
+                    visibility_zone = union_ex(visibility_zone);
+                    il_regions = diff_ex(infill_contour, visibility_zone);
+                    non_il_regions = intersection_ex(infill_contour, visibility_zone);
+                }
+                else
+                {
+                    il_regions = infill_contour;
+                }
+            }
+
+            // Opening filter: remove regions narrower than 3 shells (~4.47 perimeter widths)
+            {
+                const coord_t min_width = coord_t(perimeter_width * 4.47);
+                const coord_t opening = min_width / 2;
+                if (opening > 0 && !il_regions.empty())
+                    il_regions = offset_ex(offset_ex(il_regions, -opening), opening);
+                // No interlocking if il_regions is empty after opening filter
+            }
+
+            if (!il_regions.empty())
+            {
+                const bool is_odd_layer = (params.layer_id % 2 == 1);
+
+                // Flow-scaled bead widths for interlocking pattern
+                const coord_t base_w = perimeter_width;
+                const coord_t main_w = coord_t(perimeter_width * sqrt(2.0));
+                constexpr double BOUNDARY_FLOW = (3.0 + 2.0 * 1.41421356) / 4.0;
+                const coord_t boundary_w = coord_t(perimeter_width * sqrt(BOUNDARY_FLOW));
+                const coord_t boundary_shift = (boundary_w - base_w) / 2;
+
+                // Interlocking overlap
+                const auto &il_overlap = params.config.interlock_perimeter_overlap;
+                const coord_t overlap_reduction =
+                    preFlight::PreciseWalls::calculate_perimeter_spacing(params.perimeter_flow, il_overlap);
+                const coord_t overlap_amount = perimeter_width - overlap_reduction;
+
+                // Shell spacings
+                const coord_t il_adjacent = (base_w + main_w) / 2 - overlap_amount;
+                const coord_t il_gapped = 2 * il_adjacent;
+                const coord_t il_external = is_odd_layer ? il_adjacent : il_gapped;
+                const coord_t il_internal = il_gapped;
+                const coord_t il_innermost = is_odd_layer ? (il_gapped - boundary_shift)
+                                                          : (il_adjacent - boundary_shift);
+
+                // Reduce shell count if space is too narrow
+                BoundingBox zone_bbox = get_extents(infill_contour);
+                coord_t min_dim = std::min(zone_bbox.size().x(), zone_bbox.size().y());
+                int actual_shells = num_interlocking_shells;
+                if (min_dim < num_interlocking_shells * perimeter_width * 2)
+                {
+                    actual_shells = min_dim / (perimeter_width * 2);
+                    if (actual_shells <= 0)
+                        goto skip_interlocking;
+                }
+
+                {
+                    Polygons il_outline = to_polygons(infill_contour);
+                    if (il_outline.empty())
+                        goto skip_interlocking;
+
+                    // Shell 0 bead width: wider boundary bead on even layers, standard on odd
+                    const coord_t il_bead_width_0 = is_odd_layer ? base_w : boundary_w;
+
+                    // Perimeter/perimeter overlap: expand outline so shell 0 overlaps
+                    // with the innermost regular perimeter by the same amount that
+                    // regular perimeters overlap each other.
+                    const coord_t perim_to_il_overlap = perimeter_width - perimeter_spacing;
+                    if (perim_to_il_overlap > 0)
+                        il_outline = offset(il_outline, float(perim_to_il_overlap));
+
+                    // Generate shells via Athena (boundary bead placement handled natively)
+                    Athena::WallToolPaths il_walls(il_outline, il_bead_width_0, il_internal, size_t(actual_shells), 0,
+                                                   params.layer_height, params.object_config, params.print_config,
+                                                   il_bead_width_0, perimeter_width, il_external, il_internal,
+                                                   il_innermost, params.layer_id, 1.0, 10000);
+                    const std::vector<Athena::VariableWidthLines> &il_paths = il_walls.generate();
+
+                    // Collect shells as ExtrusionLoop entities
+                    const bool prefer_cw = params.print_config.prefer_clockwise_movements;
+                    ExtrusionEntityCollection il_coll;
+
+                    // Helper to create an interlocking ExtrusionLoop from a Polygon
+                    auto make_il_loop = [&](const Polygon &poly, size_t shell_idx)
+                    {
+                        ExtrusionFlow sf(params.perimeter_flow.mm3_per_mm(), params.perimeter_flow.width(),
+                                         params.perimeter_flow.height());
+                        ExtrusionAttributes attribs(ExtrusionRole::InterlockingPerimeter, sf);
+                        attribs.perimeter_index = static_cast<uint16_t>(shell_idx);
+                        ExtrusionPath p(attribs);
+                        for (const Point &pt : poly.points)
+                            p.polyline.append(pt);
+                        if (p.polyline.first_point() != p.polyline.last_point())
+                            p.polyline.append(p.polyline.first_point());
+                        ExtrusionPaths paths;
+                        paths.push_back(std::move(p));
+                        ExtrusionLoop loop(std::move(paths));
+                        if (prefer_cw ? !loop.is_clockwise() : loop.is_clockwise())
+                            loop.reverse_loop();
+                        il_coll.append(std::move(loop));
+                    };
+
+                    // Visibility clipping: on transition layers, clip shells against
+                    // il_regions so interlocking never overlaps solid infill.
+                    // Shells entirely in il_regions stay as closed loops.
+                    // Shells crossing the boundary are clipped to open paths.
+                    // Shells entirely in the visibility zone are discarded.
+                    const bool need_visibility_clip = !non_il_regions.empty();
+
+                    for (size_t inset_idx = 0; inset_idx < il_paths.size() && inset_idx < size_t(actual_shells);
+                         ++inset_idx)
+                    {
+                        for (const Athena::ExtrusionLine &line : il_paths[inset_idx])
+                        {
+                            if (line.empty() || line.size() < 2 || line.is_odd || !line.is_closed)
+                                continue;
+                            Polygon poly;
+                            for (const Athena::ExtrusionJunction &j : line.junctions)
+                                poly.points.push_back(j.p);
+                            if (poly.size() < 3)
+                                continue;
+
+                            if (need_visibility_clip)
+                            {
+                                // Convert closed polygon to polyline for clipping
+                                Polyline shell_pl;
+                                for (const Point &pt : poly.points)
+                                    shell_pl.append(pt);
+                                shell_pl.append(poly.points.front());
+
+                                Polylines clipped = diff_pl(shell_pl, non_il_regions);
+                                if (clipped.empty())
+                                    continue; // Entirely in visibility zone
+
+                                // Rejoin segments split at the seam point. Clipping can split a
+                                // ring into arcs at the seam - rejoin them into continuous paths.
+                                // Uses fuzzy comparison and loops until no more joins possible.
+                                if (clipped.size() >= 2)
+                                {
+                                    const Point &seam = poly.points.front();
+                                    const double eps_sq = double(SCALED_EPSILON) * double(SCALED_EPSILON);
+                                    bool did_join;
+                                    do
+                                    {
+                                        did_join = false;
+                                        for (size_t a = 0; a < clipped.size() && !did_join; ++a)
+                                            for (size_t b = a + 1; b < clipped.size() && !did_join; ++b)
+                                            {
+                                                bool a_end =
+                                                    (clipped[a].last_point() - seam).cast<double>().squaredNorm() <
+                                                    eps_sq;
+                                                bool b_start =
+                                                    (clipped[b].first_point() - seam).cast<double>().squaredNorm() <
+                                                    eps_sq;
+                                                if (a_end && b_start)
+                                                {
+                                                    for (size_t p = 1; p < clipped[b].size(); ++p)
+                                                        clipped[a].append(clipped[b].points[p]);
+                                                    clipped.erase(clipped.begin() + b);
+                                                    did_join = true;
+                                                    break;
+                                                }
+                                                bool b_end =
+                                                    (clipped[b].last_point() - seam).cast<double>().squaredNorm() <
+                                                    eps_sq;
+                                                bool a_start =
+                                                    (clipped[a].first_point() - seam).cast<double>().squaredNorm() <
+                                                    eps_sq;
+                                                if (b_end && a_start)
+                                                {
+                                                    for (size_t p = 1; p < clipped[a].size(); ++p)
+                                                        clipped[b].append(clipped[a].points[p]);
+                                                    clipped.erase(clipped.begin() + a);
+                                                    did_join = true;
+                                                    break;
+                                                }
+                                            }
+                                    } while (did_join && clipped.size() >= 2);
+                                }
+
+                                // Check if the shell survived clipping intact (fully in il_regions)
+                                // A single polyline whose endpoints match = still a closed loop
+                                if (clipped.size() == 1 && clipped.front().size() >= 4 &&
+                                    clipped.front().first_point() == clipped.front().last_point())
+                                {
+                                    // Reconstruct as closed polygon
+                                    Polygon clipped_poly;
+                                    const auto &pts = clipped.front().points;
+                                    for (size_t i = 0; i + 1 < pts.size(); ++i)
+                                        clipped_poly.points.push_back(pts[i]);
+                                    make_il_loop(clipped_poly, inset_idx);
+                                }
+                                else
+                                {
+                                    // Emit clipped segments as open ExtrusionPaths.
+                                    // Discard fragments shorter than 3 bead widths.
+                                    const double min_segment_len = perimeter_width * 3.0;
+                                    for (const Polyline &seg : clipped)
+                                    {
+                                        if (seg.size() < 2 || seg.length() < min_segment_len)
+                                            continue;
+                                        ExtrusionFlow sf(params.perimeter_flow.mm3_per_mm(),
+                                                         params.perimeter_flow.width(), params.perimeter_flow.height());
+                                        ExtrusionAttributes attribs(ExtrusionRole::InterlockingPerimeter, sf);
+                                        attribs.perimeter_index = static_cast<uint16_t>(inset_idx);
+                                        ExtrusionPath p(attribs);
+                                        p.polyline = seg;
+                                        il_coll.append(std::move(p));
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // Interior layer: no clipping needed
+                                make_il_loop(poly, inset_idx);
+                            }
+                        }
+                    }
+
+                    // Interleave interlocking with regular perimeters per feature.
+                    // Features are defined by the contour rings of infill_contour (il_outline).
+                    // Each ring corresponds to an outer boundary contour or hole. Both perimeters
+                    // and interlocking are assigned to their nearest ring by minimum point-to-
+                    // polygon-edge distance, which is unambiguous (shells are parallel insets
+                    // of their source ring, so the distance is consistently small).
+                    if (!il_coll.empty() && !out_loops.entities.empty())
+                    {
+                        auto *perims_coll = dynamic_cast<ExtrusionEntityCollection *>(out_loops.entities.front());
+                        if (perims_coll && !perims_coll->entities.empty())
+                        {
+                            const size_t n_perims = perims_coll->entities.size();
+                            const size_t n_rings = il_outline.size();
+
+                            // Point-to-polygon minimum squared distance
+                            auto pt_to_poly_dist_sq = [](const Point &pt, const Polygon &poly) -> double
+                            {
+                                double min_d_sq = std::numeric_limits<double>::max();
+                                for (size_t i = 0; i < poly.size(); ++i)
+                                {
+                                    const Point &a = poly.points[i];
+                                    const Point &b = poly.points[(i + 1) % poly.size()];
+                                    Vec2d pa = (pt - a).cast<double>();
+                                    Vec2d ba = (b - a).cast<double>();
+                                    double len_sq = ba.squaredNorm();
+                                    double t = len_sq > 0 ? std::clamp(pa.dot(ba) / len_sq, 0.0, 1.0) : 0.0;
+                                    Vec2d proj = pa - t * ba;
+                                    min_d_sq = std::min(min_d_sq, proj.squaredNorm());
+                                }
+                                return min_d_sq;
+                            };
+
+                            // Assign entity to nearest ring using sampled points
+                            auto assign_to_ring = [&](const ExtrusionEntity *entity) -> size_t
+                            {
+                                Point pts[3] = {entity->first_point(), entity->middle_point(), entity->last_point()};
+                                double best_avg = std::numeric_limits<double>::max();
+                                size_t best_ring = 0;
+                                for (size_t r = 0; r < n_rings; ++r)
+                                {
+                                    double sum = 0;
+                                    for (const Point &pt : pts)
+                                        sum += pt_to_poly_dist_sq(pt, il_outline[r]);
+                                    if (sum < best_avg)
+                                    {
+                                        best_avg = sum;
+                                        best_ring = r;
+                                    }
+                                }
+                                return best_ring;
+                            };
+
+                            // Assign perimeters and interlocking to rings
+                            std::vector<size_t> perim_ring(n_perims);
+                            for (size_t i = 0; i < n_perims; ++i)
+                                perim_ring[i] = assign_to_ring(perims_coll->entities[i]);
+
+                            std::vector<size_t> il_ring(il_coll.entities.size());
+                            for (size_t j = 0; j < il_coll.entities.size(); ++j)
+                                il_ring[j] = assign_to_ring(il_coll.entities[j]);
+
+                            // Determine ring output order from the original perimeter order
+                            // (first occurrence of each ring in the perimeter list)
+                            std::vector<size_t> ring_order;
+                            std::vector<bool> ring_seen(n_rings, false);
+                            for (size_t i = 0; i < n_perims; ++i)
+                            {
+                                if (!ring_seen[perim_ring[i]])
+                                {
+                                    ring_seen[perim_ring[i]] = true;
+                                    ring_order.push_back(perim_ring[i]);
+                                }
+                            }
+                            // Include rings that only have interlocking (no perimeters)
+                            for (size_t r = 0; r < n_rings; ++r)
+                                if (!ring_seen[r])
+                                    ring_order.push_back(r);
+
+                            // Rebuild: perimeters + interlocking per ring/feature
+                            std::vector<ExtrusionEntity *> ordered;
+                            for (size_t r : ring_order)
+                            {
+                                // Regular perimeters for this ring (original order)
+                                for (size_t i = 0; i < n_perims; ++i)
+                                    if (perim_ring[i] == r)
+                                        ordered.push_back(perims_coll->entities[i]->clone());
+
+                                // Interlocking for this ring, ascending by inset index.
+                                // After the last inner perimeter the nozzle is near inset 0
+                                // (closest to perimeters), so start there and go deeper.
+                                std::vector<std::pair<uint16_t, size_t>> il_sorted; // (inset_idx, j)
+                                for (size_t j = 0; j < il_coll.entities.size(); ++j)
+                                    if (il_ring[j] == r)
+                                        il_sorted.push_back(
+                                            {[](const ExtrusionEntity *e) -> uint16_t
+                                             {
+                                                 if (auto *lp = dynamic_cast<const ExtrusionLoop *>(e))
+                                                     return lp->paths.empty() ? uint16_t(0)
+                                                                              : lp->paths.front()
+                                                                                    .attributes()
+                                                                                    .perimeter_index.value_or(0);
+                                                 if (auto *pp = dynamic_cast<const ExtrusionPath *>(e))
+                                                     return pp->attributes().perimeter_index.value_or(0);
+                                                 return uint16_t(0);
+                                             }(il_coll.entities[j]),
+                                             j});
+                                // Sort ascending by inset index (inset 0 nearest perimeters first)
+                                std::sort(il_sorted.begin(), il_sorted.end(),
+                                          [](const auto &a, const auto &b) { return a.first < b.first; });
+                                for (const auto &[idx, j] : il_sorted)
+                                    ordered.push_back(il_coll.entities[j]->clone());
+                            }
+
+                            perims_coll->clear();
+                            perims_coll->entities = std::move(ordered);
+                        }
+                    }
+
+                    // Update infill_contour: Athena's inner contour is the fill boundary
+                    // inside all generated shells. Intersect with il_regions (safe zone),
+                    // then add back non_il_regions (visibility zone gets solid fill).
+                    const Polygons &il_inner = il_walls.getInnerContour();
+                    if (!il_inner.empty())
+                    {
+                        ExPolygons new_inner = intersection_ex(union_ex(il_inner), il_regions);
+                        append(new_inner, non_il_regions);
+                        infill_contour = union_ex(new_inner);
+                    }
+                    else
+                    {
+                        // No inner contour - shells fill the entire area
+                        if (!non_il_regions.empty())
+                            infill_contour = union_ex(non_il_regions);
+                        else
+                            infill_contour.clear();
+                    }
+                }
+            }
+        }
+    }
+skip_interlocking:
+    // ===================== END INTERLOCKING =====================
 
     // create one more offset to be used as boundary for fill
     // we offset by half the perimeter spacing (to get to the actual infill boundary)

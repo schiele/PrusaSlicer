@@ -90,6 +90,7 @@ public:
         FdmSupports,
         Seam,
         FuzzySkin,
+        Align,
         MmSegmentation,
         Measure,
         Emboss,

@@ -24,6 +24,7 @@
 #include "MultipleBeds.hpp"
 
 #include <float.h>
+#include <unordered_map>
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/replace.hpp>
@@ -1718,6 +1719,81 @@ void FacetsAnnotation::reset()
 {
     m_data.triangles_to_split.clear();
     m_data.bitstream.clear();
+    this->touch();
+}
+
+void FacetsAnnotation::assign_remapped(const TriangleSelector::TriangleSplittingData &src,
+                                       const std::vector<int> &new_to_old_face_mapping)
+{
+    if (src.triangles_to_split.empty() || new_to_old_face_mapping.empty())
+    {
+        m_data.triangles_to_split.clear();
+        m_data.bitstream.clear();
+        m_data.used_states = src.used_states;
+        this->touch();
+        return;
+    }
+
+    // Build reverse lookup: old_face_idx -> new_face_idx.
+    std::unordered_map<int, int> old_to_new;
+    old_to_new.reserve(new_to_old_face_mapping.size());
+    for (int new_idx = 0; new_idx < static_cast<int>(new_to_old_face_mapping.size()); ++new_idx)
+        old_to_new[new_to_old_face_mapping[new_idx]] = new_idx;
+
+    // Collect remapped entries: (new_triangle_idx, src entry index) pairs
+    // so we can sort by new_triangle_idx and copy bitstream segments in order.
+    struct RemapEntry
+    {
+        int new_triangle_idx;
+        int src_entry_idx;
+    };
+    std::vector<RemapEntry> entries;
+    entries.reserve(src.triangles_to_split.size());
+
+    for (int i = 0; i < static_cast<int>(src.triangles_to_split.size()); ++i)
+    {
+        auto it = old_to_new.find(src.triangles_to_split[i].triangle_idx);
+        if (it != old_to_new.end())
+            entries.push_back({it->second, i});
+    }
+
+    if (entries.empty())
+    {
+        m_data.triangles_to_split.clear();
+        m_data.bitstream.clear();
+        m_data.used_states = src.used_states;
+        this->touch();
+        return;
+    }
+
+    // Sort by new triangle index to maintain the sorted-by-triangle_idx contract.
+    std::sort(entries.begin(), entries.end(),
+              [](const RemapEntry &a, const RemapEntry &b) { return a.new_triangle_idx < b.new_triangle_idx; });
+
+    // Build the new bitstream and triangles_to_split by copying segments from the source.
+    TriangleSelector::TriangleSplittingData new_data;
+    new_data.triangles_to_split.reserve(entries.size());
+    new_data.bitstream.reserve(src.bitstream.size());
+
+    for (const RemapEntry &entry : entries)
+    {
+        const auto &src_mapping = src.triangles_to_split[entry.src_entry_idx];
+        int seg_start = src_mapping.bitstream_start_idx;
+        int seg_end = (entry.src_entry_idx + 1 < static_cast<int>(src.triangles_to_split.size()))
+                          ? src.triangles_to_split[entry.src_entry_idx + 1].bitstream_start_idx
+                          : static_cast<int>(src.bitstream.size());
+
+        new_data.triangles_to_split.emplace_back(entry.new_triangle_idx, static_cast<int>(new_data.bitstream.size()));
+
+        // Copy the bitstream segment verbatim.
+        for (int b = seg_start; b < seg_end; ++b)
+            new_data.bitstream.push_back(src.bitstream[b]);
+    }
+
+    // Copy used_states from source (safe superset).
+    new_data.used_states = src.used_states;
+
+    m_data = std::move(new_data);
     this->touch();
 }
 

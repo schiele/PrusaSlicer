@@ -3785,6 +3785,18 @@ bool FillRectilinear::fill_surface_by_lines(const Surface *surface, const FillPa
     std::vector<SegmentedIntersectionLine> segs = slice_region_by_vertical_lines(poly_with_offset, n_vlines, x0,
                                                                                  line_spacing);
 
+    {
+        size_t n_segs_with_isect = 0;
+        for (const auto &s : segs)
+            if (!s.intersections.empty())
+                ++n_segs_with_isect;
+        dbg_fill_print("z=%.3f [FILL] LINES n_vlines=%zu segs_with_isect=%zu line_spacing=%d density=%.4f "
+                       "bbox_src=(%.2f,%.2f)-(%.2f,%.2f)\n",
+                       this->z, n_vlines, n_segs_with_isect, int(line_spacing), params.density,
+                       unscaled<double>(bounding_box_src.min.x()), unscaled<double>(bounding_box_src.min.y()),
+                       unscaled<double>(bounding_box_src.max.x()), unscaled<double>(bounding_box_src.max.y()));
+    }
+
     // Connect by horizontal / vertical links, classify the links based on link_max_length as too long.
     connect_segment_intersections_by_contours(poly_with_offset, segs, params, link_max_length);
 
@@ -3916,6 +3928,11 @@ bool FillRectilinear::fill_surface_by_lines(const Surface *surface, const FillPa
     // monotonic ordering (batch intersection_pl uses Clipper2 which scrambles input order).
     if (polylines_out.size() > n_polylines_out_initial && !poly_with_offset.expolygons_outer.empty())
     {
+        size_t pre_clip_count = polylines_out.size() - n_polylines_out_initial;
+        double pre_clip_length = 0;
+        for (size_t i = n_polylines_out_initial; i < polylines_out.size(); ++i)
+            pre_clip_length += unscale<double>(polylines_out[i].length());
+
         Polylines clipped_ordered;
         clipped_ordered.reserve(polylines_out.size() - n_polylines_out_initial);
         for (size_t i = n_polylines_out_initial; i < polylines_out.size(); ++i)
@@ -3928,6 +3945,13 @@ bool FillRectilinear::fill_surface_by_lines(const Surface *surface, const FillPa
         polylines_out.erase(polylines_out.begin() + n_polylines_out_initial, polylines_out.end());
         polylines_out.insert(polylines_out.end(), std::make_move_iterator(clipped_ordered.begin()),
                              std::make_move_iterator(clipped_ordered.end()));
+
+        size_t post_clip_count = polylines_out.size() - n_polylines_out_initial;
+        double post_clip_length = 0;
+        for (size_t i = n_polylines_out_initial; i < polylines_out.size(); ++i)
+            post_clip_length += unscale<double>(polylines_out[i].length());
+        dbg_fill_print("z=%.3f [FILL] CLIP pre=%zu(%.1fmm) post=%zu(%.1fmm) lost=%.1fmm\n", this->z, pre_clip_count,
+                       pre_clip_length, post_clip_count, post_clip_length, pre_clip_length - post_clip_length);
     }
 
 #ifdef SLIC3R_DEBUG
@@ -4044,13 +4068,20 @@ bool FillRectilinear::fill_surface_by_multilines(const Surface *surface, FillPar
     std::pair<float, Point> rotate_vector = this->_infill_direction(surface);
     for (const SweepParams &sweep : sweep_params)
     {
+        size_t before = fill_lines.size();
         // Rotate polygons so that we can work with vertical lines here
         float angle = rotate_vector.first + sweep.angle_base;
         make_fill_lines(ExPolygonWithOffset(poly_with_offset_base, -angle), rotate_vector.second.rotated(-angle), angle,
                         line_width + coord_t(SCALED_EPSILON), line_spacing, coord_t(scale_(sweep.pattern_shift)),
                         fill_lines);
+        dbg_fill_print("z=%.3f [FILL] MULTILINE sweep_angle=%.4f raw_lines=%zu spacing=%.4f density=%.6f "
+                       "line_spacing=%d refpt=(%d,%d)\n",
+                       this->z, double(angle), fill_lines.size() - before, this->spacing, params.density,
+                       int(line_spacing), rotate_vector.second.x(), rotate_vector.second.y());
     }
 
+    size_t total_raw = fill_lines.size();
+    size_t before_out = polylines_out.size();
     if (params.dont_connect() || fill_lines.size() <= 1)
     {
         if (fill_lines.size() > 1)
@@ -4058,10 +4089,16 @@ bool FillRectilinear::fill_surface_by_multilines(const Surface *surface, FillPar
                                                    coord_t(scale_(this->spacing) * 3 / params.density),
                                                    params.start_near ? &(*params.start_near) : nullptr);
         append(polylines_out, std::move(fill_lines));
+        dbg_fill_print("z=%.3f [FILL] MULTILINE_RESULT raw=%zu out=%zu (dont_connect)\n", this->z, total_raw,
+                       polylines_out.size() - before_out);
     }
     else
+    {
         connect_infill(std::move(fill_lines), poly_with_offset_base.polygons_outer_flat(),
                        get_extents(surface->expolygon.contour), polylines_out, this->spacing, params);
+        dbg_fill_print("z=%.3f [FILL] MULTILINE_RESULT raw=%zu connected=%zu\n", this->z, total_raw,
+                       polylines_out.size() - before_out);
+    }
 
     return true;
 }

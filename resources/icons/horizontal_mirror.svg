@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 128 128">
+  <!-- Generator: Adobe Illustrator 29.8.5, SVG Export Plug-In . SVG Version: 2.1.1 Build 2)  -->
+  <g id="Layer_2" display="none">
+    <rect width="128" height="128" fill="#7a7a7a" stroke="#000" stroke-miterlimit="10"/>
+  </g>
+  <g id="Layer_3">
+    <line x1="110.88" y1="64" x2="17.12" y2="64" fill="none" stroke="#eaa032" stroke-linecap="round" stroke-miterlimit="10" stroke-width="14"/>
+    <g>
+      <line x1="26.84" y1="81.5" x2="101.84" y2="81.5" fill="none" stroke="#fff" stroke-linecap="round" stroke-miterlimit="10" stroke-width="14"/>
+      <line x1="26.16" y1="119" x2="26.16" y2="81.5" fill="none" stroke="#fff" stroke-linecap="round" stroke-miterlimit="10" stroke-width="14"/>
+      <line x1="101.16" y1="119" x2="26.16" y2="119" fill="none" stroke="#fff" stroke-linecap="round" stroke-miterlimit="10" stroke-width="14"/>
+      <line x1="101.84" y1="81.5" x2="101.84" y2="119" fill="none" stroke="#fff" stroke-linecap="round" stroke-miterlimit="10" stroke-width="14"/>
+    </g>
+    <g>
+      <line x1="26.84" y1="46.5" x2="101.84" y2="46.5" fill="none" stroke="#fff" stroke-linecap="round" stroke-miterlimit="10" stroke-width="14"/>
+      <line x1="26.16" y1="9" x2="26.16" y2="46.5" fill="none" stroke="#fff" stroke-linecap="round" stroke-miterlimit="10" stroke-width="14"/>
+      <line x1="101.16" y1="9" x2="26.16" y2="9" fill="none" stroke="#fff" stroke-linecap="round" stroke-miterlimit="10" stroke-width="14"/>
+      <line x1="101.84" y1="46.5" x2="101.84" y2="9" fill="none" stroke="#fff" stroke-linecap="round" stroke-miterlimit="10" stroke-width="14"/>
+    </g>
+  </g>
+</svg>

@@ -35,6 +35,7 @@
 #include "libslic3r/PresetBundle.hpp"
 #include "3DBed.hpp"
 #include "3DScene.hpp"
+#include "CSGPreviewManager.hpp"
 #include "BackgroundSlicingProcess.hpp"
 #include "GLShader.hpp"
 #include "GUI.hpp"
@@ -1212,6 +1213,7 @@ GLCanvas3D::GLCanvas3D(wxGLCanvas *canvas, Bed3D &bed)
     , m_retina_helper(nullptr)
 #endif // ENABLE_RETINA_GL
     , m_in_render(false)
+    , m_csg_preview(std::make_unique<CSGPreviewManager>())
     , m_main_toolbar(GLToolbar::Normal, "Main")
     , m_undoredo_toolbar(GLToolbar::Normal, "Undo_Redo")
     , m_gizmos(*this)
@@ -2027,6 +2029,14 @@ void GLCanvas3D::render()
     GLModel::reset_statistics_counters();
 #endif // ENABLE_GLMODEL_STATISTICS
 
+    // Check for completed boolean preview computations.
+    // If results are ready, trigger a reload_scene which applies them safely
+    // before raycasters are registered.
+    if (m_csg_preview && m_csg_preview->process_completed())
+    {
+        reload_scene(true);
+    }
+
     const Size &cnv_size = get_canvas_size();
     // Probably due to different order of events on Linux/GTK2, when one switched from 3D scene
     // to preview, this was called before canvas had its final size. It reported zero width
@@ -2738,6 +2748,82 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
         auto manip = wxGetApp().obj_manipul();
         if (manip != nullptr)
             manip->set_dirty();
+    }
+
+    // Update CSG cache BEFORE applying previews: objects that lost their negative
+    // volumes (e.g. after undo) get their stale cache entry cleared here.
+    if (m_csg_preview && m_model != nullptr)
+    {
+        for (size_t obj_idx = 0; obj_idx < m_model->objects.size(); ++obj_idx)
+        {
+            const ModelObject *obj = m_model->objects[obj_idx];
+            if (obj != nullptr)
+                m_csg_preview->request_update(*obj, static_cast<int>(obj_idx));
+        }
+
+        // A previously applied CSG preview was cleared (e.g. undo removed negative volumes).
+        // GLVolumes still have the replaced mesh data - force a full scene rebuild to restore
+        // the original meshes from the model.
+        if (m_csg_preview->needs_scene_rebuild())
+        {
+            m_csg_preview->clear_rebuild_flag();
+            reload_scene(true, true);
+            return;
+        }
+    }
+
+    // Apply boolean preview results BEFORE registering raycasters.
+    // This ensures raycasters point to the correct (possibly replaced) mesh data.
+    if (m_csg_preview && m_model != nullptr)
+    {
+        std::set<int> replaced_objects;
+
+        for (GLVolume *v : m_volumes.volumes)
+        {
+            if (v == nullptr)
+                continue;
+
+            int obj_idx = v->object_idx();
+            int vol_idx = v->volume_idx();
+            if (obj_idx < 0 || !m_csg_preview->has_preview(obj_idx))
+                continue;
+
+            if (replaced_objects.find(obj_idx) == replaced_objects.end())
+            {
+                bool is_positive = true;
+                if (obj_idx < static_cast<int>(m_model->objects.size()))
+                {
+                    const ModelObject *obj = m_model->objects[obj_idx];
+                    if (obj != nullptr && vol_idx >= 0 && vol_idx < static_cast<int>(obj->volumes.size()))
+                        is_positive = obj->volumes[vol_idx]->is_model_part();
+                }
+
+                if (is_positive)
+                {
+                    const TriangleMesh *preview = m_csg_preview->get_preview_mesh(obj_idx);
+                    if (preview != nullptr && !preview->empty())
+                    {
+                        // The boolean result is in object-local space (all volume transforms
+                        // already baked in). But this GLVolume will apply its own volume
+                        // transform on top. To cancel that out, pre-transform the mesh
+                        // by the inverse of this volume's transform.
+                        TriangleMesh adjusted = *preview;
+                        Transform3d vol_inv = v->get_volume_transformation().get_matrix().inverse();
+                        adjusted.transform(vol_inv, true);
+
+                        v->model.reset();
+                        v->model.init_from(adjusted);
+                        v->mesh_raycaster = std::make_unique<GUI::MeshRaycaster>(
+                            std::make_shared<const TriangleMesh>(std::move(adjusted)));
+                        replaced_objects.insert(obj_idx);
+                    }
+                }
+            }
+            else
+            {
+                v->is_active = false;
+            }
+        }
     }
 
     // refresh volume raycasters for picking

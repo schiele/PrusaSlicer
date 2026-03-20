@@ -229,6 +229,16 @@ private:
     TriangleMeshStats m_stats;
 };
 
+// Result of splitting a TriangleMesh with face index mappings preserved.
+struct SplitResultMesh
+{
+    TriangleMesh mesh;
+    std::vector<int> face_mapping; // face_mapping[new_face_idx] = old_face_idx
+};
+
+// Split a TriangleMesh into connected components, preserving face index mappings for painting data remapping.
+std::vector<SplitResultMesh> split_mesh_with_mapping(const TriangleMesh &mesh);
+
 // Index of face indices incident with a vertex index.
 struct VertexFaceIndex
 {

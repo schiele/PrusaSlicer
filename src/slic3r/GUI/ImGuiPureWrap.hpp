@@ -73,6 +73,10 @@ bool image_button(ImTextureID user_texture_id, const ImVec2 &size, const ImVec2 
                   const ImVec4 &bg_col = ImVec4(0.0, 0.0, 0.0, 0.0),
                   const ImVec4 &tint_col = ImVec4(1.0, 1.0, 1.0, 1.0), ImGuiButtonFlags flags = 0);
 
+// Button with an SVG icon (from font atlas) and text label.
+// icon_left: true = icon on left side, false = icon on right side.
+bool icon_button(const wchar_t icon, const char *label, const ImVec2 &size = ImVec2(0, 0), bool icon_left = true);
+
 bool want_mouse();
 bool want_keyboard();
 bool want_text_input();

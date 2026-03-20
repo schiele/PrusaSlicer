@@ -214,6 +214,21 @@ namespace ImGui
     const wchar_t PrintRunning             = 0x2813;
     const wchar_t PrintFinished            = 0x2814;
     const wchar_t WarningMarkerDisabled    = 0x2815;
+
+    // preFlight align gizmo icons
+    const wchar_t FlipIcon                 = 0x2816;
+    const wchar_t Rotate90Icon             = 0x2817;
+    const wchar_t MirrorHIcon              = 0x2818;
+    const wchar_t MirrorVIcon              = 0x2819;
+    const wchar_t AlignLeftIcon            = 0x281A;
+    const wchar_t AlignRightIcon           = 0x281B;
+    const wchar_t AlignTopIcon             = 0x281C;
+    const wchar_t AlignBottomIcon          = 0x281D;
+    const wchar_t AlignCenterIcon          = 0x281E;
+    const wchar_t EmbossIcon               = 0x281F;
+    const wchar_t EngraveIcon              = 0x2820;
+    const wchar_t NewAlignIcon             = 0x2821;
+
     //    void MyFunction(const char* name, const MyMatrix44& v);
 }
 

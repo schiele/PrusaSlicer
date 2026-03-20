@@ -186,6 +186,18 @@ static const std::map<const wchar_t, std::string> font_icons_medium = {
     {ImGui::EditGCodeHovered, "edit_gcode_f"},
     {ImGui::RemoveTick, "colorchange_del"},
     {ImGui::RemoveTickHovered, "colorchange_del_f"},
+    {ImGui::FlipIcon, "flip"},
+    {ImGui::Rotate90Icon, "rotate_90"},
+    {ImGui::MirrorHIcon, "horizontal_mirror"},
+    {ImGui::MirrorVIcon, "vertical_mirror"},
+    {ImGui::AlignLeftIcon, "align_left"},
+    {ImGui::AlignRightIcon, "align_right"},
+    {ImGui::AlignTopIcon, "align_top"},
+    {ImGui::AlignBottomIcon, "align_bottom"},
+    {ImGui::AlignCenterIcon, "align_center"},
+    {ImGui::EmbossIcon, "weld"},
+    {ImGui::EngraveIcon, "subtract"},
+    {ImGui::NewAlignIcon, "new"},
 };
 
 static const std::map<const wchar_t, std::string> font_icons_extra_large = {

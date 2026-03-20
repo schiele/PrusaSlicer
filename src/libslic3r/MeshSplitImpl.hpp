@@ -149,6 +149,78 @@ struct SplitOutputFn
     SplitOutputFn &operator++() { return *this; };
 };
 
+// Result of splitting a mesh with face index mapping preserved.
+struct SplitResultIts
+{
+    indexed_triangle_set mesh;
+    std::vector<int> face_mapping; // face_mapping[new_face_idx] = old_face_idx
+};
+
+// Splits a mesh into connected components, preserving old-to-new face index mappings.
+template<class Its>
+std::vector<SplitResultIts> its_split_with_mapping(const Its &m)
+{
+    using namespace meshsplit_detail;
+
+    const indexed_triangle_set &its = ItsWithNeighborsIndex_<Its>::get_its(m);
+
+    struct VertexConv
+    {
+        size_t part_id = std::numeric_limits<size_t>::max();
+        size_t vertex_image;
+    };
+    std::vector<VertexConv> vidx_conv(its.vertices.size());
+
+    meshsplit_detail::NeighborVisitor visitor(its, meshsplit_detail::ItsWithNeighborsIndex_<Its>::get_index(m));
+
+    std::vector<SplitResultIts> results;
+    std::vector<size_t> facets;
+    for (size_t part_id = 0;; ++part_id)
+    {
+        // Collect all faces of the next connected component.
+        facets.clear();
+        visitor.visit(
+            [&facets](size_t idx)
+            {
+                facets.emplace_back(idx);
+                return true;
+            });
+        if (facets.empty())
+            break;
+
+        SplitResultIts result;
+        result.mesh.indices.reserve(facets.size());
+        result.mesh.vertices.reserve(std::min(facets.size() * 3, its.vertices.size()));
+        result.face_mapping.reserve(facets.size());
+
+        // Assign the facets to the new mesh, recording the old face index for each new face.
+        for (size_t face_id : facets)
+        {
+            const auto &face = its.indices[face_id];
+            Vec3i new_face;
+            for (size_t v = 0; v < 3; ++v)
+            {
+                auto vi = face(v);
+
+                if (vidx_conv[vi].part_id != part_id)
+                {
+                    vidx_conv[vi] = {part_id, result.mesh.vertices.size()};
+                    result.mesh.vertices.emplace_back(its.vertices[size_t(vi)]);
+                }
+
+                new_face(v) = vidx_conv[vi].vertex_image;
+            }
+
+            result.mesh.indices.emplace_back(new_face);
+            result.face_mapping.emplace_back(static_cast<int>(face_id));
+        }
+
+        results.emplace_back(std::move(result));
+    }
+
+    return results;
+}
+
 // Splits a mesh into multiple meshes when possible.
 template<class Its, class OutputIt>
 void its_split(const Its &m, OutputIt out_it)

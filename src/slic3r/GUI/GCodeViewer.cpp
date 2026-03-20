@@ -3093,22 +3093,17 @@ void GCodeViewer::render_legend(float &legend_height)
             const size_t palette_idx = (num_bands == 1) ? 0 : static_cast<size_t>(b) * palette_max / (num_bands - 1);
 
             std::string label;
-            if (bands[b].low == bands[b].high)
-            {
-                label = get_time_dhms(bands[b].low);
-                if (label == "0s")
-                    label = "< 1s";
-            }
+            std::string lo = get_time_dhms(bands[b].low);
+            std::string hi = get_time_dhms(bands[b].high);
+            if (lo == "0s")
+                lo = "< 1s";
+            if (hi == "0s")
+                hi = "< 1s";
+            // Show single value when low and high display identically
+            if (lo == hi)
+                label = lo;
             else
-            {
-                std::string lo = get_time_dhms(bands[b].low);
-                std::string hi = get_time_dhms(bands[b].high);
-                if (lo == "0s")
-                    lo = "< 1s";
-                if (hi == "0s")
-                    hi = "< 1s";
                 label = lo + " - " + hi;
-            }
 
             append_item(EItemType::Rect, libvgcode::convert(range.get_palette()[palette_idx]), label);
         }

@@ -1015,6 +1015,7 @@ PRINT_CONFIG_CLASS_DEFINE(
         (ConfigOptionFloatOrPercent, perimeter_perimeter_overlap))((ConfigOptionFloatOrPercent, bridge_infill_overlap))(
         (ConfigOptionFloatOrPercent, bridge_infill_perimeter_overlap))((ConfigOptionFloat, infill_speed))(
         (ConfigOptionBool, interlock_perimeters_enabled))((ConfigOptionInt, interlock_perimeter_count))(
+        (ConfigOptionInt, interlock_solid_layers_top))((ConfigOptionInt, interlock_solid_layers_bottom))(
         (ConfigOptionPercent, interlock_perimeter_strength))((ConfigOptionFloatOrPercent, interlock_perimeter_overlap))(
         (ConfigOptionInt, interlocking_perimeter_extruder))((ConfigOptionEnum<InterlockFlowDetection>,
                                                              interlock_flow_detection))
@@ -1031,13 +1032,13 @@ PRINT_CONFIG_CLASS_DEFINE(
         (ConfigOptionFloatOrPercent, solid_infill_extrusion_width))((ConfigOptionInt, solid_infill_every_layers))(
         (ConfigOptionEnum<InfillPattern>, solid_fill_pattern))((ConfigOptionFloatOrPercent, solid_infill_speed))
     // Detect thin walls.
-    ((ConfigOptionBool, thin_walls))((ConfigOptionFloatOrPercent, top_infill_extrusion_width))((ConfigOptionInt,
-                                                                                                top_solid_layers))(
-        (ConfigOptionFloat, top_solid_min_thickness))((ConfigOptionPercent, top_surface_flow_reduction))(
-        (ConfigOptionEnum<TopSurfaceVisibilityDetection>, top_surface_visibility_detection))((ConfigOptionBool,
-                                                                                              merge_top_solid_infills))(
-        (ConfigOptionBool, narrow_solid_infill_concentric))((ConfigOptionFloat, narrow_solid_infill_threshold))(
-        (ConfigOptionFloatOrPercent, top_solid_infill_speed))((ConfigOptionBool, wipe_into_infill))
+    ((ConfigOptionBool, thin_walls))((ConfigOptionFloatOrPercent, top_infill_extrusion_width))(
+        (ConfigOptionInt, top_solid_layers))((ConfigOptionFloat, top_solid_min_thickness))(
+        (ConfigOptionPercent, top_surface_flow_reduction))((ConfigOptionEnum<TopSurfaceVisibilityDetection>,
+                                                            top_surface_visibility_detection))(
+        (ConfigOptionBool, merge_top_solid_infills))((ConfigOptionBool, narrow_to_athena))(
+        (ConfigOptionFloat, narrow_to_athena_threshold))((ConfigOptionFloatOrPercent,
+                                                          top_solid_infill_speed))((ConfigOptionBool, wipe_into_infill))
     // Single perimeter.
     ((ConfigOptionEnum<TopOnePerimeterType>, top_one_perimeter_type))((ConfigOptionBool,
                                                                        only_one_perimeter_first_layer))

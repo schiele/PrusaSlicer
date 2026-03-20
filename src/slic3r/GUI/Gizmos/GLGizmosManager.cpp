@@ -30,6 +30,7 @@
 #include "slic3r/GUI/Gizmos/GLGizmoBrimEars.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoSVG.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoMeasure.hpp"
+#include "slic3r/GUI/Gizmos/GLGizmoAlign.hpp"
 
 #include "libslic3r/format.hpp"
 #include "libslic3r/Model.hpp"
@@ -121,12 +122,13 @@ bool GLGizmosManager::init()
     m_gizmos.emplace_back(new GLGizmoFdmSupports(m_parent, "fdm_supports.svg", 5));
     m_gizmos.emplace_back(new GLGizmoSeam(m_parent, "seam.svg", 6));
     m_gizmos.emplace_back(new GLGizmoFuzzySkin(m_parent, "fuzzy_skin_painting.svg", 7));
-    m_gizmos.emplace_back(new GLGizmoMmuSegmentation(m_parent, "mmu_segmentation.svg", 8));
-    m_gizmos.emplace_back(new GLGizmoMeasure(m_parent, "measure.svg", 9));
+    m_gizmos.emplace_back(new GLGizmoAlign(m_parent, "align.svg", 8));
+    m_gizmos.emplace_back(new GLGizmoMmuSegmentation(m_parent, "mmu_segmentation.svg", 9));
+    m_gizmos.emplace_back(new GLGizmoMeasure(m_parent, "measure.svg", 10));
     m_gizmos.emplace_back(new GLGizmoEmboss(m_parent));
     m_gizmos.emplace_back(new GLGizmoSVG(m_parent));
     m_gizmos.emplace_back(new GLGizmoSimplify(m_parent));
-    m_gizmos.emplace_back(new GLGizmoBrimEars(m_parent, "brim_ears.svg", 10));
+    m_gizmos.emplace_back(new GLGizmoBrimEars(m_parent, "brim_ears.svg", 11));
 
     m_common_gizmos_data.reset(new CommonGizmosDataPool(&m_parent));
 

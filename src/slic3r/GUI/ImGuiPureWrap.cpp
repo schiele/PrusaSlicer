@@ -302,6 +302,90 @@ bool image_button(ImTextureID user_texture_id, const ImVec2 &size, const ImVec2 
     return image_button_ex(id, user_texture_id, size, uv0, uv1, padding, bg_col, tint_col, flags);
 }
 
+bool icon_button(const wchar_t icon, const char *label, const ImVec2 &size, bool icon_left)
+{
+    ImGuiContext &g = *GImGui;
+    ImGuiWindow *window = g.CurrentWindow;
+    if (window->SkipItems)
+        return false;
+
+    const ImGuiStyle &style = g.Style;
+    const ImGuiIO &io = ImGui::GetIO();
+
+    // Get the icon glyph from the font
+    const ImFont *font = ImGui::GetFont();
+    const ImFontGlyph *glyph = font->FindGlyph(icon);
+    float icon_w = glyph ? (glyph->X1 - glyph->X0) : 0.f;
+    float icon_h = glyph ? (glyph->Y1 - glyph->Y0) : 0.f;
+
+    // Measure text
+    ImVec2 text_size = ImGui::CalcTextSize(label);
+    float spacing = (icon_w > 0.f && text_size.x > 0.f) ? style.ItemInnerSpacing.x : 0.f;
+    float content_w = icon_w + spacing + text_size.x;
+    float content_h = std::max(icon_h, text_size.y);
+
+    // Button size: use provided size or auto-fit
+    ImVec2 btn_size;
+    btn_size.x = (size.x > 0.f) ? size.x : (content_w + style.FramePadding.x * 2.f);
+    btn_size.y = (size.y > 0.f) ? size.y : (content_h + style.FramePadding.y * 2.f);
+
+    // Create the button (use icon codepoint as part of ID to ensure uniqueness)
+    ImGui::PushID(static_cast<int>(icon));
+    bool pressed = ImGui::Button("##icon_btn", btn_size);
+    ImGui::PopID();
+
+    // Draw icon and text on top of the button
+    ImVec2 btn_min = ImGui::GetItemRectMin();
+    ImVec2 btn_max = ImGui::GetItemRectMax();
+    ImDrawList *draw_list = window->DrawList;
+    ImU32 text_col = ImGui::GetColorU32(ImGuiCol_Text);
+
+    // Center content vertically in the button
+    float y_offset = (btn_size.y - content_h) * 0.5f;
+
+    if (icon_left)
+    {
+        // Center content horizontally
+        float x_start = btn_min.x + (btn_size.x - content_w) * 0.5f;
+
+        // Draw icon
+        if (glyph)
+        {
+            float icon_y = btn_min.y + y_offset + (content_h - icon_h) * 0.5f;
+            ImVec2 uv0(glyph->U0, glyph->V0);
+            ImVec2 uv1(glyph->U1, glyph->V1);
+            draw_list->AddImage(io.Fonts->TexID, ImVec2(x_start, icon_y), ImVec2(x_start + icon_w, icon_y + icon_h),
+                                uv0, uv1, text_col);
+        }
+
+        // Draw text
+        float text_x = x_start + icon_w + spacing;
+        float text_y = btn_min.y + y_offset + (content_h - text_size.y) * 0.5f;
+        draw_list->AddText(ImVec2(text_x, text_y), text_col, label);
+    }
+    else
+    {
+        float x_start = btn_min.x + (btn_size.x - content_w) * 0.5f;
+
+        // Draw text first
+        float text_y = btn_min.y + y_offset + (content_h - text_size.y) * 0.5f;
+        draw_list->AddText(ImVec2(x_start, text_y), text_col, label);
+
+        // Draw icon
+        if (glyph)
+        {
+            float icon_x = x_start + text_size.x + spacing;
+            float icon_y = btn_min.y + y_offset + (content_h - icon_h) * 0.5f;
+            ImVec2 uv0(glyph->U0, glyph->V0);
+            ImVec2 uv1(glyph->U1, glyph->V1);
+            draw_list->AddImage(io.Fonts->TexID, ImVec2(icon_x, icon_y), ImVec2(icon_x + icon_w, icon_y + icon_h), uv0,
+                                uv1, text_col);
+        }
+    }
+
+    return pressed;
+}
+
 bool combo(const std::string &label, const std::vector<std::string> &options, int &selection,
            ImGuiComboFlags flags /* = 0*/, float label_width /* = 0.0f*/, float item_width /* = 0.0f*/)
 {

@@ -1,5 +1,38 @@
 # preFlight Changelog
 
+## v0.9.9
+
+### Align to Face Gizmo
+- Added Align to Face gizmo for precise object alignment using face selection, snap points, and boolean operations (weld and subtract)
+  - Flip, scale/size with proportional lock, depth slider, position/nudge, Shift+drag snap-to-point with visual ring indicator
+
+### Interlocking Perimeters
+- Promoted interlocking perimeters to the true perimeter generator with full pipeline integration
+- Coverage-walking visibility system with clipping and travel ordering
+- Contour-ring feature ordering with seam joining
+- Reduced interlocking flow to 100% on top layer
+- New Solid layers above/below option to precisely start/stop interlocking inside the horizontal shells
+
+### Painting / Splitting
+- Preserved MMU painting, fuzzy skin, and seam data through Split to Parts and Split to Objects
+
+### Bug Fixes / Improvements
+- Fixed solid infill gaps between fill and innermost perimeters on bottom/top solid layers caused by progressive edge erosion during horizontal shell propagation
+- Fixed solid infill overflowing into object through-holes when hole removal failed to recognize real object features vs trimming artifacts
+- Fixed excessive solid infill consuming entire sparse regions on small objects at low infill densities - reduced absorption threshold from 16x to 4x line spacing squared
+- Added erosion test to solid hole removal so thin projected features from geometry above are filled solid instead of left as unfillable sparse gaps
+- Fixed large top/bottom surfaces being falsely classified as narrow, causing them to be skipped or have their fill pattern overridden
+- Fixed greedy polyline chaining silently dropping disconnected segment clusters, which caused missing infill on some layers with Adaptive Cubic
+- Fixed thin solid bridge anchor strips producing no fill by retrying with a smaller boundary offset
+- Replaced Narrow to Concentric with Narrow to Athena - narrow solid surfaces now use variable-width fill instead of concentric, eliminating zigzag and diamond artifacts at narrow transitions
+- Fixed small perimeter speed percentage resolving against internal perimeter speed for all perimeters - now correctly resolves against external perimeter speed for external perimeters
+- Reordered speed settings to show Perimeters, External perimeters, then Small perimeters - clarifies that Small perimeters applies to both
+- Fixed time-based legend showing false bands for near-identical layer times
+- Fixed preview gap rendering when M207 Z retract lift equals layer height
+- Fixed fill density field multiplying value by 100x when entered without a percent sign in the sidebar or loaded from configs without the % suffix
+- Fixed preview clipping plane persisting during slicing shell animation after reslice
+- Fixed slicing animation freezing when switching to another window during slice
+
 ## v0.9.8
 
 ### Interlocking Perimeters

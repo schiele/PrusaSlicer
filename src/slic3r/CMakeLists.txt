@@ -86,6 +86,10 @@ set(SLIC3R_GUI_SOURCES
     GUI/Gizmos/GLGizmoMmuSegmentation.hpp
     GUI/Gizmos/GLGizmoMeasure.cpp
     GUI/Gizmos/GLGizmoMeasure.hpp
+    GUI/Gizmos/GLGizmoAlign.cpp
+    GUI/Gizmos/GLGizmoAlign.hpp
+    GUI/CSGPreviewManager.cpp
+    GUI/CSGPreviewManager.hpp
     GUI/LibVGCode/LibVGCodeWrapper.hpp
     GUI/LibVGCode/LibVGCodeWrapper.cpp
     GUI/GLSelectionRectangle.cpp

@@ -1843,6 +1843,12 @@ void TabPrint::build()
     optgroup = page->new_optgroup_for_sidebar(L("Interlocking perimeters"));
     optgroup->append_single_option_line("interlock_perimeters_enabled", category_path + "interlock-perimeters");
     optgroup->append_single_option_line("interlock_perimeter_count", category_path + "interlock-count");
+    line = {L("Solid layers"), L("Number of solid layers between interlocking perimeters and visible surfaces. "
+                                 "Ensures the interlocking pattern is fully hidden inside the object.")};
+    line.label_path = category_path + "interlock-solid-layers";
+    line.append_option(optgroup->get_option("interlock_solid_layers_top"));
+    line.append_option(optgroup->get_option("interlock_solid_layers_bottom"));
+    optgroup->append_line(line);
     // interlock_perimeter_strength hidden - forced to 100% in code, overlap handles bonding
     optgroup->append_single_option_line("interlock_perimeter_overlap", category_path + "interlock-overlap");
     optgroup->append_single_option_line("interlock_flow_detection", category_path + "interlock-flow-detection");
@@ -1939,8 +1945,8 @@ void TabPrint::build()
     optgroup->append_single_option_line("automatic_infill_combination");
     optgroup->append_single_option_line("automatic_infill_combination_max_layer_height");
     optgroup->append_single_option_line("infill_every_layers", category_path + "combine-infill-every-x-layers");
-    optgroup->append_single_option_line("narrow_solid_infill_concentric", category_path + "narrow-solid-concentric");
-    optgroup->append_single_option_line("narrow_solid_infill_threshold", category_path + "narrow-solid-threshold");
+    optgroup->append_single_option_line("narrow_to_athena", category_path + "narrow-to-athena");
+    optgroup->append_single_option_line("narrow_to_athena_threshold", category_path + "narrow-to-athena-threshold");
 
     optgroup = page->new_optgroup_for_sidebar(L("Advanced"));
     optgroup->append_single_option_line("solid_infill_every_layers", category_path + "solid-infill-every-x-layers");
@@ -2032,8 +2038,8 @@ void TabPrint::build()
     page = add_options_page(L("Speed"), "time");
     optgroup = page->new_optgroup_for_sidebar(L("Speed for print moves"));
     optgroup->append_single_option_line("perimeter_speed");
-    optgroup->append_single_option_line("small_perimeter_speed");
     optgroup->append_single_option_line("external_perimeter_speed");
+    optgroup->append_single_option_line("small_perimeter_speed");
     optgroup->append_single_option_line("infill_speed");
     optgroup->append_single_option_line("solid_infill_speed");
     optgroup->append_single_option_line("top_solid_infill_speed");

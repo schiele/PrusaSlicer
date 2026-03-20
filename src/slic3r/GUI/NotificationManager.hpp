@@ -145,7 +145,9 @@ enum class NotificationType
     // Transient error on account communication - user is informed and has option to cancel (logout)
     AccountTransientRetry,
     // Failed to download secret repo archive
-    FailedSecretVendorUpdateSync
+    FailedSecretVendorUpdateSync,
+    // Boolean operation (weld/subtract) failed during align gizmo or CSG preview
+    BooleanOperationFailed
 };
 
 class NotificationManager

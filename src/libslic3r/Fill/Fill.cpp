@@ -180,9 +180,62 @@ static inline bool fill_type_monotonic(InfillPattern pattern)
     return pattern == ipMonotonic || pattern == ipMonotonicLines;
 }
 
-// ===================== FILL DEBUG HELPERS =====================
-// Set to true to enable fill pipeline debug output to stdout.
-static constexpr bool FILL_DEBUG = false;
+// FILL_DEBUG flag and dbg_fill_print() are in FillBase.hpp
+
+static const char *dbg_pattern(InfillPattern p)
+{
+    switch (p)
+    {
+    case ipRectilinear:
+        return "Rectilinear";
+    case ipMonotonic:
+        return "Monotonic";
+    case ipMonotonicLines:
+        return "MonotonicLines";
+    case ipAlignedRectilinear:
+        return "AlignedRectilinear";
+    case ipAlignedMonotonic:
+        return "AlignedMonotonic";
+    case ipGrid:
+        return "Grid";
+    case ipTriangles:
+        return "Triangles";
+    case ipStars:
+        return "Stars";
+    case ipCubic:
+        return "Cubic";
+    case ipLine:
+        return "Line";
+    case ipConcentric:
+        return "Concentric";
+    case ipHoneycomb:
+        return "Honeycomb";
+    case ip3DHoneycomb:
+        return "3DHoneycomb";
+    case ipGyroid:
+        return "Gyroid";
+    case ipHilbertCurve:
+        return "HilbertCurve";
+    case ipArchimedeanChords:
+        return "ArchimedeanChords";
+    case ipOctagramSpiral:
+        return "OctagramSpiral";
+    case ipAdaptiveCubic:
+        return "AdaptiveCubic";
+    case ipSupportCubic:
+        return "SupportCubic";
+    case ipSupportBase:
+        return "SupportBase";
+    case ipLightning:
+        return "Lightning";
+    case ipEnsuring:
+        return "Ensuring";
+    case ipZigZag:
+        return "ZigZag";
+    default:
+        return "UNKNOWN";
+    }
+}
 
 static const char *dbg_stype(SurfaceType t)
 {
@@ -211,17 +264,6 @@ static const char *dbg_stype(SurfaceType t)
     default:
         return "UNKNOWN";
     }
-}
-
-static void dbg_fill_print(const char *fmt, ...)
-{
-    if (!FILL_DEBUG)
-        return;
-    va_list args;
-    va_start(args, fmt);
-    vprintf(fmt, args);
-    va_end(args);
-    fflush(stdout);
 }
 
 static void dbg_fill_input(const Layer &layer)
@@ -464,13 +506,18 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                     // by perimeters but gets classified as a fill surface. Skip these very narrow surfaces
                     // for stTop and stBottom only (internal solid may legitimately need filling).
                     // Threshold: 1.5× extrusion width - if narrower, perimeters should cover it.
-                    // This always applies regardless of narrow_solid_infill_concentric setting.
+                    // This always applies regardless of narrow_to_athena setting.
                     if (surface.surface_type == stTop || surface.surface_type == stBottom)
                     {
                         const Flow solid_flow = layerm.flow(frSolidInfill);
                         const float skip_threshold = 1.5f; // Very narrow - skip entirely
 
-                        if (is_surface_narrow(surface, solid_flow, skip_threshold))
+                        // Don't skip large surfaces - narrow check is only for tiny slivers.
+                        // Area threshold: square of (threshold × extrusion width) ensures we only
+                        // skip surfaces that are genuinely sliver-shaped, not full layers.
+                        const double area_threshold = sqr(solid_flow.scaled_width() * skip_threshold) * 4.0;
+                        if (std::abs(surface.expolygon.area()) < area_threshold &&
+                            is_surface_narrow(surface, solid_flow, skip_threshold))
                         {
                             double a = std::abs(surface.expolygon.area()) * 1e-12;
                             dbg_fill_print("z=%.3f [FILL] SKIP_NARROW type=%-18s area=%8.4fmm2\n", layer.print_z,
@@ -480,39 +527,44 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                     }
 
                     // After pattern is selected, check if this is a narrow solid surface
-                    // that should use concentric instead of the configured pattern.
+                    // that should use Ensuring (Athena variable-width fill) instead of the
+                    // configured pattern. Ensuring generates single adaptive-width paths that
+                    // follow the contour - no zigzags like Rectilinear, no diamond artifacts
+                    // like Concentric with Athena at narrow transitions.
                     // Applies to stInternalSolid, stTop, and stBottom - does NOT affect bridge infill.
                     if ((surface.surface_type == stInternalSolid || surface.surface_type == stTop ||
                          surface.surface_type == stBottom) &&
-                        params.pattern != ipConcentric && region_config.narrow_solid_infill_concentric.value)
+                        params.pattern != ipEnsuring && region_config.narrow_to_athena.value)
                     {
                         const Flow solid_flow = layerm.flow(frSolidInfill);
-                        const float threshold = float(region_config.narrow_solid_infill_threshold.value);
+                        const float threshold = float(region_config.narrow_to_athena_threshold.value);
+                        const double athena_area_threshold = sqr(solid_flow.scaled_width() * threshold) * 4.0;
 
-                        if (is_surface_narrow(surface, solid_flow, threshold))
+                        if (std::abs(surface.expolygon.area()) < athena_area_threshold &&
+                            is_surface_narrow(surface, solid_flow, threshold))
                         {
-                            params.pattern = ipConcentric;
+                            params.pattern = ipEnsuring;
                         }
+                    }
+
+                    // Unconditional fallback: if a solid surface is so thin that it would
+                    // collapse under the fill offset (narrower than ~1.5x extrusion width),
+                    // force Ensuring regardless of the Narrow to Athena setting.
+                    // Without this, thin bridge anchor strips between perimeters and sparse
+                    // fill produce no extrusions, leaving a visible gap.
+                    if (params.pattern != ipEnsuring &&
+                        (surface.surface_type == stInternalSolid || surface.surface_type == stTop ||
+                         surface.surface_type == stBottom))
+                    {
+                        const Flow solid_flow = layerm.flow(frSolidInfill);
+                        const double fallback_area_threshold = sqr(solid_flow.scaled_width() * 1.5) * 4.0;
+                        if (std::abs(surface.expolygon.area()) < fallback_area_threshold &&
+                            is_surface_narrow(surface, solid_flow, 1.5f))
+                            params.pattern = ipEnsuring;
                     }
                 }
                 else if (params.density <= 0)
-                {
-                    // Even at 0% infill density, we need stInternal surfaces to define the sparse boundaries
-                    // where interlocking perimeters should be generated. Check if this region has interlocking enabled.
-                    const bool has_interlocking = region_config.interlock_perimeters_enabled &&
-                                                  region_config.interlock_perimeter_count > 0;
-
-                    // Only process stInternal surfaces at 0% density if interlocking is active
-                    if (!(has_interlocking && surface.surface_type == stInternal))
-                    {
-                        continue;
-                    }
-                    // If we reach here: interlocking is enabled, surface is stInternal, density is 0%
-                    // Allow it through so interlocking code can find the sparse regions
-                    // Set a tiny non-zero density to avoid division-by-zero in downstream calculations
-                    // This surface will be removed after interlocking processing, so the tiny value won't affect output
-                    params.density = 0.001f; // Effectively zero, but prevents div-by-zero
-                }
+                    continue;
 
                 if (is_bridge)
                 {
@@ -735,7 +787,7 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
         if (sf.surface.surface_type == stInternal && !sf.expolygons.empty() && sf.params.density < 99.f)
         {
             const float line_spacing = float(scale_(sf.params.spacing)) / (sf.params.density / 100.f);
-            sparse_min_area = double(line_spacing) * double(line_spacing) * 16.0;
+            sparse_min_area = double(line_spacing) * double(line_spacing) * 4.0;
             sparse_erode_radius = line_spacing * 0.75f;
             break;
         }
@@ -795,14 +847,40 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
             for (ExPolygon &ep : fill.expolygons)
                 ep.holes.erase(
                     std::remove_if(ep.holes.begin(), ep.holes.end(),
-                                   [sparse_min_area, &other_fill_polys](const Polygon &hole)
+                                   [sparse_min_area, sparse_erode_radius, &other_fill_polys,
+                                    &total_fill_boundary](const Polygon &hole)
                                    {
-                                       if (std::abs(hole.area()) >= sparse_min_area)
-                                           return false;
-                                       // Keep the hole if another fill occupies it
                                        Polygon contour = hole;
                                        contour.reverse();
-                                       return intersection_ex(ExPolygons{ExPolygon(contour)}, other_fill_polys).empty();
+                                       // Keep large holes unless they're too thin for sparse fill
+                                       if (std::abs(hole.area()) >= sparse_min_area)
+                                       {
+                                           if (sparse_erode_radius <= 0)
+                                               return false;
+                                           // Large area but possibly too thin - erosion test
+                                           ExPolygons eroded = opening_ex(ExPolygons{ExPolygon(contour)},
+                                                                          sparse_erode_radius);
+                                           if (!eroded.empty())
+                                               return false; // Thick enough for sparse fill
+                                           // Falls through: large area but too thin, evaluate further
+                                       }
+                                       // Keep hole if another fill occupies it
+                                       if (!intersection_ex(ExPolygons{ExPolygon(contour)}, other_fill_polys).empty())
+                                           return false;
+                                       // Keep hole if it extends outside the fill boundary (real model feature
+                                       // like a through-hole, not a trimming artifact)
+                                       ExPolygons outside = diff_ex(ExPolygons{ExPolygon(contour)},
+                                                                    total_fill_boundary);
+                                       if (!outside.empty())
+                                       {
+                                           double outside_area = 0;
+                                           for (const ExPolygon &o : outside)
+                                               outside_area += std::abs(o.area());
+                                           // If significant portion is outside fill boundary, it's a real feature
+                                           if (outside_area > std::abs(contour.area()) * 0.1)
+                                               return false;
+                                       }
+                                       return true;
                                    }),
                     ep.holes.end());
         }
@@ -951,9 +1029,9 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
 
             // Threshold: area that can't fit meaningful sparse fill.
             // line_spacing is the actual distance between sparse fill lines.
-            // A region needs at least ~4x4 grid of lines to be useful.
+            // A region needs at least a 2x2 grid of lines to be useful.
             const float line_spacing = float(scale_(sparse_fill.params.spacing)) / (sparse_fill.params.density / 100.f);
-            const double min_area = double(line_spacing) * double(line_spacing) * 16.0;
+            const double min_area = double(line_spacing) * double(line_spacing) * 4.0;
 
             ExPolygons to_absorb;
             ExPolygons to_keep;
@@ -1274,99 +1352,6 @@ void Layer::clear_fills()
     for (LayerSlice &lslice : lslices_ex)
         for (LayerIsland &island : lslice.islands)
             island.fills.clear();
-
-    // Interlocking perimeters are generated in make_fills() based on sparse infill boundaries.
-    // When infill changes (perimeter count, solid layers, etc.), sparse boundaries change and
-    // interlocking must be regenerated. Remove old interlocking to prevent duplicates on re-slice.
-    //
-    // Process each region separately (each has its own m_perimeters collection)
-    for (size_t region_id = 0; region_id < m_regions.size(); ++region_id)
-    {
-        LayerRegion *layerm = m_regions[region_id];
-
-        // Iterate islands in reverse order to safely remove without index invalidation issues
-        for (LayerSlice &lslice : this->lslices_ex)
-        {
-            for (auto island_it = lslice.islands.rbegin(); island_it != lslice.islands.rend(); ++island_it)
-            {
-                LayerIsland &island = *island_it;
-
-                // Only process islands in this region
-                if (island.perimeters.region() != region_id)
-                    continue;
-
-                // Check if this island has interlocking by examining the last entity in its range
-                uint32_t island_begin = *island.perimeters.begin();
-                uint32_t island_end = *island.perimeters.end();
-
-                if (island_end <= island_begin)
-                    continue; // Empty range
-
-                uint32_t last_index = island_end - 1;
-                if (last_index >= layerm->m_perimeters.entities.size())
-                    continue; // Invalid index
-
-                ExtrusionEntity *last_entity = layerm->m_perimeters.entities[last_index];
-
-                // Check if this is an interlocking collection
-                bool is_interlocking = false;
-                if (const ExtrusionEntityCollection *collection = dynamic_cast<const ExtrusionEntityCollection *>(
-                        last_entity))
-                {
-                    if (!collection->entities.empty())
-                    {
-                        if (const ExtrusionLoop *loop = dynamic_cast<const ExtrusionLoop *>(
-                                collection->entities.front()))
-                        {
-                            if (!loop->paths.empty() &&
-                                loop->paths.front().role() == ExtrusionRole::InterlockingPerimeter)
-                            {
-                                is_interlocking = true;
-                            }
-                        }
-                    }
-                }
-
-                if (!is_interlocking)
-                    continue; // No interlocking in this island
-
-                // Remove the interlocking collection
-                delete last_entity;
-                layerm->m_perimeters.entities.erase(layerm->m_perimeters.entities.begin() + last_index);
-
-                // Shrink this island's range by 1 (remove the interlocking)
-                island.perimeters = LayerExtrusionRange(region_id, ExtrusionRange(island_begin, island_end - 1));
-
-                // Shift all other islands' ranges back by 1 (inverse of insertion shift)
-                for (LayerSlice &other_lslice : this->lslices_ex)
-                {
-                    for (LayerIsland &other_island : other_lslice.islands)
-                    {
-                        if (&other_island == &island)
-                            continue; // Skip this island
-                        if (other_island.perimeters.region() != region_id)
-                            continue; // Different region
-
-                        uint32_t other_begin = *other_island.perimeters.begin();
-                        uint32_t other_end = *other_island.perimeters.end();
-
-                        // Only shift ranges that reference indices > last_index
-                        if (other_begin > last_index)
-                        {
-                            other_island.perimeters = LayerExtrusionRange(region_id, ExtrusionRange(other_begin - 1,
-                                                                                                    other_end - 1));
-                        }
-                        else if (other_end > last_index)
-                        {
-                            // Range spans the removed index - shouldn't happen, but handle gracefully
-                            other_island.perimeters = LayerExtrusionRange(region_id,
-                                                                          ExtrusionRange(other_begin, other_end - 1));
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive::Octree *support_fill_octree,
@@ -1379,772 +1364,6 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
     const auto resolution = this->object()->print()->config().gcode_resolution.value;
     const auto perimeter_generator = this->object()->config().perimeter_generator;
 
-    // Process each region to add interlocking shells at sparse boundaries
-
-    for (size_t region_id = 0; region_id < m_regions.size(); ++region_id)
-    {
-        LayerRegion *layerm = m_regions[region_id];
-
-        if (!layerm->region().config().interlock_perimeters_enabled)
-            continue;
-
-        // Get the interlocking count directly - no percentage calculation needed!
-        const int num_interlocking_shells = layerm->num_interlocking_shells();
-
-        if (num_interlocking_shells <= 0)
-            continue;
-
-        // When interlocking is enabled, extract sparse infill and bridge infill for interlocking perimeters.
-        //
-        // ARCHITECTURAL NOTE: discover_vertical_shells() creates TWO types of stInternalSolid:
-        // 1. Top/bottom solid support (expanding layers under stTop/above stBottom) - must PRESERVE
-        // 2. Vertical shell rings (perimeter-to-sparse gap fill) - should EXTRACT for interlocking
-        //
-        // We use detection heuristics to distinguish these types:
-        // - Proximity to stTop/stBottom surfaces (within N layers)
-        // - Area change ratio between adjacent layers (expanding/contracting = solid support)
-        // - Conservative fallback (when uncertain, preserve to avoid gaps in solid support)
-        //
-        // We extract:
-        // - stInternal (sparse infill) - primary target for interlocking
-        // - stInternalBridge/stBottomBridge - interlocking provides better support than bridge infill
-        // - stInternalSolid (ONLY vertical shell rings detected via heuristics)
-        //
-        // We preserve:
-        // - stInternalSolid (top/bottom solid support detected via heuristics)
-        // - stTop/stBottom - external surfaces
-
-        // Interlocking perimeters must be generated separately for each island to ensure proper island ordering
-        // and prevent duplicate printing. This follows the same architectural pattern as regular perimeters and infill:
-        // 1. Extract geometry per-island (using spatial intersection with island.boundary)
-        // 2. Generate extrusions for each island independently
-        // 3. Assign to islands directly (no global collections)
-        //
-        // This ensures each island prints completely (perimeters + interlocking + infill) before moving to the next,
-        // maintaining proper print order and preventing the bug where all islands reference the same unified collection.
-
-        // Iterate through all islands to generate interlocking for each independently
-        int island_counter = 0; // Track island index for debug
-
-        for (LayerSlice &lslice : this->lslices_ex)
-        {
-            for (LayerIsland &island : lslice.islands)
-            {
-                // Only process islands belonging to this region
-                if (island.perimeters.region() != region_id)
-                    continue;
-
-                island_counter++; // Increment for each island processed
-
-                // With the upstream fix in PrintObject.cpp (lines 1827-1841), vertical shell rings are no longer
-                // created when interlocking is enabled. Therefore, any stInternalSolid that exists is legitimate
-                // solid support (projected from stTop/stBottom surfaces) and should be preserved.
-                //
-                // We only need to extract:
-                // - stInternal (sparse infill) → for interlocking perimeters
-                // And preserve:
-                // - stInternalSolid (all legitimate solid support)
-                // - stInternalBridge/stBottomBridge (bridge infill - generates normally)
-                // - stTop/stBottom (external surfaces)
-                //
-                // CRITICAL: Extract sparse regions for THIS ISLAND ONLY using spatial intersection with island.boundary.
-                // This prevents mixing sparse regions from different islands into one unified collection.
-                ExPolygons sparse_regions;
-                ExPolygons solid_regions; // Collect all solid areas to subtract from sparse
-
-                // Process each surface type - extract only regions that intersect with THIS island
-                for (size_t sf_idx = 0; sf_idx < surface_fills.size(); sf_idx++)
-                {
-                    SurfaceFill &sf = surface_fills[sf_idx];
-
-                    if (sf.region_id != region_id)
-                        continue;
-
-                    if (sf.surface.surface_type == stInternal)
-                    {
-                        // Extract sparse infill for THIS island using spatial intersection
-                        ExPolygons island_sparse = intersection_ex(sf.expolygons, ExPolygons{island.boundary});
-                        append(sparse_regions, island_sparse);
-                    }
-                    else if (sf.surface.surface_type == stInternalBridge || sf.surface.surface_type == stBottomBridge)
-                    {
-                        // Bridge infill (stInternalBridge, stBottomBridge) has specific properties that shouldn't be replaced.
-                        // Collect bridge areas to subtract from interlocking sparse regions to avoid overlap.
-                        // Extract only bridge areas that intersect with THIS island
-                        ExPolygons island_bridge = intersection_ex(sf.expolygons, ExPolygons{island.boundary});
-                        append(solid_regions, island_bridge);
-                    }
-                    else if (sf.surface.surface_type == stInternalSolid)
-                    {
-                        // Preserve all stInternalSolid - upstream fix prevents vertical shell rings
-                        // Only legitimate solid support (projected from stTop/stBottom) and bridge anchors exist
-                        // Collect solid areas to subtract from interlocking sparse regions to avoid overlap
-                        // Extract only solid areas that intersect with THIS island
-                        ExPolygons island_solid = intersection_ex(sf.expolygons, ExPolygons{island.boundary});
-                        append(solid_regions, island_solid);
-                        continue; // Keep as solid infill
-                    }
-                }
-
-                // preFlight: Also collect stInternalVoid surfaces for interlocking on combined-infill layers.
-                // combine_infill() converts stInternal to stInternalVoid on intermediate (void) layers,
-                // but stInternalVoid is excluded from surface_fills (group_fills skips it). Without this,
-                // void layers have no sparse_regions and generate no interlocking perimeters at all.
-                // Interlocking perimeters are structural (like regular perimeters) and must be printed
-                // on every layer regardless of infill combination.
-                for (const Surface &surface : layerm->fill_surfaces())
-                {
-                    if (surface.surface_type == stInternalVoid)
-                    {
-                        ExPolygons island_void = intersection_ex(ExPolygons{surface.expolygon},
-                                                                 ExPolygons{island.boundary});
-                        append(sparse_regions, island_void);
-                    }
-                }
-
-                // Bridge infill (stInternalBridge) should be subtracted from sparse to avoid overlaps.
-                // Bridge support anchors (stInternalSolid created by bridge_over_infill) are NOT created when interlocking
-                // is enabled, so we don't need to worry about them here.
-                if (!solid_regions.empty())
-                {
-                    sparse_regions = diff_ex(sparse_regions, solid_regions);
-                }
-
-                // Surface extraction complete - sparse_regions contains stInternal + stInternalVoid (sparse infill) for THIS island
-                // All other surface types (stInternalSolid, stInternalBridge, stTop, stBottom) are preserved
-
-                // group_fills() can fragment sparse regions via diff_ex() when subtracting solid surfaces (e.g., top layer transition beads).
-                // Fragmented regions create jagged boundaries with excess vertices, causing Athena to fragment toolpaths.
-                // Merge fragments back into unified regions for clean, smooth interlocking perimeter generation.
-                // NOTE: This now merges fragments WITHIN this island only, not across islands.
-                if (sparse_regions.size() > 1)
-                {
-                    // Union all fragments with a small safety offset to merge adjacent pieces
-                    sparse_regions = union_safety_offset_ex(to_polygons(sparse_regions));
-                }
-
-                // The INTERLOCK-SUPPRESS-BRIDGE-SOLID logic in PrintObject.cpp can create degenerate
-                // polygons with zero area (collapsed lines/points). These cause Athena to generate
-                // malformed toolpaths (single diagonal lines instead of proper shells).
-                // Filter them out before interlocking generation.
-                const double min_area_threshold = scale_(scale_(0.1)); // 0.1 mm² minimum
-                size_t before_filter = sparse_regions.size();
-                sparse_regions.erase(std::remove_if(sparse_regions.begin(), sparse_regions.end(),
-                                                    [min_area_threshold](const ExPolygon &ep)
-                                                    { return ep.area() < min_area_threshold; }),
-                                     sparse_regions.end());
-
-                // Skip this island if no sparse regions remain
-                if (sparse_regions.empty())
-                {
-                    continue;
-                }
-
-                // Get flow parameters for shell width calculation
-                const Flow perimeter_flow = layerm->flow(frPerimeter);
-                const coord_t perimeter_scaled_width = perimeter_flow.scaled_width();
-
-                // Check minimum area before processing (5mm² minimum)
-                const coord_t min_area = scale_(scale_(5.0));
-                double total_area = 0;
-                for (const ExPolygon &ex : sparse_regions)
-                {
-                    total_area += ex.area();
-                }
-
-                if (total_area < min_area)
-                {
-                    continue;
-                }
-
-                // The sparse_regions boundary already has infill/perimeter overlap baked in from upstream
-                // (PerimeterGenerator.cpp). When interlocking is enabled, we want P/P overlap to control
-                // the overlap between innermost normal perimeter and outermost interlocking instead.
-                // So we adjust by (pp_overlap - infill_overlap) to replace infill_overlap with pp_overlap.
-
-                // Get P/P overlap amount (what we want for outer interlocking)
-                // Must match what the perimeter generator actually uses:
-                // - Arachne: hardcoded overlap of (1 - 0.25*PI) ≈ 21.46%
-                // - Athena: uses perimeter_perimeter_overlap setting
-                coord_t pp_overlap_amount = 0;
-                if (perimeter_generator == PerimeterGeneratorType::Arachne)
-                {
-                    // Arachne uses hardcoded overlap: (1 - 0.25*PI) ≈ 21.46% of perimeter width
-                    constexpr double arachne_overlap_percent = (1.0 - 0.25 * M_PI); // ≈ 0.2146
-                    pp_overlap_amount = coord_t(perimeter_scaled_width * arachne_overlap_percent);
-                }
-                else
-                {
-                    // Athena uses the perimeter_perimeter_overlap setting
-                    const ConfigOptionFloatOrPercent &pp_overlap = layerm->region().config().perimeter_perimeter_overlap;
-                    if (pp_overlap.percent)
-                    {
-                        pp_overlap_amount = coord_t(perimeter_scaled_width * (pp_overlap.value / 100.0));
-                    }
-                    else
-                    {
-                        pp_overlap_amount = coord_t(scale_(pp_overlap.value));
-                    }
-                }
-
-                // Get infill/perimeter overlap amount (what was already applied upstream)
-                const ConfigOptionFloatOrPercent &infill_overlap = layerm->region().config().infill_overlap;
-                coord_t infill_overlap_amount = 0;
-                if (infill_overlap.percent)
-                {
-                    infill_overlap_amount = coord_t(perimeter_scaled_width * (infill_overlap.value / 100.0));
-                }
-                else
-                {
-                    infill_overlap_amount = coord_t(scale_(infill_overlap.value));
-                }
-
-                // Net adjustment: replace infill_overlap with pp_overlap
-                // Positive = expand outward, negative = shrink inward
-                coord_t overlap_adjustment = pp_overlap_amount - infill_overlap_amount;
-
-                // Before expanding sparse for P/P overlap, extract any stTop surfaces to avoid conflicts.
-                // If we expand into top areas, it creates a ring of incorrectly classified top surfaces
-                // around the perimeter that shifts interlocking inward.
-                // CRITICAL: Extract only top surfaces that intersect with THIS island
-                ExPolygons top_surfaces;
-                for (const SurfaceFill &sf : surface_fills)
-                {
-                    if (sf.region_id == region_id && sf.surface.surface_type == stTop)
-                    {
-                        ExPolygons island_tops = intersection_ex(sf.expolygons, ExPolygons{island.boundary});
-                        append(top_surfaces, island_tops);
-                    }
-                }
-
-                // Save original sparse_regions before adjustment (needed for consumed area calculation)
-                // The original has infill_overlap boundary from PerimeterGenerator
-                ExPolygons original_sparse_regions = sparse_regions;
-
-                // Adjust sparse regions: replace infill_overlap with pp_overlap for outer interlocking
-                ExPolygons expanded_sparse = offset_ex(sparse_regions, float(overlap_adjustment));
-
-                // Ensure expanded sparse doesn't overlap with top surfaces
-                if (!top_surfaces.empty())
-                {
-                    expanded_sparse = diff_ex(expanded_sparse, top_surfaces);
-                }
-
-                // Use expanded sparse regions for interlocking generation
-                sparse_regions = expanded_sparse;
-
-                if (sparse_regions.empty())
-                {
-                    continue;
-                }
-
-                // Define spacing for BOTH layer types upfront for symmetry
-                const bool is_odd_layer = (this->id() % 2 == 1);
-
-                // Flow-scaled bead widths. GCode.cpp applies sqrt(flow) width scaling,
-                // so spacings must account for actual bead sizes, not nominal perimeter width.
-                const coord_t base_w = perimeter_scaled_width;                      // 1.0x flow
-                const coord_t main_w = coord_t(perimeter_scaled_width * sqrt(2.0)); // 2.0x flow
-
-                // Boundary bead flow: (3 + 2*sqrt(2)) / 4 ~ 1.457x
-                // Derived so that: (a) outer edge aligns with 100% bead's outer edge,
-                // and (b) gap to first 200% bead equals the 200%<->200% gap.
-                // This bead appears on shell 0 (even layers) and innermost (odd layers).
-                constexpr double BOUNDARY_FLOW = (3.0 + 2.0 * 1.41421356) / 4.0;
-                const coord_t boundary_w = coord_t(perimeter_scaled_width * sqrt(BOUNDARY_FLOW));
-                const coord_t boundary_shift = (boundary_w - base_w) / 2;
-
-                // Overlap reduces centerline spacing for bonding (same as perimeter/perimeter overlap)
-                const auto &overlap_setting = layerm->region().config().interlock_perimeter_overlap;
-                const coord_t overlap_reduction = preFlight::PreciseWalls::calculate_perimeter_spacing(perimeter_flow,
-                                                                                                       overlap_setting);
-                const coord_t overlap_amount = perimeter_scaled_width - overlap_reduction;
-
-                // Adjacent: 100% and 200% beads just touch at 0% overlap
-                // Gapped = 2 * adjacent (maintains 2:1 ratio for interleaving of inner shells)
-                const coord_t adjacent = (base_w + main_w) / 2 - overlap_amount;
-                const coord_t gapped = 2 * adjacent;
-
-                // bead_width_0 = pw for BOTH layers so Athena's skeleton makes identical
-                // decisions. Even layer shell 0 (~146% boundary bead) is generated separately
-                // via polygon offset, not by Athena, so spacing_0 compensates for pw-based shell 0.
-                const coord_t odd_external_spacing = adjacent;
-                const coord_t even_external_spacing = gapped;
-
-                const coord_t external_spacing = is_odd_layer ? odd_external_spacing : even_external_spacing;
-
-                // Internal spacing (gapped): unchanged for perfect 200%<->200% interleaving
-                const coord_t internal_spacing = gapped;
-
-                // Innermost spacings equalize total span so innermost beads align between layers.
-                // Odd innermost (~146% bead) gets polygon offset by boundary_shift after Athena.
-                const coord_t odd_innermost_spacing = gapped - boundary_shift;
-                const coord_t even_innermost_spacing = adjacent - boundary_shift;
-                const coord_t innermost_spacing = is_odd_layer ? odd_innermost_spacing : even_innermost_spacing;
-
-                // Handle edge case: reduce shells if space is too constrained
-                BoundingBox sparse_bbox = get_extents(sparse_regions);
-                const coord_t min_dimension = std::min(sparse_bbox.size().x(), sparse_bbox.size().y());
-                const coord_t estimated_shell_width = num_interlocking_shells * perimeter_scaled_width * 2;
-
-                int actual_shells = num_interlocking_shells;
-                if (min_dimension < estimated_shell_width)
-                {
-                    actual_shells = min_dimension / (perimeter_scaled_width * 2);
-                    if (actual_shells <= 0)
-                        continue;
-                }
-
-                // Create an ExtrusionEntityCollection to hold all interlocking loops
-                ExtrusionEntityCollection interlocking_collection;
-
-                const coord_t half_width = perimeter_scaled_width / 2;
-                const bool prefer_clockwise = this->object()->print()->config().prefer_clockwise_movements;
-
-                // PROBLEM: Default generation order is depth-first:
-                //   Shell 0: Contour A, Hole 1, Hole 2, Contour B, Hole 3...
-                //   Shell 1: Contour A, Hole 1, Hole 2, Contour B, Hole 3...
-                // This causes excessive travel between unrelated regions.
-                //
-                // SOLUTION: Collect all loops with metadata, build containment tree, traverse depth-first
-                // so each region completes all its shells before moving to the next region:
-                //   Contour A: Shell 0, Shell 1, Shell 2...
-                //   Hole 1: Shell 0, Shell 1, Shell 2...
-                //   etc.
-
-                // Structure to hold loop with metadata
-                struct LoopNode
-                {
-                    ExtrusionLoop loop;
-                    Polygon polygon; // For containment testing
-                    size_t shell_idx;
-                    bool is_hole;
-                    std::vector<size_t> children;
-                    size_t parent = SIZE_MAX;
-                };
-                std::vector<LoopNode> all_loops;
-
-                // Modified create_loop to collect instead of append
-                auto collect_loop = [&](const Polygon &poly, double flow_ratio, size_t shell_idx, bool is_hole)
-                {
-                    if (poly.size() < 3)
-                        return;
-
-                    ExtrusionFlow shell_flow(perimeter_flow.mm3_per_mm() * flow_ratio, perimeter_flow.width(),
-                                             perimeter_flow.height());
-                    ExtrusionAttributes attribs(ExtrusionRole::InterlockingPerimeter, shell_flow);
-                    attribs.perimeter_index = static_cast<uint16_t>(shell_idx);
-
-                    ExtrusionPath path(attribs);
-                    for (const Point &pt : poly.points)
-                    {
-                        path.polyline.append(pt);
-                    }
-                    if (path.polyline.first_point() != path.polyline.last_point())
-                    {
-                        path.polyline.append(path.polyline.first_point());
-                    }
-
-                    ExtrusionPaths paths;
-                    paths.push_back(std::move(path));
-                    ExtrusionLoop loop(std::move(paths));
-
-                    // Orient based on user preference
-                    const bool is_cw = loop.is_clockwise();
-                    bool should_reverse;
-                    if (is_hole)
-                    {
-                        should_reverse = prefer_clockwise ? is_cw : !is_cw;
-                    }
-                    else
-                    {
-                        should_reverse = prefer_clockwise ? !is_cw : is_cw;
-                    }
-                    if (should_reverse)
-                    {
-                        loop.reverse_loop();
-                    }
-
-                    LoopNode node;
-                    node.loop = std::move(loop);
-                    node.polygon = poly;
-                    node.shell_idx = shell_idx;
-                    node.is_hole = is_hole;
-                    all_loops.push_back(std::move(node));
-                };
-
-                // Use Athena (skeletal trapezoidation) to generate interlocking shells.
-                // Athena naturally handles narrow channels by computing how many beads
-                // fit at each cross-section. No custom overlap detection needed.
-                //
-                // The spacing overrides control the interlocking pattern:
-                //   external_spacing = adjacent or gapped (alternates by layer parity)
-                //   internal_spacing = gapped (always)
-                //   innermost_spacing = mirrors opposite layer's external spacing
-                // Athena positions shell 0's center at bead_width_0/2 from the outline.
-                // No pre-offset needed - sparse_regions IS the boundary.
-                Polygons inset_outline = to_polygons(sparse_regions);
-                if (inset_outline.empty())
-                    continue;
-
-                // bead_width_0 = pw for BOTH layers so Athena's skeleton makes identical
-                // decisions. Even layer shell 0 is generated separately via polygon offset.
-                const coord_t bead_width_0 = perimeter_scaled_width;
-                Athena::WallToolPaths wall_tool_paths(
-                    inset_outline,
-                    bead_width_0,                      // bead_width_0: shell 0 position
-                    internal_spacing,                  // bead_width_x: internal shell spacing
-                    size_t(actual_shells),             // inset_count
-                    0,                                 // wall_0_inset
-                    layerm->layer()->height,           // layer_height
-                    this->object()->config(),          // print_object_config
-                    this->object()->print()->config(), // print_config
-                    perimeter_scaled_width,            // fixed_width_0: all shells use perimeter width
-                    perimeter_scaled_width,            // fixed_width_x: all shells use perimeter width
-                    external_spacing,                  // spacing_0: gap between shell 0 and shell 1 (alternates)
-                    internal_spacing,                  // spacing_x: internal spacing override
-                    innermost_spacing,                 // spacing_innermost: innermost spacing override
-                    (int) this->id(),                  // layer_id
-                    1.0,                               // min_bead_width_factor: no compression for interlocking
-                    10000);                            // thin_wall_snap_precision
-
-                const std::vector<Athena::VariableWidthLines> &toolpaths = wall_tool_paths.generate();
-
-                // Convert Athena's variable-width toolpaths to InterlockingPerimeter extrusions
-                ExPolygons last_shell_area;
-
-                // Even layer shell 0: generate ~146% boundary bead via polygon offset
-                // instead of using Athena's shell 0 (which is at pw/2 for skeleton consistency).
-                // This places the boundary bead at boundary_w/2 from the outline.
-                if (!is_odd_layer)
-                {
-                    Polygons boundary_shell = offset(inset_outline, -float(boundary_w) / 2);
-                    for (const Polygon &bp : boundary_shell)
-                    {
-                        if (bp.size() >= 3)
-                            collect_loop(bp, 1.0, 0, false);
-                    }
-                }
-
-                for (size_t inset_idx = 0; inset_idx < toolpaths.size(); ++inset_idx)
-                {
-                    // Cap at requested shell count - Athena may generate extra beads
-                    if (inset_idx >= size_t(actual_shells))
-                        break;
-
-                    size_t shell_idx = inset_idx;
-
-                    // Skip Athena's shell 0 on even layers - we generated it above
-                    if (!is_odd_layer && inset_idx == 0)
-                        continue;
-
-                    const Athena::VariableWidthLines &lines = toolpaths[inset_idx];
-
-                    for (const Athena::ExtrusionLine &line : lines)
-                    {
-                        if (line.empty() || line.size() < 2)
-                            continue;
-
-                        // Skip thin wall fills and open paths - interlocking only needs closed loops
-                        if (line.is_odd || !line.is_closed)
-                            continue;
-
-                        // Convert Athena ExtrusionLine to a Polygon for collect_loop
-                        Polygon poly;
-                        for (const Athena::ExtrusionJunction &j : line.junctions)
-                            poly.points.push_back(j.p);
-
-                        if (poly.size() < 3)
-                            continue;
-
-                        // Odd layer innermost shell is the ~146% boundary bead.
-                        // Shift it inward by boundary_shift so its outer edge aligns
-                        // with the 100% bead's outer edge on the even layer.
-                        if (is_odd_layer && shell_idx == size_t(actual_shells) - 1)
-                        {
-                            Polygons shifted = offset(Polygons{poly}, -float(boundary_shift));
-                            if (!shifted.empty())
-                                poly = shifted.front();
-                        }
-
-                        collect_loop(poly, 1.0, shell_idx, false);
-                    }
-                }
-
-                // Compute infill boundary from actual innermost shell centerlines rather
-                // than Athena's getInnerContour(), which doesn't account for boundary bead
-                // repositioning (even shell 0 separate, odd innermost offset).
-                {
-                    Polygons innermost_shells;
-                    for (const LoopNode &node : all_loops)
-                        if (node.shell_idx == size_t(actual_shells) - 1)
-                            innermost_shells.push_back(node.polygon);
-                    if (!innermost_shells.empty())
-                        last_shell_area = union_ex(innermost_shells);
-                }
-
-                // Build containment tree: for each loop, find smallest containing parent OF SAME TYPE
-                // Critical: only match holes with holes, contours with contours
-                // Otherwise outer boundary would be detected as parent of hole shells
-                for (size_t i = 0; i < all_loops.size(); ++i)
-                {
-                    Point test_point = all_loops[i].polygon.points.empty() ? Point(0, 0)
-                                                                           : all_loops[i].polygon.points.front();
-                    double smallest_area = std::numeric_limits<double>::max();
-                    size_t best_parent = SIZE_MAX;
-
-                    for (size_t j = 0; j < all_loops.size(); ++j)
-                    {
-                        if (i == j)
-                            continue;
-                        // Only consider same-type loops as potential parents
-                        if (all_loops[j].is_hole != all_loops[i].is_hole)
-                            continue;
-                        if (all_loops[j].polygon.contains(test_point))
-                        {
-                            double area = std::abs(all_loops[j].polygon.area());
-                            if (area < smallest_area)
-                            {
-                                smallest_area = area;
-                                best_parent = j;
-                            }
-                        }
-                    }
-                    all_loops[i].parent = best_parent;
-                    if (best_parent != SIZE_MAX)
-                        all_loops[best_parent].children.push_back(i);
-                }
-
-                // Find root nodes (no parent), separated by type
-                // Contour roots first (outer boundary), then hole roots
-                // This ensures interlocking starts at outer boundary where normal perimeters ended
-                std::vector<size_t> contour_roots;
-                std::vector<size_t> hole_roots;
-                for (size_t i = 0; i < all_loops.size(); ++i)
-                {
-                    if (all_loops[i].parent == SIZE_MAX)
-                    {
-                        if (all_loops[i].is_hole)
-                            hole_roots.push_back(i);
-                        else
-                            contour_roots.push_back(i);
-                    }
-                }
-
-                // Get last position for nearest-neighbor ordering
-                Point last_pos = Point::Zero();
-
-                // Collect a subtree into a vector (for potential reversal)
-                std::function<void(size_t, std::vector<size_t> &)> collect_subtree =
-                    [&](size_t idx, std::vector<size_t> &collected)
-                {
-                    collected.push_back(idx);
-                    for (size_t child_idx : all_loops[idx].children)
-                    {
-                        collect_subtree(child_idx, collected);
-                    }
-                };
-
-                // Output a list of loop indices, updating last_pos
-                auto output_loops = [&](const std::vector<size_t> &indices)
-                {
-                    for (size_t idx : indices)
-                    {
-                        interlocking_collection.append(std::move(all_loops[idx].loop));
-                        if (!all_loops[idx].polygon.points.empty())
-                            last_pos = all_loops[idx].polygon.points.back();
-                    }
-                };
-
-                // Process a subtree: collect all nodes, reverse if hole region, then output
-                // Contour regions: outside-in (shell 0 near boundary → shell N toward center)
-                // Hole regions: inside-out (shell 0 near hole → shell N away from hole)
-                // Since containment gives outside-in order, we reverse for holes
-                auto process_subtree = [&](size_t root_idx)
-                {
-                    std::vector<size_t> subtree;
-                    collect_subtree(root_idx, subtree);
-
-                    // Check if this is a hole region (root node is a hole)
-                    bool is_hole_region = all_loops[root_idx].is_hole;
-
-                    if (is_hole_region)
-                    {
-                        // Reverse for inside-out order (closest to hole first)
-                        std::reverse(subtree.begin(), subtree.end());
-                    }
-
-                    output_loops(subtree);
-                };
-
-                // Helper to process a list of roots by nearest neighbor
-                auto process_roots_nearest_neighbor = [&](std::vector<size_t> &roots)
-                {
-                    std::vector<bool> root_used(roots.size(), false);
-                    for (size_t n = 0; n < roots.size(); ++n)
-                    {
-                        double best_dist = std::numeric_limits<double>::max();
-                        size_t best_idx = 0;
-                        for (size_t r = 0; r < roots.size(); ++r)
-                        {
-                            if (root_used[r])
-                                continue;
-                            Point root_start = all_loops[roots[r]].polygon.points.empty()
-                                                   ? Point(0, 0)
-                                                   : all_loops[roots[r]].polygon.points.front();
-                            double dist = (root_start - last_pos).cast<double>().squaredNorm();
-                            if (dist < best_dist)
-                            {
-                                best_dist = dist;
-                                best_idx = r;
-                            }
-                        }
-                        root_used[best_idx] = true;
-                        process_subtree(roots[best_idx]);
-                    }
-                };
-
-                // Process contour roots first (outer boundary - nozzle is already there after normal perimeters)
-                // Then process hole roots (nearest neighbor from where we ended)
-                process_roots_nearest_neighbor(contour_roots);
-                process_roots_nearest_neighbor(hole_roots);
-
-                // Calculate inner_area from the last shell result (for infill boundary)
-                // last_shell_area represents the area after the innermost shell center was placed.
-                // Offset inward by (half_width - infill_overlap) to create the infill boundary:
-                //   - At 0% overlap: offset = half_width (infill starts at inner edge of shell)
-                //   - At 100% overlap: offset = half_width - width = -half_width (infill extends to outer edge of shell)
-                // This controls overlap between innermost INTERLOCKING shell and sparse INFILL,
-                // which is separate from the outer boundary overlap (perimeter-to-interlocking).
-                const coord_t infill_boundary_offset = half_width - infill_overlap_amount;
-                Polygons inner_area;
-                for (const ExPolygon &last_shell : last_shell_area)
-                {
-                    // Offset contour inward to create sparse infill boundary
-                    Polygons inward = offset(last_shell.contour, -float(infill_boundary_offset));
-                    if (last_shell.holes.empty())
-                    {
-                        append(inner_area, inward);
-                    }
-                    else
-                    {
-                        // Offset holes outward to create exclusion zones around hole-interlocking perimeters
-                        // Note: Holes have CW orientation, so NEGATIVE offset expands them into material area
-                        Polygons expanded_holes = offset(last_shell.holes, -float(infill_boundary_offset));
-                        // Subtract expanded holes from the inward-offset contour
-                        Polygons result = diff(inward, expanded_holes);
-                        append(inner_area, result);
-                    }
-                }
-
-                // Interlocking perimeters are actual perimeters, not infill. They should be in m_perimeters
-                // to enable proper Layer Context API queries and processing.
-                // CRITICAL: Perimeters structure is Collection-of-Collections, must wrap in ExtrusionEntityCollection
-                if (!interlocking_collection.empty())
-                {
-                    // Containment tree already ordered loops outside-in per region
-                    // with nearest-neighbor between roots. Do NOT re-sort.
-
-                    // Wrap interlocking perimeters in collection (perimeters require nested collections)
-                    ExtrusionEntityCollection *perimeter_collection = new ExtrusionEntityCollection();
-                    perimeter_collection->no_sort = true; // Preserve the chained order during GCode generation
-                    perimeter_collection->entities = std::move(interlocking_collection.entities);
-
-                    // CRITICAL: Islands have non-contiguous indices in m_perimeters. If we APPEND the interlocking
-                    // collection to the end and extend this island's range, we'll include other islands' perimeters.
-                    //
-                    // Example WITHOUT interlocking:
-                    //   Island A: range [0, 1), perimeters at index 0
-                    //   Island B: range [1, 2), perimeters at index 1
-                    //   Island C: range [2, 3), perimeters at index 2
-                    //
-                    // If we APPEND Island A's interlocking to end (index 3) and set range to [0, 4):
-                    //   Island A: range [0, 4) ← WRONG! Includes indices 1, 2, 3 (other islands' perimeters)
-                    //
-                    // SOLUTION: INSERT at the correct position (right after this island's existing perimeters)
-                    // and shift all subsequent island ranges.
-
-                    uint32_t old_begin = *island.perimeters.begin();
-                    uint32_t old_end = *island.perimeters.end(); // One past last index
-
-                    // Insert the interlocking collection right after this island's existing perimeters
-                    // This shifts all subsequent indices by 1
-                    auto insert_pos = layerm->m_perimeters.entities.begin() + old_end;
-                    layerm->m_perimeters.entities.insert(insert_pos, perimeter_collection);
-
-                    // Update THIS island's range to include the newly inserted interlocking
-                    island.perimeters = LayerExtrusionRange(region_id, ExtrusionRange(old_begin, old_end + 1));
-
-                    // Update ALL other islands' ranges on this layer that reference indices >= old_end
-                    // because the insertion shifted their indices by 1
-                    for (LayerSlice &other_lslice : this->lslices_ex)
-                    {
-                        for (LayerIsland &other_island : other_lslice.islands)
-                        {
-                            // Skip this island (already updated above)
-                            if (&other_island == &island)
-                                continue;
-
-                            // Only update islands in the same region (they share the same m_perimeters)
-                            if (other_island.perimeters.region() != region_id)
-                                continue;
-
-                            // If this island's range starts at or after the insertion point, shift it by 1
-                            uint32_t other_begin = *other_island.perimeters.begin();
-                            uint32_t other_end = *other_island.perimeters.end();
-
-                            if (other_begin >= old_end)
-                            {
-                                // Shift the entire range by 1
-                                other_island.perimeters = LayerExtrusionRange(region_id, ExtrusionRange(other_begin + 1,
-                                                                                                        other_end + 1));
-                            }
-                        }
-                    }
-                }
-
-                // inner_area was calculated above from innermost shell centerlines.
-                // Use union_ex() to properly pair holes with their parent contours.
-                // When shell count was reduced (area too narrow for all requested shells),
-                // consume the entire sparse region - no sparse infill in partially-filled zones.
-                ExPolygons updated_sparse_regions;
-                if (actual_shells >= num_interlocking_shells)
-                    updated_sparse_regions = union_ex(inner_area);
-
-                // The interlocking perimeters have consumed the outer area of sparse regions for THIS island.
-                // Update the stInternal surface_fill entries to remove the consumed area.
-                // CRITICAL: We must update the global surface_fills by subtracting THIS island's consumed area.
-                // Each island's interlocking consumption must be subtracted from the global sparse regions.
-                // We do NOT touch stInternalSolid - it's preserved for top/bottom solid layers.
-
-                // Calculate the area consumed by interlocking for THIS island
-                // Use ORIGINAL sparse regions (with infill_overlap boundary from PerimeterGenerator)
-                // not the adjusted sparse_regions (with pp_overlap boundary).
-                // This ensures we subtract the entire interlocking zone from infill, including
-                // the gap between infill_overlap and pp_overlap boundaries.
-                ExPolygons consumed_by_interlocking = diff_ex(original_sparse_regions, updated_sparse_regions);
-
-                // Subtract the consumed area from the global sparse surface_fills
-                // This updates the sparse infill boundaries for THIS island
-                for (SurfaceFill &sf : surface_fills)
-                {
-                    if (sf.region_id == region_id && sf.surface.surface_type == stInternal)
-                    {
-                        // Subtract the area consumed by THIS island's interlocking
-                        sf.expolygons = diff_ex(sf.expolygons, consumed_by_interlocking);
-                    }
-                    // Note: stInternalSolid is NOT modified - preserved for solid layer settings
-                }
-            } // End island loop
-        } // End lslice loop
-    }
-
-    // After interlocking has consumed sparse regions, remove any stInternal surfaces with ~0% density (0.001%).
-    // These were only needed for interlocking boundary detection and should not proceed to infill generation.
-    surface_fills.erase(std::remove_if(surface_fills.begin(), surface_fills.end(), [](const SurfaceFill &sf)
-                                       { return sf.surface.surface_type == stInternal && sf.params.density < 0.01f; }),
-                        surface_fills.end());
-
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
     {
         static int iRun = 0;
@@ -2153,7 +1372,7 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
     }
 #endif /* SLIC3R_DEBUG_SLICE_PROCESSING */
 
-    // Debug: dump surface_fills after interlocking consumption (what actually gets filled)
+    // Debug: dump surface_fills before fill generation
     dbg_fill_phase("PRE_FILL", *this, surface_fills);
 
     size_t first_object_layer_id = this->object()->get_layer(0)->id();
@@ -2186,12 +1405,12 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                     for (const ExPolygon &ep : island_expolygons)
                         isl_area += std::abs(ep.area());
                     BoundingBox ibb = get_extents(island_expolygons);
-                    dbg_fill_print("z=%.3f [FILL] ISLAND_FILL type=%-18s ep=%zu area=%8.4fmm2 "
+                    dbg_fill_print("z=%.3f [FILL] ISLAND_FILL type=%-18s pattern=%-16s ep=%zu area=%8.4fmm2 "
                                    "bbox=(%.2f,%.2f)-(%.2f,%.2f)\n",
                                    this->print_z, dbg_stype(surface_fill.surface.surface_type),
-                                   island_expolygons.size(), isl_area * 1e-12, unscaled<double>(ibb.min.x()),
-                                   unscaled<double>(ibb.min.y()), unscaled<double>(ibb.max.x()),
-                                   unscaled<double>(ibb.max.y()));
+                                   dbg_pattern(surface_fill.params.pattern), island_expolygons.size(), isl_area * 1e-12,
+                                   unscaled<double>(ibb.min.x()), unscaled<double>(ibb.min.y()),
+                                   unscaled<double>(ibb.max.x()), unscaled<double>(ibb.max.y()));
                 }
 
                 // Create the filler object for this surface type
@@ -2453,7 +1672,11 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                     if (!all_polylines.empty())
                     {
                         const Point *chain_start = have_last_pos ? &last_fill_pos : nullptr;
+                        dbg_fill_print("z=%.3f [FILL] PRE_CHAIN all_polylines=%zu flow_tags=%zu\n", this->print_z,
+                                       all_polylines.size(), flow_tags.size());
                         auto [chained, index_map] = chain_polylines_with_indices(std::move(all_polylines), chain_start);
+                        dbg_fill_print("z=%.3f [FILL] POST_CHAIN chained=%zu index_map=%zu\n", this->print_z,
+                                       chained.size(), index_map.size());
 
                         // Reorder flow tags to match the chained polyline order
                         std::vector<PolylineFlowTag> reordered_tags;
@@ -2462,6 +1685,20 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                             reordered_tags.push_back(flow_tags[orig_idx]);
 
                         // Convert to extrusion entities with correct per-polyline flow
+                        if (FILL_DEBUG)
+                        {
+                            size_t degen = 0;
+                            double degen_len = 0, good_len = 0;
+                            for (size_t i = 0; i < chained.size(); ++i)
+                                if (chained[i].size() < 2)
+                                    ++degen;
+                                else
+                                    good_len += unscale<double>(chained[i].length());
+                            if (degen > 0)
+                                dbg_fill_print("z=%.3f [FILL] DEGENERATE chained=%zu degen=%zu good=%zu "
+                                               "good_len=%.1fmm\n",
+                                               this->print_z, chained.size(), degen, chained.size() - degen, good_len);
+                        }
                         for (size_t i = 0; i < chained.size(); ++i)
                         {
                             if (chained[i].size() < 2)

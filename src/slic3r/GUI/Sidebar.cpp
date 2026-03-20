@@ -1577,6 +1577,8 @@ wxPanel *PrintSettingsPanel::BuildLayersContent()
         auto *interlock_group = CreateFlatStaticBoxSizer(content, _L("Interlocking"));
         CreateSettingRow(content, interlock_group, "interlock_perimeters_enabled", _L("Enable interlock perimeters"));
         CreateSettingRow(content, interlock_group, "interlock_perimeter_count", _L("Interlock perimeter count"));
+        CreateSettingRow(content, interlock_group, "interlock_solid_layers_top", _L("Solid layers above"));
+        CreateSettingRow(content, interlock_group, "interlock_solid_layers_bottom", _L("Solid layers below"));
         CreateSettingRow(content, interlock_group, "interlock_perimeter_overlap", _L("Interlock perimeter overlap"));
         CreateSettingRow(content, interlock_group, "interlock_flow_detection", _L("Interlock flow detection"));
         sizer->Add(interlock_group, 0, wxEXPAND | wxALL, em / 4);
@@ -1697,8 +1699,8 @@ wxPanel *PrintSettingsPanel::BuildInfillContent()
         CreateSettingRow(content, time_group, "automatic_infill_combination_max_layer_height",
                          _L("Max combined layer height"));
         CreateSettingRow(content, time_group, "infill_every_layers", _L("Combine infill every"));
-        CreateSettingRow(content, time_group, "narrow_solid_infill_concentric", _L("Narrow solid infill concentric"));
-        CreateSettingRow(content, time_group, "narrow_solid_infill_threshold", _L("Narrow solid infill threshold"));
+        CreateSettingRow(content, time_group, "narrow_to_athena", _L("Narrow to Athena"));
+        CreateSettingRow(content, time_group, "narrow_to_athena_threshold", _L("Narrow to Athena threshold"));
         sizer->Add(time_group, 0, wxEXPAND | wxALL, em / 4);
     }
 
@@ -1850,8 +1852,8 @@ wxPanel *PrintSettingsPanel::BuildSpeedContent()
     {
         auto *speed_group = CreateFlatStaticBoxSizer(content, _L("Print speed"));
         CreateSettingRow(content, speed_group, "perimeter_speed", _L("Perimeters"));
-        CreateSettingRow(content, speed_group, "small_perimeter_speed", _L("Small perimeters"));
         CreateSettingRow(content, speed_group, "external_perimeter_speed", _L("External perimeters"));
+        CreateSettingRow(content, speed_group, "small_perimeter_speed", _L("Small perimeters"));
         CreateSettingRow(content, speed_group, "infill_speed", _L("Infill"));
         CreateSettingRow(content, speed_group, "solid_infill_speed", _L("Solid infill"));
         CreateSettingRow(content, speed_group, "top_solid_infill_speed", _L("Top solid infill"));
@@ -2857,8 +2859,8 @@ void PrintSettingsPanel::ApplyToggleLogic()
          {"fill_angle", "bridge_angle", "infill_extrusion_width", "infill_speed", "bridge_speed", "over_bridge_speed"})
         ToggleOption(el, have_infill || has_solid_infill);
 
-    bool has_narrow_solid_concentric = config.opt_bool("narrow_solid_infill_concentric");
-    ToggleOption("narrow_solid_infill_threshold", has_narrow_solid_concentric);
+    bool has_narrow_to_athena = config.opt_bool("narrow_to_athena");
+    ToggleOption("narrow_to_athena_threshold", has_narrow_to_athena);
 
     bool has_ensure_vertical_shell_thickness = config.opt_enum<EnsureVerticalShellThickness>(
                                                    "ensure_vertical_shell_thickness") !=
@@ -2883,6 +2885,8 @@ void PrintSettingsPanel::ApplyToggleLogic()
     // Interlocking perimeters dependencies
     bool interlock_enabled = config.opt_bool("interlock_perimeters_enabled");
     ToggleOption("interlock_perimeter_count", interlock_enabled);
+    ToggleOption("interlock_solid_layers_top", interlock_enabled);
+    ToggleOption("interlock_solid_layers_bottom", interlock_enabled);
     ToggleOption("interlock_perimeter_overlap", interlock_enabled);
     ToggleOption("interlock_flow_detection", interlock_enabled);
 

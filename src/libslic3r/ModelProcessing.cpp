@@ -267,11 +267,18 @@ static bool is_front_up_left(const TriangleMesh &trinagle_mesh1, const TriangleM
 // This is useful to assign different materials to different volumes of an object.
 size_t split(ModelVolume *volume, unsigned int /*max_extruders*/)
 {
-    std::vector<TriangleMesh> meshes = volume->mesh().split();
-    if (meshes.size() <= 1)
+    std::vector<SplitResultMesh> split_results = split_mesh_with_mapping(volume->mesh());
+    if (split_results.size() <= 1)
         return 1;
 
-    std::sort(meshes.begin(), meshes.end(), is_front_up_left);
+    // Sort by spatial position, keeping face mappings bundled with their meshes.
+    std::sort(split_results.begin(), split_results.end(),
+              [](const SplitResultMesh &a, const SplitResultMesh &b) { return is_front_up_left(a.mesh, b.mesh); });
+
+    // Capture painting data from the original volume before we modify anything.
+    const auto orig_mm = volume->mm_segmentation_facets.get_data();
+    const auto orig_fuzzy = volume->fuzzy_skin_facets.get_data();
+    const auto orig_seam = volume->seam_facets.get_data();
 
     // splited volume should not be text object
     if (volume->text_configuration.has_value())
@@ -285,15 +292,14 @@ size_t split(ModelVolume *volume, unsigned int /*max_extruders*/)
 
     const Vec3d offset = volume->get_offset();
 
-    for (TriangleMesh &mesh : meshes)
+    for (SplitResultMesh &sr : split_results)
     {
-        if (mesh.empty() || mesh.has_zero_volume())
-            // Repair may have removed unconnected triangles, thus emptying the mesh.
+        if (sr.mesh.empty() || sr.mesh.has_zero_volume())
             continue;
 
         if (idx == 0)
         {
-            volume->set_mesh(std::move(mesh));
+            volume->set_mesh(std::move(sr.mesh));
             volume->calculate_convex_hull();
             // Assign a new unique ID, so that a new GLVolume will be generated.
             volume->set_new_unique_id();
@@ -301,17 +307,21 @@ size_t split(ModelVolume *volume, unsigned int /*max_extruders*/)
             volume->source = ModelVolume::Source();
         }
         else
-            object->insert_volume(
-                (++ivolume), *volume,
-                std::move(
-                    mesh)); //object->volumes.insert(object->volumes.begin() + (++ivolume), new ModelVolume(object, *volume, std::move(mesh)));
+            object->insert_volume((++ivolume), *volume, std::move(sr.mesh));
 
-        object->volumes[ivolume]->set_offset(Vec3d::Zero());
-        object->volumes[ivolume]->center_geometry_after_creation();
-        object->volumes[ivolume]->translate(offset);
-        object->volumes[ivolume]->name = name + "_" + std::to_string(idx + 1);
-        object->volumes[ivolume]->config.set("extruder", 1);
-        object->volumes[ivolume]->discard_splittable();
+        // Remap painting data to the new volume using the face mapping.
+        ModelVolume *vol = object->volumes[ivolume];
+        vol->supported_facets.reset();
+        vol->mm_segmentation_facets.assign_remapped(orig_mm, sr.face_mapping);
+        vol->fuzzy_skin_facets.assign_remapped(orig_fuzzy, sr.face_mapping);
+        vol->seam_facets.assign_remapped(orig_seam, sr.face_mapping);
+
+        vol->set_offset(Vec3d::Zero());
+        vol->center_geometry_after_creation();
+        vol->translate(offset);
+        vol->name = name + "_" + std::to_string(idx + 1);
+        vol->config.set("extruder", 1);
+        vol->discard_splittable();
         ++idx;
     }
 
@@ -343,19 +353,25 @@ void split(ModelObject *object, ModelObjectPtrs *new_objects)
         if (volume->text_configuration.has_value())
             volume->text_configuration.reset();
 
-        std::vector<TriangleMesh> meshes = volume->mesh().split();
-        std::sort(meshes.begin(), meshes.end(), is_front_up_left);
+        // Capture painting data from the original volume before splitting.
+        const auto orig_mm = volume->mm_segmentation_facets.get_data();
+        const auto orig_fuzzy = volume->fuzzy_skin_facets.get_data();
+        const auto orig_seam = volume->seam_facets.get_data();
+
+        std::vector<SplitResultMesh> split_results = split_mesh_with_mapping(volume->mesh());
+        std::sort(split_results.begin(), split_results.end(),
+                  [](const SplitResultMesh &a, const SplitResultMesh &b) { return is_front_up_left(a.mesh, b.mesh); });
 
         size_t counter = 1;
-        for (TriangleMesh &mesh : meshes)
+        for (SplitResultMesh &sr : split_results)
         {
             // FIXME: crashes if not satisfied
-            if (mesh.facets_count() < 3 || mesh.has_zero_volume())
+            if (sr.mesh.facets_count() < 3 || sr.mesh.has_zero_volume())
                 continue;
 
             // XXX: this seems to be the only real usage of m_model, maybe refactor this so that it's not needed?
             ModelObject *new_object = object->get_model()->add_object();
-            if (meshes.size() == 1)
+            if (split_results.size() == 1)
             {
                 new_object->name = volume->name;
                 // Don't copy the config's ID.
@@ -363,7 +379,7 @@ void split(ModelObject *object, ModelObjectPtrs *new_objects)
             }
             else
             {
-                new_object->name = object->name + (meshes.size() > 1 ? "_" + std::to_string(counter++) : "");
+                new_object->name = object->name + (split_results.size() > 1 ? "_" + std::to_string(counter++) : "");
                 // Don't copy the config's ID.
                 new_object->config.assign_config(object->config);
             }
@@ -372,7 +388,13 @@ void split(ModelObject *object, ModelObjectPtrs *new_objects)
             new_object->instances.reserve(object->instances.size());
             for (const ModelInstance *model_instance : object->instances)
                 new_object->add_instance(*model_instance);
-            ModelVolume *new_vol = new_object->add_volume(*volume, std::move(mesh));
+            ModelVolume *new_vol = new_object->add_volume(*volume, std::move(sr.mesh));
+
+            // Remap painting data to the new volume using the face mapping.
+            new_vol->supported_facets.reset();
+            new_vol->mm_segmentation_facets.assign_remapped(orig_mm, sr.face_mapping);
+            new_vol->fuzzy_skin_facets.assign_remapped(orig_fuzzy, sr.face_mapping);
+            new_vol->seam_facets.assign_remapped(orig_seam, sr.face_mapping);
 
             // Invalidate extruder value in volume's config,
             // otherwise there will no way to change extruder for object after splitting,

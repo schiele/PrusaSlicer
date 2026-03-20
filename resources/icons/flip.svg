@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 129 129">
+  <!-- Generator: Adobe Illustrator 29.8.5, SVG Export Plug-In . SVG Version: 2.1.1 Build 2)  -->
+  <g id="Layer_2" display="none">
+    <rect width="129" height="129" fill="#7c7c7c" stroke="#000" stroke-miterlimit="10"/>
+  </g>
+  <g id="a">
+    <g id="b">
+      <line x1="9.5" y1="77.97" x2="73.41" y2="14.07" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="14"/>
+      <polyline points="44.59 14.07 77.52 9.95 73.41 42.89" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"/>
+      <line x1="119.5" y1="50.31" x2="54.88" y2="114.93" fill="none" stroke="#eaa032" stroke-linecap="round" stroke-width="14"/>
+      <polyline points="54.88 86.11 50.76 119.05 83.7 114.93" fill="none" stroke="#eaa032" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"/>
+    </g>
+  </g>
+</svg>

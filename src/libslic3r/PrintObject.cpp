@@ -3731,8 +3731,13 @@ void PrintObject::discover_horizontal_shells()
                                                    opening(new_internal_solid, margin, margin + ClipperSafetyOffset,
                                                            jtMiter, 5));
                         // Trim the regularized region by the original region.
+                        // Only update new_internal_solid (this layer's classification), not solid
+                        // (the propagation source). Propagating erosion causes edge gaps on flat
+                        // bottom/top solid layers where each iteration accumulates slivers removed
+                        // by the too_narrow filter. The intersection(solid, internal) above already
+                        // constrains each layer's solid to its actual fill area.
                         if (!too_narrow.empty())
-                            new_internal_solid = solid = diff(new_internal_solid, too_narrow);
+                            new_internal_solid = diff(new_internal_solid, too_narrow);
                     }
 
                     // make sure the new internal solid is wide enough, as it might get collapsed

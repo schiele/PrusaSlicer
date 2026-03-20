@@ -501,15 +501,20 @@ void AppUpdater::priv::parse_version_string(const std::string &body)
         // Determine platform section name
         std::string platform_section;
 #ifdef _WIN32
-        platform_section = "release:win64";
+        platform_section = "release:win-amd64";
 #elif __APPLE__
         platform_section = "release:osx";
 #else
         {
-            // Use arch-specific section (e.g. release:linux-x86_64, release:linux-aarch64)
+            // Map uname machine to release section (e.g. release:linux-amd64, release:linux-aarch64)
             struct utsname uts;
             if (uname(&uts) == 0)
-                platform_section = std::string("release:linux-") + uts.machine;
+            {
+                std::string arch = uts.machine;
+                if (arch == "x86_64")
+                    arch = "amd64";
+                platform_section = std::string("release:linux-") + arch;
+            }
         }
 #endif
         if (section_name == platform_section)

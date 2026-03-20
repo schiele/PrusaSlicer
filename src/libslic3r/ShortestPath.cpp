@@ -2364,6 +2364,22 @@ std::pair<Polylines, std::vector<size_t>> chain_polylines_with_indices(Polylines
             if (rev)
                 out.back().reverse();
         }
+        // The greedy chaining walks a single linked chain of segments. If the
+        // algorithm produces multiple disconnected chains (spatially separated
+        // clusters it couldn't bridge), only the primary chain is returned and
+        // the rest are silently dropped. Recover any unchained polylines here.
+        if (out.size() < polylines.size())
+        {
+            std::vector<bool> included(polylines.size(), false);
+            for (auto &[idx, rev] : ordered)
+                included[idx] = true;
+            for (size_t i = 0; i < polylines.size(); ++i)
+                if (!included[i] && !polylines[i].empty())
+                {
+                    index_map.push_back(i);
+                    out.emplace_back(std::move(polylines[i]));
+                }
+        }
         if (out.size() > 1)
         {
             // 2-opt operates in-place on 'out', reordering elements.

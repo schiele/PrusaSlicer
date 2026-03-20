@@ -773,8 +773,8 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config)
          {"fill_angle", "bridge_angle", "infill_extrusion_width", "infill_speed", "bridge_speed", "over_bridge_speed"})
         toggle_field(el, have_infill || has_solid_infill);
 
-    bool has_narrow_solid_concentric = config->opt_bool("narrow_solid_infill_concentric");
-    toggle_field("narrow_solid_infill_threshold", has_narrow_solid_concentric);
+    bool has_narrow_to_athena = config->opt_bool("narrow_to_athena");
+    toggle_field("narrow_to_athena_threshold", has_narrow_to_athena);
 
     const bool has_ensure_vertical_shell_thickness = config->opt_enum<EnsureVerticalShellThickness>(
                                                          "ensure_vertical_shell_thickness") !=
@@ -809,6 +809,8 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config)
 
     bool interlock_enabled = config->opt_bool("interlock_perimeters_enabled");
     toggle_field("interlock_perimeter_count", interlock_enabled);
+    toggle_field("interlock_solid_layers_top", interlock_enabled);
+    toggle_field("interlock_solid_layers_bottom", interlock_enabled);
     // interlock_perimeter_strength hidden - forced to 100% in code
     toggle_field("interlock_perimeter_overlap", interlock_enabled);
     toggle_field("interlock_flow_detection", interlock_enabled);

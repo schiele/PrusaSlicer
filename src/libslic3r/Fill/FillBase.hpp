@@ -25,7 +25,9 @@
 #include <vector>
 #include <cfloat>
 #include <cmath>
+#include <cstdarg>
 #include <cstddef>
+#include <cstdio>
 
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/BoundingBox.hpp"
@@ -225,5 +227,21 @@ public:
 Polylines chain_polylines_by_region(Polylines &&polylines, coord_t region_threshold, const Point *start_near = nullptr);
 
 } // namespace Slic3r
+
+// ===================== FILL DEBUG =====================
+// Set to true to enable fill pipeline debug output to stdout.
+// Used across Fill.cpp, FillRectilinear.cpp, and other fill sources.
+static constexpr bool FILL_DEBUG = false;
+
+inline void dbg_fill_print(const char *fmt, ...)
+{
+    if (!FILL_DEBUG)
+        return;
+    va_list args;
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+    fflush(stdout);
+}
 
 #endif // slic3r_FillBase_hpp_
