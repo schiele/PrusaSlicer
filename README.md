@@ -35,7 +35,7 @@ While preFlight is open-source and free for everyone, your support helps us main
 
 **Windows, Linux, macOS, and Raspberry Pi.**
 
-**Windows:** Download the portable zip from [GitHub Releases](https://github.com/oozebot/preFlight/releases) and extract. Requires the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe) - install this first if preFlight won't launch.
+**Windows:** Download the portable zip from [GitHub Releases](https://github.com/oozebot/preFlight/releases) and extract. Available for x64 and ARM64. Requires the [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) - install this first if preFlight won't launch.
 
 **macOS:** Download the DMG from [GitHub Releases](https://github.com/oozebot/preFlight/releases). Requires macOS 11.0+ (Big Sur or later), Apple Silicon only. All builds are signed and notarized by Apple.
 
@@ -52,6 +52,7 @@ To ensure the integrity of your installation and protect yourself, please follow
 * **Verification:** Before running the installer, right-click the file, select **Properties**, and navigate to the **Digital Signatures** tab. Ensure the "Name of signer" is explicitly listed as **oozeBot, LLC**.
 * **Safety First:** If you receive a "Windows protected your PC" (SmartScreen) warning on a file that is *not* signed by oozeBot, LLC, do not proceed with the installation and [report the issue](https://github.com/oozebot/preFlight/issues) immediately.
 * **macOS Notarization:** All official macOS DMGs are signed with an **Apple Developer ID** certificate and notarized by Apple. macOS will verify the signature and notarization automatically on first launch. If Gatekeeper warns that the app is from an unidentified developer, the DMG is not an official release.
+* **3MF Security:** Post-process scripts embedded in third-party 3MF files are suppressed on import (CVE-2023-47268). All 3MF extraction uses in-memory buffers, so preFlight is not affected by Zip Slip path traversal vulnerabilities.
 
 ## Why preFlight?
 
@@ -93,6 +94,7 @@ We forked Arachne to modernize it in several ways. Athena uses **fixed extrusion
 - Fixed extrusion widths with variation absorbed in spacing, not width
 - Predictable wall shell thickness
 - Full thin wall support
+- Configurable thin wall snap grid (0.001 - 0.1mm) to control width oscillation on uniform thin walls
 
 **When to Use Athena:** You need control over how perimeters bond, want consistent external perimeter width, or are tuning for strength/flex behavior.
 
@@ -233,7 +235,7 @@ Hover over the G-code window and scroll to scrub through commands in real-time. 
 ### Print Quality Enhancements
 
 - **Top Surface Flow Reduction** - Reduce flow on top layers for smoother finish
-- **Narrow Solid to Concentric** - Automatically switch to concentric pattern when solid areas are too narrow for rectilinear
+- **Narrow to Athena** - Narrow solid surfaces use variable-width fill instead of rectilinear, eliminating zigzag and diamond artifacts at narrow transitions
 - **Bridge Infill Overlap** - Independent control over overlap between bridge extrusions
 
 ### Support System Redesign
@@ -256,6 +258,18 @@ Import printer, filament, and process profiles from `.orca_printer`, `.orca_fila
 
 Right-click any object in sliced preview to activate an interactive cross-section plane that cuts through toolpaths and shell meshes. Useful for inspecting internal structure, verifying infill patterns, and diagnosing print issues before sending to the printer.
 
+### Align to Face Gizmo
+
+Precise object alignment using face selection. Pick a face on the build plate object, pick a face on the tool object, and snap them together. Includes flip, proportional scale/size, depth slider, position nudge, and Shift+drag snap-to-point with visual ring indicator. Boolean weld and subtract operations for combining or cutting objects in place.
+
+### Relief Gizmo
+
+Emboss images as 3D heightmaps onto mesh surfaces. Load any image and project it as a relief with smoothing, gamma correction, and minimum thickness controls. Real-time preview with CSG subtraction shown during the slicing shell animation.
+
+### Counterbore Bridge Gizmo
+
+Paint-on gizmo for controlling bridge layers above counterbore holes. Paint the regions that need bridging, set a per-hole bridge layer count, and the slicer generates bridge infill only within the painted area. Fill direction follows the corridor angle for each hole independently, and the transition extends upward through the specified bridge count.
+
 ### Customizable Sidebar
 
 Two layout modes to suit your workflow:
@@ -264,6 +278,10 @@ Two layout modes to suit your workflow:
 - **Tabbed** - Traditional tabbed layout as an alternative. Toggle between modes via Preferences > GUI.
 
 Per-option visibility checkboxes let you show or hide individual settings to keep the sidebar focused on what matters to you.
+
+### Project Notes
+
+Add notes to individual objects or the entire project. Notes are persisted in 3MF files with full undo/redo support.
 
 ### Additional Features
 
@@ -351,51 +369,50 @@ preFlight works with any modern 3D printer accepting RepRap-flavored G-code:
 
 ## Building from Source
 
+All platforms use a unified build system. Windows uses `.bat` wrappers that set up the MSVC environment, then delegate to the same underlying scripts.
+
 ### Windows
 
 **Requires Visual Studio 2026** (VS 2022 is not supported)
 
 ```bash
 # Build dependencies (first time only)
-build_win.bat -STEPS deps
+build_deps.bat
 
 # Build release
-run_build.bat -ninja
+build.bat
 
 # Build debug (for development)
-run_build.bat -ninja -debug
+build.bat -debug
 ```
 
-### Linux
+### Linux / macOS
 
 ```bash
+# Prerequisites (macOS only)
+brew install cmake ninja pkg-config
+
 # Build dependencies (first time only)
 ./build_deps.sh
 
 # Build release
-./build_linux.sh
+./build.sh
 
+# Build debug (for development)
+./build.sh -debug
 ```
 
-### macOS
+### Build Options
 
-  ```bash
-  # Prerequisites
-  brew install cmake ninja pkg-config
-
-  # Build dependencies (first time only)
-  ./build_deps.sh
-
-  # Build release
-  ./build_macos.sh
-```
-
-**Build Option (all platforms)**
 | Flag | Description |
 |------|-------------|
-| `-ninja` | Use Ninja build system |
-| `-debug` | Build debug configuration |
-| `-clean` | Full rebuild from scratch |
+| `-deps` | Build dependencies (alternative to running build_deps separately) |
+| `-debug` | Build with debug symbols (RelWithDebInfo) |
+| `-clean` | Remove build directory and rebuild from scratch |
+| `-config` | Run CMake configure only, skip build |
+| `-flush` | Force resource recompilation (Windows: icons, splash) |
+| `-jobs N` | Number of parallel build jobs (default: auto-detect) |
+| `-arch A` | Architecture override (macOS: `arm64` / `x86_64`) |
 
 ---
 
