@@ -99,9 +99,9 @@ static const t_config_enum_values s_keys_map_MachineLimitsUsage{{"emit_to_gcode"
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(MachineLimitsUsage)
 
 static const t_config_enum_values s_keys_map_PrintHostType{
-    {"rapid", htRapid},         {"duet", htDuet},         {"moonraker", htMoonraker},
-    {"octoprint", htOctoPrint}, {"flashair", htFlashAir}, {"astrobox", htAstroBox},
-    {"repetier", htRepetier},   {"mks", htMKS},           {"locallink", htLocalLink},
+    {"rapid", htRapid},         {"duet", htDuet},           {"moonraker", htMoonraker},
+    {"prusalink", htPrusaLink}, {"octoprint", htOctoPrint}, {"flashair", htFlashAir},
+    {"astrobox", htAstroBox},   {"repetier", htRepetier},   {"mks", htMKS},
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(PrintHostType)
 
@@ -739,6 +739,17 @@ void PrintConfigDef::init_fff_params()
     def->min = 0;
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0.));
+
+    def = this->add("counterbore_bridge_layers", coInt);
+    def->label = L("Counterbore bridge layers");
+    def->category = L("Quality");
+    def->tooltip = L("Number of transition layers for counterbore bridge regions painted with Ctrl+K. "
+                     "Each layer bridges from a rotated direction, progressively closing the hole. "
+                     "More layers produce a gentler overhang angle.");
+    def->min = 2;
+    def->max = 9;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(2));
 
     def = this->add("bridge_fan_speed", coInts);
     def->label = L("Bridge infill");
@@ -3085,12 +3096,12 @@ void PrintConfigDef::init_fff_params()
         std::initializer_list<std::pair<std::string_view, std::string_view>>{{"rapid", "oozeBot Rapid"},
                                                                              {"duet", "Duet"},
                                                                              {"moonraker", "Klipper"},
+                                                                             {"prusalink", "PrusaLink"},
                                                                              {"octoprint", "OctoPrint"},
                                                                              {"flashair", "FlashAir"},
                                                                              {"astrobox", "AstroBox"},
                                                                              {"repetier", "Repetier"},
-                                                                             {"mks", "MKS"},
-                                                                             {"locallink", "LocalLink"}});
+                                                                             {"mks", "MKS"}});
     def->mode = comAdvanced;
     def->cli = ConfigOptionDef::nocli;
     def->set_default_value(new ConfigOptionEnum<PrintHostType>(htRapid));
@@ -4313,13 +4324,14 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionEnum<SupportMaterialPattern>(smpRectilinear));
 
     def = this->add("support_material_bridge_no_gap", coBool);
-    def->label = L("Bridge fill with no gap");
+    def->label = L("Bridge fill when \"no gap\" selected");
     def->category = L("Support material");
-    def->tooltip = L("When enabled, bottom surfaces printed on top of soluble support (with no Z gap) "
-                     "will use bridge infill instead of solid infill. Bridge infill uses slower speeds "
-                     "and different flow rates optimized for printing over air.\n\n"
-                     "When disabled (default), surfaces on soluble support use normal solid infill since "
-                     "the support provides a stable printing surface.");
+    def->tooltip = L("When enabled, bottom surfaces use bridge infill instead of solid infill "
+                     "when support contact distance is set to \"no gap\". Bridge infill uses "
+                     "slower speeds and flow rates optimized for printing over air.\n\n"
+                     "When disabled (default), all bottom surfaces use solid infill when "
+                     "\"no gap\" is selected, since the support provides a stable printing surface.\n\n"
+                     "Note: This applies to all bottom surfaces, not just areas with support underneath.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
@@ -6088,6 +6100,11 @@ void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &va
     {
         // the "mainsail" key (introduced in 2.6.0-alpha6) was renamed to "moonraker" (in 2.6.0-rc1).
         value = "moonraker";
+    }
+    else if (opt_key == "host_type" && value == "locallink")
+    {
+        // LocalLink renamed back to PrusaLink
+        value = "prusalink";
     }
     else if (opt_key == "fill_density" && value.find("%") == std::string::npos)
     {

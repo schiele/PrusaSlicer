@@ -1113,6 +1113,13 @@ void final_update_volume(TriangleMesh &&mesh, const DataUpdate &data, const Tran
             volume->set_transformation(volume->get_matrix() * emboss_shape->fix_3mf_tr->inverse());
     }
     UpdateJob::update_volume(volume, std::move(mesh), *data.base);
+
+    // update_volume calls set_new_unique_id() which changes the volume's ID.
+    // Reload the scene so GLVolumes sync with the updated ModelVolume mesh,
+    // and notify the gizmo so its cached m_volume_id stays current.
+    GLCanvas3D *canvas = plater->canvas3D();
+    canvas->reload_scene(true);
+    canvas->get_gizmos_manager().update_data();
 }
 
 void create_volume(TriangleMesh &&mesh, const ObjectID &object_id, const ModelVolumeType type,

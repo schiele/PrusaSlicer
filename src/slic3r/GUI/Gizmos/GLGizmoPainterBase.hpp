@@ -38,7 +38,8 @@ enum class PainterGizmoType
     FDM_SUPPORTS,
     SEAM,
     MM_SEGMENTATION,
-    FUZZY_SKIN
+    FUZZY_SKIN,
+    COUNTERBORE_BRIDGE
 };
 
 class TriangleSelectorGUI : public TriangleSelector
@@ -68,10 +69,11 @@ private:
 
     GLModel m_iva_enforcers;
     GLModel m_iva_blockers;
-    GLModel m_iva_organic_enforcers; // Green
-    GLModel m_iva_grid_enforcers;    // Orange
-    // 0=NONE, 1=ENFORCER(Snug), 2=BLOCKER, 3=ORGANIC_ENFORCER, 4=GRID_ENFORCER
-    std::array<GLModel, 5> m_iva_seed_fills;
+    GLModel m_iva_organic_enforcers;       // Green
+    GLModel m_iva_grid_enforcers;          // Orange
+    std::array<GLModel, 5> m_iva_extended; // States 5-9 (counterbore bridge_layers encoding)
+    // Seed fill preview: one buffer per state index (0-9)
+    std::array<GLModel, 10> m_iva_seed_fills;
 #ifdef PREFLIGHT_TRIANGLE_SELECTOR_DEBUG
     std::array<GLModel, 3> m_varrays;
 #endif // PREFLIGHT_TRIANGLE_SELECTOR_DEBUG

@@ -169,9 +169,28 @@ coord_t DistributedBeadingStrategy::getOptimalBeadCount(coord_t thickness) const
 {
     const coord_t naive_count = thickness / bead_spacing;             // How many lines we can fit in for sure.
     const coord_t remainder = thickness - naive_count * bead_spacing; // Space left after fitting that many lines.
-    const coord_t minimum_line_width = bead_spacing *
-                                       (naive_count % 2 == 1 ? wall_split_middle_threshold : wall_add_middle_threshold);
-    return naive_count + (remainder >= minimum_line_width); // If there's enough space, fit an extra one.
+    coord_t minimum_line_width = bead_spacing *
+                                 (naive_count % 2 == 1 ? wall_split_middle_threshold : wall_add_middle_threshold);
+    // With perimeter overlap (bead_spacing < extrusion_width), the center pair from
+    // opposing walls can overlap when Athena's fixed-width beads can't shrink to fit.
+    // Raise the split threshold to half the extrusion width so the center pair has
+    // at least 50% bead-width separation. This blocks splits where the pair would
+    // overlap while allowing them where two beads genuinely fit.
+    if (naive_count % 2 == 1 && bead_spacing < extrusion_width)
+        minimum_line_width = std::max(minimum_line_width, extrusion_width / 2);
+    return naive_count + (remainder >= minimum_line_width);
+}
+
+coord_t DistributedBeadingStrategy::getTransitionThickness(coord_t lower_bead_count) const
+{
+    const coord_t lower_ideal = getOptimalThickness(lower_bead_count);
+    const coord_t higher_ideal = getOptimalThickness(lower_bead_count + 1);
+    const coord_t gap = higher_ideal - lower_ideal; // = bead_spacing
+    double threshold = lower_bead_count % 2 == 1 ? wall_split_middle_threshold : wall_add_middle_threshold;
+    // Must match getOptimalBeadCount for skeleton consistency
+    if (lower_bead_count % 2 == 1 && bead_spacing < extrusion_width)
+        threshold = std::max(threshold, double(extrusion_width / 2) / double(gap));
+    return lower_ideal + coord_t(threshold * gap);
 }
 
 } // namespace Slic3r::Athena

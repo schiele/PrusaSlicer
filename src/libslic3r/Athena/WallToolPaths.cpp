@@ -852,6 +852,58 @@ const std::vector<VariableWidthLines> &WallToolPaths::generate()
     simplifyToolPaths(toolpaths);
 
     removeEmptyToolPaths(toolpaths);
+
+    // Deduplicate overlapping closed loops at the same inset level. With perimeter
+    // overlap, the center pair from opposing walls can land at the exact same position,
+    // creating two identical ExtrusionLines. Keep one, drop the duplicate.
+    // Runs after all processing (including separateOutInnerContour) to avoid
+    // affecting infill boundary computation.
+    for (VariableWidthLines &inset : toolpaths)
+    {
+        if (inset.size() < 2)
+            continue;
+        for (size_t i = 0; i < inset.size(); ++i)
+        {
+            if (!inset[i].is_closed || inset[i].junctions.size() < 3 || inset[i].junctions.front().w == 0)
+                continue;
+            Polygon poly_i = inset[i].toPolygon();
+            BoundingBox bb_i = poly_i.bounding_box();
+            double area_i = std::abs(poly_i.area());
+            coord_t w_i = inset[i].junctions.front().w;
+            for (size_t j = i + 1; j < inset.size(); ++j)
+            {
+                if (!inset[j].is_closed || inset[j].junctions.size() < 3 || inset[j].junctions.front().w == 0)
+                    continue;
+                // Junction count must be similar (identical loops have same vertex count)
+                if (std::abs(int(inset[i].junctions.size()) - int(inset[j].junctions.size())) >
+                    int(inset[i].junctions.size()) / 5)
+                    continue;
+                // Width must match
+                coord_t w_j = inset[j].junctions.front().w;
+                if (std::abs(w_i - w_j) > scaled<coord_t>(0.05))
+                    continue;
+                Polygon poly_j = inset[j].toPolygon();
+                BoundingBox bb_j = poly_j.bounding_box();
+                double area_j = std::abs(poly_j.area());
+                // Bounding box center, size, AND area must all match
+                if ((bb_i.center() - bb_j.center()).cast<int64_t>().norm() < scaled<coord_t>(0.01) &&
+                    std::abs(bb_i.size().x() - bb_j.size().x()) < scaled<coord_t>(0.05) &&
+                    std::abs(bb_i.size().y() - bb_j.size().y()) < scaled<coord_t>(0.05) &&
+                    std::abs(area_i - area_j) < area_i * 0.05)
+                {
+                    if (j == inset.size() - 1)
+                        inset.pop_back();
+                    else
+                    {
+                        inset[j] = std::move(inset.back());
+                        inset.pop_back();
+                    }
+                    --j;
+                }
+            }
+        }
+    }
+
     assert(std::is_sorted(toolpaths.cbegin(), toolpaths.cend(),
                           [](const VariableWidthLines &l, const VariableWidthLines &r)
                           { return l.front().inset_idx < r.front().inset_idx; }) &&

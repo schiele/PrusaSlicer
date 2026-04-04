@@ -110,10 +110,14 @@ static Model read_all_from_file(const std::string &input_file, DynamicPrintConfi
     if (is_project_file(input_file))
     {
         std::string gen_app;
+        bool pp_suppressed = false;
         result = load_3mf(input_file.c_str(), *config, *config_substitutions, &model,
-                          options & LoadAttribute::CheckVersion, generator_version, &gen_app);
+                          options & LoadAttribute::CheckVersion, generator_version, &gen_app, &pp_suppressed);
         if (stats)
+        {
             stats->generator_application = std::move(gen_app);
+            stats->post_process_suppressed = pp_suppressed;
+        }
     }
     else
         throw Slic3r::RuntimeError(L("Unknown file format. Input file must have .3mf extension."));

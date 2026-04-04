@@ -637,8 +637,8 @@ std::string OctoPrint::make_url(const std::string &path) const
     }
 }
 
-// LocalLink
-LocalLink::LocalLink(DynamicPrintConfig *config, bool show_after_message)
+// PrusaLink
+PrusaLink::PrusaLink(DynamicPrintConfig *config, bool show_after_message)
     : OctoPrint(config)
     , m_authorization_type(
           dynamic_cast<const ConfigOptionEnum<AuthorizationType> *>(config->option("printhost_authorization_type"))
@@ -649,29 +649,29 @@ LocalLink::LocalLink(DynamicPrintConfig *config, bool show_after_message)
 {
 }
 
-const char *LocalLink::get_name() const
+const char *PrusaLink::get_name() const
 {
-    return "LocalLink";
+    return "PrusaLink";
 }
 
-wxString LocalLink::get_test_ok_msg() const
+wxString PrusaLink::get_test_ok_msg() const
 {
-    return _(L("Connection to LocalLink works correctly."));
+    return _(L("Connection to PrusaLink works correctly."));
 }
 
-wxString LocalLink::get_test_failed_msg(wxString &msg) const
+wxString PrusaLink::get_test_failed_msg(wxString &msg) const
 {
-    return GUI::format_wxstr("%s: %s", _L("Could not connect to LocalLink"), msg);
+    return GUI::format_wxstr("%s: %s", _L("Could not connect to PrusaLink"), msg);
 }
 
-bool LocalLink::validate_version_text(const boost::optional<std::string> &version_text) const
+bool PrusaLink::validate_version_text(const boost::optional<std::string> &version_text) const
 {
     return version_text
-               ? (boost::starts_with(*version_text, "LocalLink") || boost::starts_with(*version_text, "OctoPrint"))
+               ? (boost::starts_with(*version_text, "PrusaLink") || boost::starts_with(*version_text, "OctoPrint"))
                : false;
 }
 
-void LocalLink::set_auth(Http &http) const
+void PrusaLink::set_auth(Http &http) const
 {
     switch (m_authorization_type)
     {
@@ -690,11 +690,11 @@ void LocalLink::set_auth(Http &http) const
 }
 
 #if 0
-bool LocalLink::version_check(const boost::optional<std::string>& version_text) const
+bool PrusaLink::version_check(const boost::optional<std::string>& version_text) const
 {
     // version_text is in format OctoPrint 1.2.3
     // true (= use PUT) should return: 
-    // LocalLink 0.7+
+    // PrusaLink 0.7+
     
     try {
         if (!version_text)
@@ -707,7 +707,7 @@ bool LocalLink::version_check(const boost::optional<std::string>& version_text) 
             throw Slic3r::RuntimeError("invalid version_text");
         
         Semver semver(name_and_version[1]); // throws Slic3r::RuntimeError when unable to parse
-        if (name_and_version.front() == "LocalLink" && semver >= Semver(0, 7, 0))
+        if (name_and_version.front() == "PrusaLink" && semver >= Semver(0, 7, 0))
             return true;
     } catch (const Slic3r::RuntimeError& ex) {
         BOOST_LOG_TRIVIAL(error) << std::string("Print host version check failed: ") + ex.what();
@@ -717,7 +717,7 @@ bool LocalLink::version_check(const boost::optional<std::string>& version_text) 
 }
 #endif
 
-bool LocalLink::test(wxString &msg) const
+bool PrusaLink::test(wxString &msg) const
 {
     // Since the request is performed synchronously here,
     // it is ok to refer to `msg` from within the closure
@@ -783,7 +783,7 @@ bool LocalLink::test(wxString &msg) const
     return res;
 }
 
-bool LocalLink::get_storage(wxArrayString &storage_path, wxArrayString &storage_name) const
+bool PrusaLink::get_storage(wxArrayString &storage_path, wxArrayString &storage_name) const
 {
     const char *name = get_name();
 
@@ -846,7 +846,7 @@ bool LocalLink::get_storage(wxArrayString &storage_path, wxArrayString &storage_
                         const auto space = section.second.get_optional<std::string>("free_space");
                         const auto read_only = section.second.get_optional<bool>("read_only");
                         const auto ro = section.second.get_optional<bool>(
-                            "ro"); // In LocalLink 0.7.0RC2 "read_only" value is stored under "ro".
+                            "ro"); // In PrusaLink 0.7.0RC2 "read_only" value is stored under "ro".
                         const auto available = section.second.get_optional<bool>("available");
                         if (path && (!available || *available))
                         {
@@ -909,7 +909,7 @@ bool LocalLink::get_storage(wxArrayString &storage_path, wxArrayString &storage_
     return res;
 }
 
-bool LocalLink::test_with_method_check(wxString &msg, bool &use_put) const
+bool PrusaLink::test_with_method_check(wxString &msg, bool &use_put) const
 {
     // Since the request is performed synchronously here,
     // it is ok to refer to `msg` from within the closure
@@ -991,7 +991,7 @@ bool LocalLink::test_with_method_check(wxString &msg, bool &use_put) const
 }
 
 #ifdef WIN32
-bool LocalLink::test_with_resolved_ip_and_method_check(wxString &msg, bool &use_put) const
+bool PrusaLink::test_with_resolved_ip_and_method_check(wxString &msg, bool &use_put) const
 {
     // Since the request is performed synchronously here,
     // it is ok to refer to `msg` from within the closure
@@ -1072,7 +1072,7 @@ bool LocalLink::test_with_resolved_ip_and_method_check(wxString &msg, bool &use_
     return res;
 }
 
-bool LocalLink::upload_inner_with_resolved_ip(PrintHostUpload upload_data, ProgressFn prorgess_fn, ErrorFn error_fn,
+bool PrusaLink::upload_inner_with_resolved_ip(PrintHostUpload upload_data, ProgressFn prorgess_fn, ErrorFn error_fn,
                                               InfoFn info_fn, const boost::asio::ip::address &resolved_addr) const
 {
     info_fn(L"resolve", boost::nowide::widen(resolved_addr.to_string()));
@@ -1110,7 +1110,7 @@ bool LocalLink::upload_inner_with_resolved_ip(PrintHostUpload upload_data, Progr
 
 #endif //WIN32
 
-bool LocalLink::upload_inner_with_host(PrintHostUpload upload_data, ProgressFn prorgess_fn, ErrorFn error_fn,
+bool PrusaLink::upload_inner_with_host(PrintHostUpload upload_data, ProgressFn prorgess_fn, ErrorFn error_fn,
                                        InfoFn info_fn) const
 {
     const char *name = get_name();
@@ -1167,7 +1167,7 @@ bool LocalLink::upload_inner_with_host(PrintHostUpload upload_data, ProgressFn p
     return post_inner(std::move(upload_data), std::move(url), name, prorgess_fn, error_fn, info_fn);
 }
 
-bool LocalLink::put_inner(PrintHostUpload upload_data, std::string url, const std::string &name, ProgressFn prorgess_fn,
+bool PrusaLink::put_inner(PrintHostUpload upload_data, std::string url, const std::string &name, ProgressFn prorgess_fn,
                           ErrorFn error_fn, InfoFn info_fn) const
 {
     info_fn(L"set_complete_off", wxString());
@@ -1186,7 +1186,7 @@ bool LocalLink::put_inner(PrintHostUpload upload_data, std::string url, const st
     http.header("Host", host);
 #endif // _WIN32
     set_auth(http);
-    // This is ugly, but works. There was an error at LocalLink side that accepts any string at Print-After-Upload as true, thus False was also triggering print after upload.
+    // This is ugly, but works. There was an error at PrusaLink side that accepts any string at Print-After-Upload as true, thus False was also triggering print after upload.
     if (upload_data.post_action == PrintHostPostUploadAction::StartPrint)
         http.header("Print-After-Upload", "?1");
     http.set_put_body(upload_data.source_path)
@@ -1227,7 +1227,7 @@ bool LocalLink::put_inner(PrintHostUpload upload_data, std::string url, const st
 
     return res;
 }
-bool LocalLink::post_inner(PrintHostUpload upload_data, std::string url, const std::string &name,
+bool PrusaLink::post_inner(PrintHostUpload upload_data, std::string url, const std::string &name,
                            ProgressFn prorgess_fn, ErrorFn error_fn, InfoFn info_fn) const
 {
     info_fn(L"set_complete_off", wxString());
@@ -1254,7 +1254,7 @@ bool LocalLink::post_inner(PrintHostUpload upload_data, std::string url, const s
             {
                 if (m_show_after_message)
                 {
-                    // LocalLink message
+                    // PrusaLink message
                     wxString widebody = wxString::FromUTF8(body);
                     BOOST_LOG_TRIVIAL(debug)
                         << boost::format("%1%: File uploaded: HTTP %2%: %3%") % name % status % widebody;
@@ -1267,7 +1267,7 @@ bool LocalLink::post_inner(PrintHostUpload upload_data, std::string url, const s
                 }
                 else
                 {
-                    // LocalLink
+                    // PrusaLink
                     BOOST_LOG_TRIVIAL(debug) << boost::format("%1%: File uploaded: HTTP %2%") % name % status;
                     info_fn(L"complete", wxString());
                 }
@@ -1299,7 +1299,7 @@ bool LocalLink::post_inner(PrintHostUpload upload_data, std::string url, const s
     return res;
 }
 
-void LocalLink::set_http_post_header_args(Http &http, PrintHostPostUploadAction post_action) const
+void PrusaLink::set_http_post_header_args(Http &http, PrintHostPostUploadAction post_action) const
 {
     http.form_add("print", post_action == PrintHostPostUploadAction::StartPrint ? "true" : "false");
 }

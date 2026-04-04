@@ -1035,6 +1035,11 @@ bool PrintObject::invalidate_state_by_config_options(const ConfigOptionResolver 
         {
             steps.emplace_back(posPrepareInfill);
         }
+        else if (opt_key == "counterbore_bridge_layers")
+        {
+            // Counterbore bridge modifies slice geometry
+            steps.emplace_back(posSlice);
+        }
         else if (opt_key == "top_fill_pattern" || opt_key == "bottom_fill_pattern" ||
                  opt_key == "external_fill_link_max_length" || opt_key == "fill_angle" || opt_key == "infill_anchor" ||
                  opt_key == "infill_anchor_max" || opt_key == "top_infill_extrusion_width" ||
@@ -1261,8 +1266,8 @@ void PrintObject::detect_surfaces_type()
             [this, region_id, interface_shells, &surfaces_new](const tbb::blocked_range<size_t> &range)
             {
                 PRINT_OBJECT_TIME_LIMIT_MILLIS(PRINT_OBJECT_TIME_LIMIT_DEFAULT);
-                // If we have soluble support material, don't bridge. The overhang will be squished against a soluble layer separating
-                // the support from the print.
+                // With soluble support (no gap) and bridge_no_gap OFF, the overhang
+                // rests on support - no bridge needed.
                 SurfaceType surface_type_bottom_other = (this->has_support() &&
                                                          m_config.support_material_contact_distance.value ==
                                                              stcgNoGap &&

@@ -28,9 +28,13 @@ TriangleMesh eigen_to_triangle_mesh(const EigenMesh &emesh);
 EigenMesh triangle_mesh_to_eigen(const TriangleMesh &mesh);
 
 void minus(EigenMesh &A, const EigenMesh &B);
+void plus(EigenMesh &A, const EigenMesh &B);
+void intersect(EigenMesh &A, const EigenMesh &B);
 void self_union(EigenMesh &A);
 
 void minus(TriangleMesh &A, const TriangleMesh &B);
+void plus(TriangleMesh &A, const TriangleMesh &B);
+void intersect(TriangleMesh &A, const TriangleMesh &B);
 void self_union(TriangleMesh &mesh);
 
 namespace cgal

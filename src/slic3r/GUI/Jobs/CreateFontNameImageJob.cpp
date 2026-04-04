@@ -101,14 +101,31 @@ void CreateFontImageJob::process(Ctl &ctl)
     if (m_tex_size.y() > m_input.size.y())
         m_tex_size.y() = m_input.size.y();
 
-    // Set up result
+    // Set up result - white pixels with alpha driven by rasterization
     unsigned bit_count = 4; // RGBA
     m_result = std::vector<unsigned char>(m_tex_size.x() * m_tex_size.y() * bit_count, {255});
 
-    // Font preview images will not be generated
-    (void) scale; // suppress unused warning
     for (ExPolygon &shape : shapes)
         shape.translate(-bounding_box.min);
+
+    // Rasterize font shapes into the alpha channel via point-in-polygon testing
+    int w = m_tex_size.x(), h = m_tex_size.y();
+    unsigned char alpha = static_cast<unsigned char>(255 / m_input.gray_level);
+    for (int py = 0; py < h; ++py)
+    {
+        for (int px = 0; px < w; ++px)
+        {
+            Point pt(static_cast<coord_t>(px / scale), static_cast<coord_t>((h - 1 - py) / scale));
+            for (const ExPolygon &shape : shapes)
+            {
+                if (shape.contains(pt))
+                {
+                    m_result[3 + 4 * (py * w + px)] = alpha;
+                    break;
+                }
+            }
+        }
+    }
 }
 
 void CreateFontImageJob::finalize(bool canceled, std::exception_ptr &)

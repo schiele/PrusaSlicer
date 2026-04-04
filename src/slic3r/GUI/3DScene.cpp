@@ -312,6 +312,8 @@ void GLVolume::set_render_color(bool force_transparent)
     {
         if (hover == HS_Deselect)
             set_render_color(HOVER_DESELECT_COLOR);
+        else if (disabled)
+            set_render_color(ColorRGBA(0.4f, 0.4f, 0.4f, 0.35f)); // Neutral transparent
         else if (hover == HS_Select || selected)
         {
             const ColorRGBA rc = outside ? SELECTED_OUTSIDE_COLOR : SELECTED_COLOR;
@@ -322,8 +324,6 @@ void GLVolume::set_render_color(bool force_transparent)
             else
                 set_render_color(rc);
         }
-        else if (disabled)
-            set_render_color(DISABLED_COLOR);
         else if (outside && shader_outside_printer_detection_enabled)
             set_render_color(OUTSIDE_COLOR);
         else
@@ -550,6 +550,10 @@ int GLVolumeCollection::load_object_volume(const ModelObject *model_object, int 
             v.extruder_id = extruder_id;
     }
     v.is_modifier = !model_volume->is_model_part();
+    // preFlight: Alignment Box modifiers are visible but not scene-pickable.
+    // The Align gizmo raycasts against them directly via Model data.
+    if (model_volume->is_modifier() && model_volume->name == "Alignment Box")
+        v.disabled = true;
     v.shader_outside_printer_detection_enabled = model_volume->is_model_part();
     v.set_instance_transformation(instance->get_transformation());
     v.set_volume_transformation(model_volume->get_transformation());

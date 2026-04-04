@@ -2678,77 +2678,6 @@ static std::string process_macro(const std::string &templ, client::MyContext &co
     return output;
 }
 
-// preFlight: In G-code, everything after ';' on a line is a comment.  Escape placeholder
-// delimiters ({, }, [, ]) inside comment regions so the macro parser ignores them, then
-// restore the original characters in the output.
-static std::string escape_gcode_comments(const std::string &templ)
-{
-    std::string result;
-    result.reserve(templ.size());
-    bool in_comment = false;
-    for (char c : templ)
-    {
-        if (c == '\n' || c == '\r')
-        {
-            in_comment = false;
-            result += c;
-        }
-        else if (c == ';')
-        {
-            in_comment = true;
-            result += c;
-        }
-        else if (in_comment)
-        {
-            switch (c)
-            {
-            case '{':
-                result += '\x01';
-                break;
-            case '}':
-                result += '\x02';
-                break;
-            case '[':
-                result += '\x03';
-                break;
-            case ']':
-                result += '\x04';
-                break;
-            default:
-                result += c;
-                break;
-            }
-        }
-        else
-        {
-            result += c;
-        }
-    }
-    return result;
-}
-
-static void restore_gcode_comments(std::string &output)
-{
-    for (char &c : output)
-    {
-        switch (c)
-        {
-        case '\x01':
-            c = '{';
-            break;
-        case '\x02':
-            c = '}';
-            break;
-        case '\x03':
-            c = '[';
-            break;
-        case '\x04':
-            c = ']';
-            break;
-        }
-    }
-}
-
 std::string PlaceholderParser::process(const std::string &templ, unsigned int current_extruder_id,
                                        const DynamicConfig *config_override, DynamicConfig *config_outputs,
                                        ContextData *context_data) const
@@ -2760,10 +2689,7 @@ std::string PlaceholderParser::process(const std::string &templ, unsigned int cu
     context.config_outputs = config_outputs;
     context.current_extruder_id = current_extruder_id;
     context.context_data = context_data;
-    std::string escaped = escape_gcode_comments(templ);
-    std::string output = process_macro(escaped, context);
-    restore_gcode_comments(output);
-    return output;
+    return process_macro(templ, context);
 }
 
 // Evaluate a boolean expression using the full expressive power of the PlaceholderParser boolean expression syntax.

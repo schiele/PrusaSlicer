@@ -728,7 +728,7 @@ void GCodeGenerator::do_export(Print *print, const char *path, GCodeProcessorRes
     GCodeOutputStream file(nullptr, m_processor);
     // No need to check is_open() since we're not using a file
 
-    // Hardcoded to true for testing
+    // Virtual file mode: G-code is processed in-memory instead of writing to disk
     file.enable_virtual_file();
 
     try
@@ -4022,9 +4022,12 @@ static void apply_notch_to_external(GCode::SmoothPath &smooth_path, double half_
         // Subdivide only within the taper zone (not the remainder of the segment)
         subdivide_smooth_path_region(first_path, 1, taper_end_idx + 1, max_seg_len);
 
-        // Now apply offset
+        // Now apply offset.
+        // Don't offset the last point when it's a junction with a next element
+        // to avoid breaking path continuity (which would create a tiny travel move).
+        const size_t start_taper_limit = (smooth_path.size() > 1) ? first_path.size() - 1 : first_path.size();
         double dist_from_start = 0;
-        for (size_t i = 0; i < first_path.size(); ++i)
+        for (size_t i = 0; i < start_taper_limit; ++i)
         {
             if (i > 0)
                 dist_from_start += (first_path[i].point - first_path[i - 1].point).cast<double>().norm();
@@ -4085,9 +4088,12 @@ static void apply_notch_to_external(GCode::SmoothPath &smooth_path, double half_
         // Subdivide only within the taper zone
         subdivide_smooth_path_region(last_path, taper_start_idx + 1, last_path.size(), max_seg_len);
 
-        // Apply offset walking backward from end
+        // Apply offset walking backward from end.
+        // Don't offset the first point when it's a junction with a previous element
+        // to avoid breaking path continuity (which would create a tiny travel move).
+        const int end_taper_limit = (smooth_path.size() > 1) ? 1 : 0;
         double dist_from_end = 0;
-        for (int i = static_cast<int>(last_path.size()) - 1; i >= 0; --i)
+        for (int i = static_cast<int>(last_path.size()) - 1; i >= end_taper_limit; --i)
         {
             if (i < static_cast<int>(last_path.size()) - 1)
                 dist_from_end += (last_path[i + 1].point - last_path[i].point).cast<double>().norm();
@@ -4910,45 +4916,44 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
                 // Initialize boundary crossing vectors - one list per segment
                 segment_boundary_crossings.resize(path.size());
 
-                // Check each point against the interlocking zone on layers below AND above.
-                // Elevated flow only when interlocking exists both below (for bonding) and
-                // above (so extra material is absorbed). The top layer of interlocking prints
-                // at 100% flow to avoid over-extrusion on the final interlocking surface.
+                // Elevated flow requires interlocking zone both below AND above.
+                // Boundary detection uses a composite check so segments split at
+                // either zone boundary, not just the below zone.
                 const bool has_zone_below = index_below->has_interlocking_zone();
                 const bool has_zone_above = index_above && index_above->has_interlocking_zone();
 
+                // Composite check: elevated when in interlocking zone below AND above
+                auto is_elevated = [&](const Point &pt) -> bool
+                {
+                    if (!has_zone_below || !Geometry::contains(index_below->interlocking_zone, pt))
+                        return false;
+                    if (!has_zone_above || !Geometry::contains(index_above->interlocking_zone, pt))
+                        return false;
+                    return true;
+                };
+
                 Point current_point = segment.points.empty() ? Point(0, 0) : segment.points[0];
-                bool current_over_interlocking = has_zone_below &&
-                                                 Geometry::contains(index_below->interlocking_zone, current_point);
+                bool current_over_interlocking = is_elevated(current_point);
 
                 for (size_t i = 0; i < path.size(); ++i)
                 {
                     Point end_point = path[i].point;
 
-                    bool over_il_below = has_zone_below &&
-                                         Geometry::contains(index_below->interlocking_zone, end_point);
-                    bool over_il_above = has_zone_above &&
-                                         Geometry::contains(index_above->interlocking_zone, end_point);
+                    bool end_elevated = is_elevated(end_point);
 
-                    if (over_il_below && over_il_above)
+                    if (end_elevated)
                     {
-                        // Interlocking both below and above - full over-extrusion for bonding
                         segment_flow_multipliers[i] = base_over_extrusion_multiplier;
                         segment_width_scales[i] = scale_factor;
                         segment_height_scales[i] = scale_factor;
                     }
-                    // Otherwise keep 100% flow (no interlocking below, or top layer of interlocking)
 
-                    bool end_over_interlocking = over_il_below && over_il_above;
+                    bool end_over_interlocking = end_elevated;
 
-                    // When sampling detects a transition, use binary search to find the EXACT boundary point.
-                    // This is similar to fuzzy skin's visibility boundary detection - we track
-                    // last_known_state_pt and binary search between it and the point where we detected change.
-
-                    if (index_below->has_interlocking_zone())
+                    // Boundary detection: split segments at transitions in the composite
+                    // elevated state (either zone boundary, below or above).
+                    if (has_zone_below && has_zone_above)
                     {
-                        const ExPolygons &zone = index_below->interlocking_zone;
-
                         // Sampling interval based on interlock_flow_detection setting
                         double sample_interval_mm = 1.0; // Default: Precise
                         switch (m_config.interlock_flow_detection.value)
@@ -4967,39 +4972,28 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
                             break;
                         }
 
-                        // When we detect a transition between last_known_state_pt and sample_pt,
-                        // binary search to find the precise crossing point.
-                        // Precision: ~0.1mm (sub-perimeter-width accuracy)
-                        auto find_interlocking_boundary = [&zone](const Point &p1, const Point &p2) -> Point
+                        // Binary search between two points with different elevated states
+                        auto find_interlocking_boundary = [&is_elevated](const Point &p1, const Point &p2) -> Point
                         {
-                            // p1 and p2 have different interlocking states - find the boundary
-                            Point inside_pt = p1;
-                            Point outside_pt = p2;
-                            bool p1_inside = Geometry::contains(zone, p1);
-                            if (!p1_inside)
-                                std::swap(inside_pt, outside_pt);
+                            Point elevated_pt = p1;
+                            Point normal_pt = p2;
+                            if (!is_elevated(p1))
+                                std::swap(elevated_pt, normal_pt);
 
-                            // Binary search to find crossing point
-                            // Stop when interval < 0.1mm (scaled) - sufficient precision for flow changes
                             const coord_t min_precision = scaled<coord_t>(0.1);
-                            coord_t distance = coord_t((outside_pt - inside_pt).cast<double>().norm());
+                            coord_t distance = coord_t((normal_pt - elevated_pt).cast<double>().norm());
 
                             while (distance > min_precision)
                             {
-                                Point mid((inside_pt.x() + outside_pt.x()) / 2, (inside_pt.y() + outside_pt.y()) / 2);
-                                bool mid_inside = Geometry::contains(zone, mid);
-                                if (mid_inside)
-                                {
-                                    inside_pt = mid;
-                                }
+                                Point mid((elevated_pt.x() + normal_pt.x()) / 2, (elevated_pt.y() + normal_pt.y()) / 2);
+                                if (is_elevated(mid))
+                                    elevated_pt = mid;
                                 else
-                                {
-                                    outside_pt = mid;
-                                }
-                                distance = coord_t((outside_pt - inside_pt).cast<double>().norm());
+                                    normal_pt = mid;
+                                distance = coord_t((normal_pt - elevated_pt).cast<double>().norm());
                             }
 
-                            return Point((inside_pt.x() + outside_pt.x()) / 2, (inside_pt.y() + outside_pt.y()) / 2);
+                            return Point((elevated_pt.x() + normal_pt.x()) / 2, (elevated_pt.y() + normal_pt.y()) / 2);
                         };
 
                         // Calculate segment direction for fraction computation
@@ -5019,20 +5013,16 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
                         };
 
                         // Collect crossings with binary search refinement
-                        std::vector<std::pair<double, bool>> crossings; // (fraction, entering_interlocking)
+                        std::vector<std::pair<double, bool>> crossings; // (fraction, entering_elevated)
 
-                        // This ensures we binary search between the last point where we confirmed state
-                        // and the point where we detected a change.
                         Point last_known_state_pt = current_point;
                         bool last_known_state = current_over_interlocking;
 
                         // Check if endpoints differ - if so, there's definitely a crossing
                         if (current_over_interlocking != end_over_interlocking)
                         {
-                            // Binary search to find exact boundary between start and end
                             Point boundary = find_interlocking_boundary(current_point, end_point);
                             double frac = point_to_fraction(boundary);
-                            // entering = true if we're going INTO the zone (end is inside)
                             crossings.emplace_back(frac, end_over_interlocking);
                             last_known_state_pt = boundary;
                             last_known_state = end_over_interlocking;
@@ -5055,21 +5045,17 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
                                 Point sample_pt(current_point.x() + coord_t(frac * (end_point.x() - current_point.x())),
                                                 current_point.y() +
                                                     coord_t(frac * (end_point.y() - current_point.y())));
-                                bool sample_inside = Geometry::contains(zone, sample_pt);
+                                bool sample_elevated = is_elevated(sample_pt);
 
-                                if (sample_inside != last_known_state)
+                                if (sample_elevated != last_known_state)
                                 {
-                                    // Transition detected! Binary search between last_known_state_pt and sample_pt
-                                    // to find the EXACT boundary point
                                     Point boundary = find_interlocking_boundary(last_known_state_pt, sample_pt);
                                     double boundary_frac = point_to_fraction(boundary);
-                                    // entering = true if transitioning INTO the zone
-                                    crossings.emplace_back(boundary_frac, sample_inside);
+                                    crossings.emplace_back(boundary_frac, sample_elevated);
                                 }
 
-                                // Update last known state
                                 last_known_state_pt = sample_pt;
-                                last_known_state = sample_inside;
+                                last_known_state = sample_elevated;
                             }
 
                             // Check final segment from last sample to endpoint
@@ -5634,27 +5620,9 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
                             if (subseg_length <= 0)
                                 return;
 
-                            // Calculate flow for this sub-segment.
-                            // Over-extrude only when interlocking exists both below AND above.
-                            // Top layer of interlocking gets 100% flow (no layer above to absorb extra).
+                            // The over_interlocking flag already encodes the composite state
+                            // (in zone below AND above) from the boundary detection.
                             bool apply_elevated_flow = over_interlocking;
-                            if (apply_elevated_flow && m_layer && m_layer->upper_layer)
-                            {
-                                const auto &idx_above = m_layer->get_role_index_for_layer(m_layer->upper_layer);
-                                if (idx_above.has_interlocking_zone())
-                                {
-                                    Point mid((coord_t) ((from.x() + to.x()) / 2), (coord_t) ((from.y() + to.y()) / 2));
-                                    apply_elevated_flow = Geometry::contains(idx_above.interlocking_zone, mid);
-                                }
-                                else
-                                {
-                                    apply_elevated_flow = false;
-                                }
-                            }
-                            else if (apply_elevated_flow)
-                            {
-                                apply_elevated_flow = false;
-                            }
                             double flow = apply_elevated_flow ? base_over_extrusion_multiplier : 1.0;
                             double scale = apply_elevated_flow ? std::sqrt(flow) : 1.0;
                             float width = base_width * scale;

@@ -192,6 +192,7 @@ private:
     friend void apply_mm_segmentation(PrintObject &print_object, ThrowOnCancel throw_on_cancel);
     template<typename ThrowOnCancel>
     friend void apply_fuzzy_skin_segmentation(PrintObject &print_object, ThrowOnCancel throw_on_cancel);
+    friend void apply_counterbore_bridge_geometry(PrintObject &po);
 
     Layer *m_layer;
     const PrintRegion *m_region;

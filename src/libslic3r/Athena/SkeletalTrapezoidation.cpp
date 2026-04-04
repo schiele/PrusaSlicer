@@ -1629,7 +1629,7 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
             centerline_adjustment = reduction_per_bead / 2;
         }
 
-        coord_t min_safe_width = nominal_spacing * 0.3;
+        coord_t min_safe_width = nominal_width / 3;
         if (new_width < min_safe_width)
         {
             beading.left_over = 0;
@@ -1700,7 +1700,14 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
         // Choose option with less total deviation
         bool split_center_into_loop = false;
 
-        if (beading.left_over > 0 && new_center_width > nominal_width)
+        // With perimeter overlap (nominal_spacing < nominal_width), only split the
+        // center bead when it's wide enough for two beads at proper spacing. When
+        // narrow, splitting recreates the overlap problem. When wide (>= 2x spacing),
+        // two beads fit comfortably and produce better quality than one fat bead.
+        // Note: 2x spacing equals the geometric minimum from the loop_width_factor
+        // formula: nominal_spacing * (2 - overlap_pct) = 2 * nominal_spacing.
+        if (beading.left_over > 0 && new_center_width > nominal_width &&
+            (nominal_spacing >= nominal_width || new_center_width >= 2 * nominal_spacing))
         {
             // For a loop with overlap: width × (2 - overlap%) = expanded_width
             // Therefore: width = expanded_width / (2 - overlap%)
@@ -1751,7 +1758,7 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
         {
             // Normal ODD case processing (no split needed)
 
-            coord_t min_safe_width = nominal_spacing * 0.3;
+            coord_t min_safe_width = nominal_width / 3;
 
             if (new_center_width < min_safe_width)
             {

@@ -67,12 +67,12 @@ private:
 #endif
 };
 
-class LocalLink : public OctoPrint
+class PrusaLink : public OctoPrint
 {
 public:
-    LocalLink(DynamicPrintConfig *config) : LocalLink(config, false) {}
-    LocalLink(DynamicPrintConfig *config, bool show_after_message);
-    ~LocalLink() override = default;
+    PrusaLink(DynamicPrintConfig *config) : PrusaLink(config, false) {}
+    PrusaLink(DynamicPrintConfig *config, bool show_after_message);
+    ~PrusaLink() override = default;
 
     const char *get_name() const override;
 

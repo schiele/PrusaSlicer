@@ -1603,22 +1603,21 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path> &input_
             if (!config_substitutions.empty())
                 show_substitutions_info(config_substitutions.substitutions, filename.string());
 
+            // Alert the user if post_process scripts were suppressed from the 3MF
+            if (load_stats.post_process_suppressed)
+            {
+                MessageDialog dlg(q,
+                                  _L("This 3MF file contained post-processing scripts that were "
+                                     "suppressed for security.\n\n"
+                                     "Embedded scripts in 3MF files can execute arbitrary commands "
+                                     "on your system. If you trust this file's source, you can "
+                                     "re-add your scripts in Print Settings > Output options."),
+                                  _L("Security Notice"), wxICON_WARNING | wxOK);
+                dlg.ShowModal();
+            }
+
             if (!config.empty())
             {
-                const auto *post_process = config.opt<ConfigOptionStrings>("post_process");
-                if (post_process != nullptr && !post_process->values.empty())
-                {
-                    wxString msg = _L("The selected 3MF file contains a post-processing script.\n"
-                                      "Please review the script carefully before exporting G-code.");
-                    std::string text;
-                    for (const std::string &s : post_process->values)
-                        text += s;
-
-                    InfoDialog msg_dlg(nullptr, msg, from_u8(text), true, wxOK | wxICON_WARNING);
-                    msg_dlg.set_caption(wxString(SLIC3R_APP_NAME " - ") + _L("Attention!"));
-                    msg_dlg.ShowModal();
-                }
-
                 Preset::normalize(config); //???
                 PresetBundle *preset_bundle = wxGetApp().preset_bundle;
 
@@ -3014,6 +3013,8 @@ unsigned int Plater::priv::update_background_process(bool force_validation, bool
         for (auto btn : {ActionButtonType::Reslice, ActionButtonType::SendGCode, ActionButtonType::Export})
             sidebar->set_btn_label(btn, invalid_str);
         s_print_statuses[s_multiple_beds.get_active_bed()] = PrintStatus::invalid;
+        if (wxGetApp().mainframe && wxGetApp().mainframe->m_modern_tabbar)
+            wxGetApp().mainframe->m_modern_tabbar->UpdateSliceButtonState(false);
     }
     else
     {
@@ -3039,6 +3040,12 @@ unsigned int Plater::priv::update_background_process(bool force_validation, bool
                                                  * */
             show_action_buttons(true);
     }
+
+    // Keep ModernTabBar slice button in sync with actual print state.
+    // The button shows "Export G-code" only when the active bed has finished slicing.
+    if (invalidated != Print::APPLY_STATUS_UNCHANGED && wxGetApp().mainframe && wxGetApp().mainframe->m_modern_tabbar)
+        wxGetApp().mainframe->m_modern_tabbar->UpdateSliceButtonState(
+            s_print_statuses[s_multiple_beds.get_active_bed()] == PrintStatus::finished);
 
     this->q->object_list_changed();
     return return_state;
@@ -3264,6 +3271,7 @@ bool Plater::priv::replace_volume_with_stl(int object_idx, int volume_idx, const
         new_volume->seam_facets.assign(old_volume->seam_facets);
         new_volume->mm_segmentation_facets.assign(old_volume->mm_segmentation_facets);
         new_volume->fuzzy_skin_facets.assign(old_volume->fuzzy_skin_facets);
+        new_volume->counterbore_bridge_facets.assign(old_volume->counterbore_bridge_facets);
     }
     std::swap(old_model_object->volumes[volume_idx], old_model_object->volumes.back());
     old_model_object->delete_volume(old_model_object->volumes.size() - 1);
@@ -4169,6 +4177,8 @@ void Plater::priv::on_process_completed(SlicingProcessCompletedEvent &evt)
         // before starting), switch back to Prepare so the sidebar and hamburger icon are restored.
         // Reset print status to idle so the Slice button remains active and the user can retry.
         s_print_statuses[s_multiple_beds.get_active_bed()] = PrintStatus::idle;
+        if (wxGetApp().mainframe && wxGetApp().mainframe->m_modern_tabbar)
+            wxGetApp().mainframe->m_modern_tabbar->UpdateSliceButtonState(false);
         if (is_preview_shown())
         {
             set_current_panel(view3D);
@@ -4183,6 +4193,8 @@ void Plater::priv::on_process_completed(SlicingProcessCompletedEvent &evt)
     {
         this->notification_manager->set_slicing_progress_canceled(_u8L("Slicing Cancelled."));
         s_print_statuses[s_multiple_beds.get_active_bed()] = PrintStatus::idle;
+        if (wxGetApp().mainframe && wxGetApp().mainframe->m_modern_tabbar)
+            wxGetApp().mainframe->m_modern_tabbar->UpdateSliceButtonState(false);
     }
 
     this->sidebar->show_sliced_info_sizer(evt.success());
@@ -7741,7 +7753,7 @@ void Plater::send_gcode_inner(DynamicPrintConfig *physical_printer_config)
         wxBusyCursor wait;
         upload_job.printhost->get_groups(groups);
     }
-    // LocalLink specific: Query the server for the list of file groups.
+    // PrusaLink specific: Query the server for the list of file groups.
     wxArrayString storage_paths;
     wxArrayString storage_names;
     {
@@ -8162,10 +8174,9 @@ void Plater::on_activate(bool active)
     if (active)
     {
         this->p->show_delayed_error_message();
-        // preFlight: Resume rendering on both canvases when the application regains focus.
-        if (auto *c = canvas3D())
-            c->resume_rendering();
-        if (auto *c = get_current_canvas3D())
+        // preFlight: Resume the Preview canvas when the application regains focus.
+        // The Platter (3D view) is never paused.
+        if (auto *c = get_current_canvas3D(); c && c != canvas3D())
             c->resume_rendering();
     }
     else
@@ -8176,18 +8187,13 @@ void Plater::on_activate(bool active)
         if (is_slicing())
             return;
 
-        // preFlight: Pause rendering on both canvases when the application loses focus.
-        // on_idle checks m_rendering_paused and returns immediately. Any state changes
-        // (slicing completion, notifications) set m_dirty, which is picked up when
-        // resume_rendering() re-enables on_idle and sets m_dirty = true.
-        if (auto *c = canvas3D())
+        // preFlight: Only pause the Preview canvas on focus loss. The Platter (3D view)
+        // must remain responsive for CSG preview updates and other model changes.
+        if (auto *c = get_current_canvas3D(); c && c != canvas3D())
             c->pause_rendering();
-        if (auto *c = get_current_canvas3D())
-            c->pause_rendering();
-        // preFlight: Release the GL context so the GPU driver drops to idle power state.
-        // wglMakeCurrent(NULL, NULL) operates on the calling thread - one call releases
-        // whichever canvas context is current. Re-acquired by _set_current() on next render.
-        if (auto *c = get_current_canvas3D())
+        // preFlight: Release the Preview's GL context so the GPU driver drops to idle.
+        // Don't release the Platter's context - it must stay responsive.
+        if (auto *c = get_current_canvas3D(); c && c != canvas3D())
             c->release_gl_context();
     }
 }
@@ -8472,13 +8478,15 @@ void Plater::clear_before_change_volume(ModelVolume &mv, const std::string &noti
 {
     // When we change the geometry of the volume, we remove any custom supports/seams/multi-material/fuzzy skin painting.
     if (const bool paint_removed = !mv.supported_facets.empty() || !mv.seam_facets.empty() ||
-                                   !mv.mm_segmentation_facets.empty() || !mv.fuzzy_skin_facets.empty();
+                                   !mv.mm_segmentation_facets.empty() || !mv.fuzzy_skin_facets.empty() ||
+                                   !mv.counterbore_bridge_facets.empty();
         paint_removed)
     {
         mv.supported_facets.reset();
         mv.seam_facets.reset();
         mv.mm_segmentation_facets.reset();
         mv.fuzzy_skin_facets.reset();
+        mv.counterbore_bridge_facets.reset();
 
         get_notification_manager()->push_notification(NotificationType::CustomSupportsAndSeamRemovedAfterRepair,
                                                       NotificationManager::NotificationLevel::PrintInfoNotificationLevel,
@@ -8496,11 +8504,13 @@ void Plater::clear_before_change_mesh(int obj_idx, const std::string &notificati
     for (ModelVolume *mv : mo->volumes)
     {
         paint_removed |= !mv->supported_facets.empty() || !mv->seam_facets.empty() ||
-                         !mv->mm_segmentation_facets.empty() || !mv->fuzzy_skin_facets.empty();
+                         !mv->mm_segmentation_facets.empty() || !mv->fuzzy_skin_facets.empty() ||
+                         !mv->counterbore_bridge_facets.empty();
         mv->supported_facets.reset();
         mv->seam_facets.reset();
         mv->mm_segmentation_facets.reset();
         mv->fuzzy_skin_facets.reset();
+        mv->counterbore_bridge_facets.reset();
     }
     if (paint_removed)
     {

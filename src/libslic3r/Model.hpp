@@ -609,6 +609,8 @@ public:
     bool is_mm_painted() const;
     // Checks if any of object volume is painted using the fuzzy skin painting gizmo.
     bool is_fuzzy_skin_painted() const;
+    // Checks if any of object volume is painted using the counterbore bridge gizmo.
+    bool is_counterbore_bridge_painted() const;
     // Checks if object contains just one volume and it's a text
     bool is_text() const;
     // This object may have a varying layer height by painting or by a table.
@@ -983,6 +985,11 @@ public:
     };
     Source source;
 
+    // preFlight: Low-resolution preview mesh for CSG boolean preview.
+    // Used by CSGPreviewManager when the full mesh is too dense for CGAL.
+    // Transient - not serialized. Populated by the Relief gizmo.
+    std::shared_ptr<const indexed_triangle_set> preview_its;
+
     // struct used by cut command
     // It contains information about connetors
     struct CutInfo
@@ -1048,6 +1055,9 @@ public:
 
     // List of mesh facets painted for fuzzy skin.
     FacetsAnnotation fuzzy_skin_facets;
+
+    // List of mesh facets painted for counterbore bridge.
+    FacetsAnnotation counterbore_bridge_facets;
 
     // Is set only when volume is Embossed Text type
     // Contain information how to re-create volume
@@ -1157,12 +1167,14 @@ public:
         this->seam_facets.set_new_unique_id();
         this->mm_segmentation_facets.set_new_unique_id();
         this->fuzzy_skin_facets.set_new_unique_id();
+        this->counterbore_bridge_facets.set_new_unique_id();
     }
 
     bool is_fdm_support_painted() const { return !this->supported_facets.empty(); }
     bool is_seam_painted() const { return !this->seam_facets.empty(); }
     bool is_mm_painted() const { return !this->mm_segmentation_facets.empty(); }
     bool is_fuzzy_skin_painted() const { return !this->fuzzy_skin_facets.empty(); }
+    bool is_counterbore_bridge_painted() const { return !this->counterbore_bridge_facets.empty(); }
 
     // Returns 0-based indices of extruders painted by multi-material painting gizmo.
     std::vector<size_t> get_extruders_from_multi_material_painting() const;
@@ -1213,11 +1225,13 @@ private:
         assert(this->seam_facets.id().valid());
         assert(this->mm_segmentation_facets.id().valid());
         assert(this->fuzzy_skin_facets.id().valid());
+        assert(this->counterbore_bridge_facets.id().valid());
         assert(this->id() != this->config.id());
         assert(this->id() != this->supported_facets.id());
         assert(this->id() != this->seam_facets.id());
         assert(this->id() != this->mm_segmentation_facets.id());
         assert(this->id() != this->fuzzy_skin_facets.id());
+        assert(this->id() != this->counterbore_bridge_facets.id());
         return true;
     }
 
@@ -1260,9 +1274,11 @@ private:
         , seam_facets(other.seam_facets)
         , mm_segmentation_facets(other.mm_segmentation_facets)
         , fuzzy_skin_facets(other.fuzzy_skin_facets)
+        , counterbore_bridge_facets(other.counterbore_bridge_facets)
         , cut_info(other.cut_info)
         , text_configuration(other.text_configuration)
         , emboss_shape(other.emboss_shape)
+        , preview_its(other.preview_its)
     {
         assert(this->id().valid());
         assert(this->config.id().valid());
@@ -1270,6 +1286,7 @@ private:
         assert(this->seam_facets.id().valid());
         assert(this->mm_segmentation_facets.id().valid());
         assert(this->fuzzy_skin_facets.id().valid());
+        assert(this->counterbore_bridge_facets.id().valid());
         assert(this->id() != this->config.id());
         assert(this->id() != this->supported_facets.id());
         assert(this->id() != this->seam_facets.id());
@@ -1280,6 +1297,7 @@ private:
         assert(this->seam_facets.id() == other.seam_facets.id());
         assert(this->mm_segmentation_facets.id() == other.mm_segmentation_facets.id());
         assert(this->fuzzy_skin_facets.id() == other.fuzzy_skin_facets.id());
+        assert(this->counterbore_bridge_facets.id() == other.counterbore_bridge_facets.id());
         this->set_material_id(other.material_id());
     }
     // Providing a new mesh, therefore this volume will get a new unique ID assigned.
@@ -1294,6 +1312,7 @@ private:
         , cut_info(other.cut_info)
         , text_configuration(other.text_configuration)
         , emboss_shape(other.emboss_shape)
+        , preview_its(other.preview_its)
     {
         assert(this->id().valid());
         assert(this->config.id().valid());
@@ -1301,11 +1320,13 @@ private:
         assert(this->seam_facets.id().valid());
         assert(this->mm_segmentation_facets.id().valid());
         assert(this->fuzzy_skin_facets.id().valid());
+        assert(this->counterbore_bridge_facets.id().valid());
         assert(this->id() != this->config.id());
         assert(this->id() != this->supported_facets.id());
         assert(this->id() != this->seam_facets.id());
         assert(this->id() != this->mm_segmentation_facets.id());
         assert(this->id() != this->fuzzy_skin_facets.id());
+        assert(this->id() != this->counterbore_bridge_facets.id());
         assert(this->id() != other.id());
         assert(this->config.id() == other.config.id());
         this->set_material_id(other.material_id());
@@ -1318,11 +1339,13 @@ private:
         assert(this->seam_facets.id() != other.seam_facets.id());
         assert(this->mm_segmentation_facets.id() != other.mm_segmentation_facets.id());
         assert(this->fuzzy_skin_facets.id() != other.fuzzy_skin_facets.id());
+        assert(this->counterbore_bridge_facets.id() != other.counterbore_bridge_facets.id());
         assert(this->id() != this->config.id());
         assert(this->supported_facets.empty());
         assert(this->seam_facets.empty());
         assert(this->mm_segmentation_facets.empty());
         assert(this->fuzzy_skin_facets.empty());
+        assert(this->counterbore_bridge_facets.empty());
     }
 
     ModelVolume &operator=(ModelVolume &rhs) = delete;
@@ -1337,6 +1360,7 @@ private:
         , seam_facets(-1)
         , mm_segmentation_facets(-1)
         , fuzzy_skin_facets(-1)
+        , counterbore_bridge_facets(-1)
         , object(nullptr)
     {
         assert(this->id().invalid());
@@ -1345,6 +1369,7 @@ private:
         assert(this->seam_facets.id().invalid());
         assert(this->mm_segmentation_facets.id().invalid());
         assert(this->fuzzy_skin_facets.id().invalid());
+        assert(this->counterbore_bridge_facets.id().invalid());
     }
     template<class Archive>
     void load(Archive &ar)
@@ -1355,6 +1380,7 @@ private:
         cereal::load_by_value(ar, seam_facets);
         cereal::load_by_value(ar, mm_segmentation_facets);
         cereal::load_by_value(ar, fuzzy_skin_facets);
+        cereal::load_by_value(ar, counterbore_bridge_facets);
         cereal::load_by_value(ar, config);
         cereal::load(ar, text_configuration);
         cereal::load(ar, emboss_shape);
@@ -1378,6 +1404,7 @@ private:
         cereal::save_by_value(ar, seam_facets);
         cereal::save_by_value(ar, mm_segmentation_facets);
         cereal::save_by_value(ar, fuzzy_skin_facets);
+        cereal::save_by_value(ar, counterbore_bridge_facets);
         cereal::save_by_value(ar, config);
         cereal::save(ar, text_configuration);
         cereal::save(ar, emboss_shape);
@@ -1688,6 +1715,8 @@ public:
     bool is_mm_painted() const;
     // Checks if any of objects is painted using the fuzzy skin painting gizmo.
     bool is_fuzzy_skin_painted() const;
+    // Checks if any of objects is painted using the counterbore bridge gizmo.
+    bool is_counterbore_bridge_painted() const;
 
 private:
     explicit Model(int) : ObjectBase(-1) { assert(this->id().invalid()); }
@@ -1736,6 +1765,10 @@ extern bool model_mmu_segmentation_data_changed(const ModelObject &mo, const Mod
 // Test whether the now ModelObject has newer fuzzy skin data than the old one.
 // The function assumes that volumes list is synchronized.
 extern bool model_fuzzy_skin_data_changed(const ModelObject &mo, const ModelObject &mo_new);
+
+// Test whether the now ModelObject has newer counterbore bridge data than the old one.
+// The function assumes that volumes list is synchronized.
+extern bool model_counterbore_bridge_data_changed(const ModelObject &mo, const ModelObject &mo_new);
 
 // Test whether the ModelObject has different brim points than the new one.
 extern bool model_brim_points_data_changed(const ModelObject &mo, const ModelObject &mo_new);

@@ -27,12 +27,13 @@ namespace GUI
 static std::map<std::string, double> s_approved_narrow_widths; // below 60% of nozzle
 static std::map<std::string, double> s_approved_wide_widths;   // above 150% of nozzle
 
-// Flag to suppress extrusion width warnings during initial app load
-static bool s_suppress_extrusion_width_warnings = false;
+// Suppress all config validation dialogs during startup/GUI recreation.
+// Modal dialogs during load_current_presets() deadlock behind the splash screen.
+static bool s_suppress_startup_dialogs = false;
 
-void ConfigManipulation::set_suppress_extrusion_width_warnings(bool suppress)
+void ConfigManipulation::set_suppress_startup_dialogs(bool suppress)
 {
-    s_suppress_extrusion_width_warnings = suppress;
+    s_suppress_startup_dialogs = suppress;
 }
 
 void ConfigManipulation::approve_extrusion_width(const std::string &width_key, double width_mm)
@@ -153,6 +154,11 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig *config, con
     // to except the duplicate call of the update() after dialog->ShowModal(),
     // let check if this process is already started.
     if (is_msg_dlg_already_exist)
+        return;
+
+    // Skip all validation dialogs during startup - presets were validated when saved,
+    // and modal dialogs here would deadlock behind the splash screen.
+    if (s_suppress_startup_dialogs)
         return;
 
     // Determine if we should validate extrusion widths
@@ -345,10 +351,6 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig *config, con
         [&](const std::string &width_key, const std::string &extruder_key, const std::string &label)
     {
         if (is_msg_dlg_already_exist)
-            return;
-
-        // Skip validation during initial app load (user hasn't configured anything yet)
-        if (s_suppress_extrusion_width_warnings)
             return;
 
         // Skip validation if the changed key is not related to extrusion widths

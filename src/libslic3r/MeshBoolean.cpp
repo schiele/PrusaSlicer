@@ -91,6 +91,48 @@ void minus(TriangleMesh &A, const TriangleMesh &B)
     A = eigen_to_triangle_mesh(eA);
 }
 
+void plus(EigenMesh &A, const EigenMesh &B)
+{
+    auto &[VA, FA] = A;
+    auto &[VB, FB] = B;
+
+    Eigen::MatrixXd VC;
+    Eigen::MatrixXi FC;
+    igl::MeshBooleanType boolean_type(igl::MESH_BOOLEAN_TYPE_UNION);
+    igl::copyleft::cgal::mesh_boolean(VA, FA, VB, FB, boolean_type, VC, FC);
+
+    VA = std::move(VC);
+    FA = std::move(FC);
+}
+
+void plus(TriangleMesh &A, const TriangleMesh &B)
+{
+    EigenMesh eA = triangle_mesh_to_eigen(A);
+    plus(eA, triangle_mesh_to_eigen(B));
+    A = eigen_to_triangle_mesh(eA);
+}
+
+void intersect(EigenMesh &A, const EigenMesh &B)
+{
+    auto &[VA, FA] = A;
+    auto &[VB, FB] = B;
+
+    Eigen::MatrixXd VC;
+    Eigen::MatrixXi FC;
+    igl::MeshBooleanType boolean_type(igl::MESH_BOOLEAN_TYPE_INTERSECT);
+    igl::copyleft::cgal::mesh_boolean(VA, FA, VB, FB, boolean_type, VC, FC);
+
+    VA = std::move(VC);
+    FA = std::move(FC);
+}
+
+void intersect(TriangleMesh &A, const TriangleMesh &B)
+{
+    EigenMesh eA = triangle_mesh_to_eigen(A);
+    intersect(eA, triangle_mesh_to_eigen(B));
+    A = eigen_to_triangle_mesh(eA);
+}
+
 void self_union(EigenMesh &A)
 {
     EigenMesh result;

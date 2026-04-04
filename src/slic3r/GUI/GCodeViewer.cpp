@@ -28,6 +28,7 @@
 #include "GUI_Utils.hpp"
 #include "GUI.hpp"
 #include "GLCanvas3D.hpp"
+#include "CSGPreviewManager.hpp"
 #include "Theme.hpp"
 #include "Widgets/UIColors.hpp"
 #include "GLToolbar.hpp"
@@ -1168,11 +1169,15 @@ void GCodeViewer::SequentialView::GCodeWindow::render(float top, float bottom, s
     Range visible_range;
     resize_range(visible_range, visible_lines_count);
 
+    // Virtual file (in-memory from slicing) takes priority over file-based readers.
+    // Binary gcode format only applies to on-disk files.
+    const bool use_binary = m_is_binary_file && m_virtual_file == nullptr;
+
     // update cache if needed
     if (m_cache_range.empty() || !m_cache_range.contains(visible_range))
     {
         resize_range(m_cache_range, 4 * visible_range.size());
-        if (m_is_binary_file)
+        if (use_binary)
             update_lines_binary();
         else
             update_lines_ascii();
@@ -1185,7 +1190,7 @@ void GCodeViewer::SequentialView::GCodeWindow::render(float top, float bottom, s
         // Force cache update when empty
         if (!m_cache_range.empty())
         {
-            if (m_is_binary_file)
+            if (use_binary)
                 update_lines_binary();
             else
                 update_lines_ascii();
@@ -2380,7 +2385,54 @@ void GCodeViewer::load_shells(const Print &print)
         }
 
         size_t current_volumes_count = m_shells.volumes.volumes.size();
-        m_shells.volumes.load_object(model_obj, object_id, instance_ids);
+
+        // Check if this object has negative volumes - if so, use the CSG preview
+        // mesh to show the subtracted result instead of the raw individual volumes.
+        bool has_negative = false;
+        for (const ModelVolume *v : model_obj->volumes)
+            if (v && v->is_negative_volume())
+            {
+                has_negative = true;
+                break;
+            }
+
+        if (has_negative)
+        {
+            // Try both the current canvas and the 3D view canvas for CSG preview
+            GLCanvas3D *canvas = wxGetApp().plater()->get_current_canvas3D();
+            GLCanvas3D *canvas3d = wxGetApp().plater()->canvas3D();
+            const TriangleMesh *csg_mesh = nullptr;
+
+            if (canvas && canvas->get_csg_preview() && canvas->get_csg_preview()->has_preview(object_id))
+                csg_mesh = canvas->get_csg_preview()->get_preview_mesh(object_id);
+            else if (canvas3d && canvas3d->get_csg_preview() && canvas3d->get_csg_preview()->has_preview(object_id))
+                csg_mesh = canvas3d->get_csg_preview()->get_preview_mesh(object_id);
+
+            if (csg_mesh && !csg_mesh->empty())
+            {
+                // Load the CSG result as the shell instead of individual volumes
+                for (int inst_id : instance_ids)
+                {
+                    const ModelInstance *inst = model_obj->instances[inst_id];
+                    m_shells.volumes.volumes.emplace_back(new GLVolume());
+                    GLVolume *v = m_shells.volumes.volumes.back();
+                    v->model.init_from(csg_mesh->its);
+                    v->set_instance_transformation(inst->get_transformation());
+                    v->composite_id = GLVolume::CompositeID(object_id, 0, inst_id);
+                    v->is_active = true;
+                    v->shader_outside_printer_detection_enabled = true;
+                }
+            }
+            else
+            {
+                // No CSG preview available - load normally, negative volumes will show as-is
+                m_shells.volumes.load_object(model_obj, object_id, instance_ids);
+            }
+        }
+        else
+        {
+            m_shells.volumes.load_object(model_obj, object_id, instance_ids);
+        }
 
         // adjust shells' z if raft is present
         const SlicingParameters &slicing_parameters = obj->slicing_parameters();

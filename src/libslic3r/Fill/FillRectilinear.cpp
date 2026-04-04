@@ -2026,7 +2026,7 @@ static void traverse_graph_generate_polylines(const ExPolygonWithOffset &poly_wi
 #endif
                 assert(it->iContour == vline.intersections[i_vertical].iContour);
                 polyline_current->points.emplace_back(vline.pos, it->pos());
-                if (vertical_link_quality == SegmentIntersection::LinkQuality::Valid)
+                if (vertical_link_quality == SegmentIntersection::LinkQuality::Valid && !params.bridge)
                     // Consume the connecting contour and the next segment.
                     emit_perimeter_segment_on_vertical_line(poly_with_offset, segs, i_vline, it->iContour,
                                                             i_intersection, i_vertical, *polyline_current,
@@ -2034,10 +2034,15 @@ static void traverse_graph_generate_polylines(const ExPolygonWithOffset &poly_wi
                                                                      : it->has_right_vertical_down());
                 else
                 {
-                    // Just skip the connecting contour and start a new path.
+                    // Skip the connecting contour and start a new path.
+                    // For bridges: extend endpoints to outer contour for maximum anchorage.
+                    int i_outer = going_up ? i_vertical - 1 : i_vertical + 1;
+                    bool use_outer = params.bridge && i_outer >= 0 && size_t(i_outer) < vline.intersections.size() &&
+                                     vline.intersections[i_outer].is_outer();
                     polylines_out.emplace_back();
                     polyline_current = &polylines_out.back();
-                    polyline_current->points.emplace_back(vline.pos, vline.intersections[i_vertical].pos());
+                    polyline_current->points.emplace_back(vline.pos, use_outer ? vline.intersections[i_outer].pos()
+                                                                               : vline.intersections[i_vertical].pos());
                 }
                 // Mark both the left and right connecting segment as consumed, because one cannot go to this intersection point as it has been consumed.
                 // If there are any outer intersection points skipped (bypassed) by the contour,
@@ -2229,12 +2234,18 @@ static const SegmentIntersection &vertical_run_bottom(const SegmentedIntersectio
 {
     assert(start.is_inner());
     const SegmentIntersection *it = &start;
-    // Find the lowest SegmentIntersection::INNER_LOW starting with right.
+    const SegmentIntersection *begin = vline.intersections.data();
+    // preFlight: bounds-check the pointer walk to prevent out-of-bounds reads
+    // on dense meshes where intersection data may not follow the expected pattern.
     for (;;)
     {
         while (it->type != SegmentIntersection::INNER_LOW)
+        {
+            if (it <= begin)
+                return *it;
             --it;
-        if ((it - 1)->type == SegmentIntersection::INNER_HIGH)
+        }
+        if (it > begin && (it - 1)->type == SegmentIntersection::INNER_HIGH)
             --it;
         else
         {
@@ -2257,12 +2268,18 @@ static const SegmentIntersection &vertical_run_top(const SegmentedIntersectionLi
 {
     assert(start.is_inner());
     const SegmentIntersection *it = &start;
-    // Find the lowest SegmentIntersection::INNER_LOW starting with right.
+    const SegmentIntersection *end = vline.intersections.data() + vline.intersections.size() - 1;
+    // preFlight: bounds-check the pointer walk to prevent out-of-bounds reads
+    // on dense meshes where intersection data may not follow the expected pattern.
     for (;;)
     {
         while (it->type != SegmentIntersection::INNER_HIGH)
+        {
+            if (it >= end)
+                return *it;
             ++it;
-        if ((it + 1)->type == SegmentIntersection::INNER_LOW)
+        }
+        if (it < end && (it + 1)->type == SegmentIntersection::INNER_LOW)
             ++it;
         else
         {
@@ -2798,18 +2815,37 @@ static void connect_monotonic_regions(std::vector<MonotonicRegion> &regions,
                                                vline.intersections[region.left.high], vline, vline_left);
             if (lbegin != nullptr)
             {
+                // preFlight: bounds pointers for safe iteration over vline_left intersections.
+                // Dense meshes can produce malformed intersection sequences where contour links
+                // escape into adjacent vlines, causing lower_bound misses and unbounded pointer walks.
+                const SegmentIntersection *vline_left_end = vline_left.intersections.data() +
+                                                            vline_left.intersections.size();
                 for (;;)
                 {
                     MapType key(lbegin, nullptr);
                     auto it = std::lower_bound(map_intersection_to_region_end.begin(),
                                                map_intersection_to_region_end.end(), key);
-                    assert(it != map_intersection_to_region_end.end() && it->first == key.first);
+                    if (it == map_intersection_to_region_end.end() || it->first != key.first)
+                    {
+                        // No region ends at this intersection - skip to next run
+                        SegmentIntersection *lnext = &vertical_run_top(vline_left, *lbegin);
+                        if (lnext >= lend)
+                            break;
+                        while (lnext < vline_left_end && lnext->type != SegmentIntersection::INNER_LOW)
+                            ++lnext;
+                        if (lnext >= vline_left_end || lnext >= lend)
+                            break;
+                        lbegin = lnext;
+                        continue;
+                    }
                     it->second->right_neighbors.emplace_back(&region);
                     SegmentIntersection *lnext = &vertical_run_top(vline_left, *lbegin);
-                    if (lnext == lend)
+                    if (lnext >= lend)
                         break;
-                    while (lnext->type != SegmentIntersection::INNER_LOW)
+                    while (lnext < vline_left_end && lnext->type != SegmentIntersection::INNER_LOW)
                         ++lnext;
+                    if (lnext >= vline_left_end)
+                        break;
                     lbegin = lnext;
                 }
             }
@@ -2822,18 +2858,33 @@ static void connect_monotonic_regions(std::vector<MonotonicRegion> &regions,
                                                 vline.intersections[region.right.high], vline, vline_right);
             if (rbegin != nullptr)
             {
+                const SegmentIntersection *vline_right_end = vline_right.intersections.data() +
+                                                             vline_right.intersections.size();
                 for (;;)
                 {
                     MapType key(rbegin, nullptr);
                     auto it = std::lower_bound(map_intersection_to_region_start.begin(),
                                                map_intersection_to_region_start.end(), key);
-                    assert(it != map_intersection_to_region_start.end() && it->first == key.first);
+                    if (it == map_intersection_to_region_start.end() || it->first != key.first)
+                    {
+                        SegmentIntersection *rnext = &vertical_run_top(vline_right, *rbegin);
+                        if (rnext >= rend)
+                            break;
+                        while (rnext < vline_right_end && rnext->type != SegmentIntersection::INNER_LOW)
+                            ++rnext;
+                        if (rnext >= vline_right_end || rnext >= rend)
+                            break;
+                        rbegin = rnext;
+                        continue;
+                    }
                     it->second->left_neighbors.emplace_back(&region);
                     SegmentIntersection *rnext = &vertical_run_top(vline_right, *rbegin);
-                    if (rnext == rend)
+                    if (rnext >= rend)
                         break;
-                    while (rnext->type != SegmentIntersection::INNER_LOW)
+                    while (rnext < vline_right_end && rnext->type != SegmentIntersection::INNER_LOW)
                         ++rnext;
+                    if (rnext >= vline_right_end)
+                        break;
                     rbegin = rnext;
                 }
             }
@@ -3369,7 +3420,8 @@ end:
 // Traverse path, produce polylines.
 static void polylines_from_paths(const std::vector<MonotonicRegionLink> &path,
                                  const ExPolygonWithOffset &poly_with_offset,
-                                 const std::vector<SegmentedIntersectionLine> &segs, Polylines &polylines_out)
+                                 const std::vector<SegmentedIntersectionLine> &segs, Polylines &polylines_out,
+                                 const FillParams &params)
 {
     Polyline *polyline = nullptr;
     auto finish_polyline = [&polyline, &polylines_out]()
@@ -3529,6 +3581,22 @@ static void polylines_from_paths(const std::vector<MonotonicRegionLink> &path,
                         break;
                     }
 
+                    // For bridges: skip contour-following extrusion along obstacle edges.
+                    // The do-while exit guarantees (it+1) is OUTER_HIGH, so only guard
+                    // the destination side and verify same-contour connectivity.
+                    if (params.bridge && it->iContour == vline.intersections[inext].iContour && inext > 0 &&
+                        vline.intersections[inext - 1].type == SegmentIntersection::OUTER_LOW)
+                    {
+                        // End current segment at outer contour, start fresh at the next segment.
+                        polyline->points.back() = Point(vline.pos, (it + 1)->pos());
+                        finish_polyline();
+                        polylines_out.emplace_back();
+                        polyline = &polylines_out.back();
+                        it = vline.intersections.data() + inext;
+                        polyline->points.emplace_back(vline.pos, (it - 1)->pos());
+                        continue;
+                    }
+
                     assert(it->iContour == vline.intersections[inext].iContour);
                     emit_perimeter_segment_on_vertical_line(poly_with_offset, segs, i_vline, it->iContour,
                                                             it - vline.intersections.data(), inext, *polyline,
@@ -3578,6 +3646,23 @@ static void polylines_from_paths(const std::vector<MonotonicRegionLink> &path,
                         break;
                     }
 
+                    // For bridges: skip contour-following extrusion along obstacle edges.
+                    // The do-while exit guarantees (it-1) is OUTER_LOW, so only guard
+                    // the destination side and verify same-contour connectivity.
+                    if (params.bridge && it->iContour == vline.intersections[inext].iContour &&
+                        size_t(inext + 1) < vline.intersections.size() &&
+                        vline.intersections[inext + 1].type == SegmentIntersection::OUTER_HIGH)
+                    {
+                        // End current segment at outer contour, start fresh at the next segment.
+                        polyline->points.back() = Point(vline.pos, (it - 1)->pos());
+                        finish_polyline();
+                        polylines_out.emplace_back();
+                        polyline = &polylines_out.back();
+                        it = vline.intersections.data() + inext;
+                        polyline->points.emplace_back(vline.pos, (it + 1)->pos());
+                        continue;
+                    }
+
                     assert(it->iContour == vline.intersections[inext].iContour);
                     emit_perimeter_segment_on_vertical_line(poly_with_offset, segs, i_vline, it->iContour,
                                                             it - vline.intersections.data(), inext, *polyline,
@@ -3618,6 +3703,8 @@ static void polylines_from_paths(const std::vector<MonotonicRegionLink> &path,
                                                                           vline_right.intersections[iright]);
             i_intersection = int(right - vline_right.intersections.data());
 
+            // Horizontal connections between adjacent vlines are kept for bridges - they span
+            // one line_spacing and connect line endpoints at the polygon boundary, not obstacle edges.
             if (inext == i_intersection && it->next_on_contour_quality == SegmentIntersection::LinkQuality::Valid)
             {
                 // Emit a horizontal connection contour.
@@ -3691,9 +3778,6 @@ bool FillRectilinear::fill_surface_by_lines(const Surface *surface, const FillPa
     coord_t line_spacing = coord_t(scale_(this->spacing) / params.density);
 
     // On the polygons of poly_with_offset, the infill lines will be connected.
-    // For bridges: bounding_width = original flow width (fixed), so boundary doesn't change with line spacing
-    // For non-bridges: bounding_width = spacing (normal behavior)
-    // This decouples bridge_infill_overlap (line spacing) from bridge_infill_perimeter_overlap (boundary)
     float outer_offset = this->overlap - (0.5f - INFILL_OVERLAP_OVER_SPACING) * this->bounding_width;
     float inner_offset = this->overlap - 0.5f * this->bounding_width;
     ExPolygonWithOffset poly_with_offset(surface->expolygon, -rotate_vector.first, float(scale_(outer_offset)),
@@ -3896,7 +3980,7 @@ bool FillRectilinear::fill_surface_by_lines(const Surface *surface, const FillPa
             std::mt19937_64 rng;
             std::vector<MonotonicRegionLink> path = chain_monotonic_regions(regions, poly_with_offset, segs, rng);
 
-            polylines_from_paths(path, poly_with_offset, segs, polylines_out);
+            polylines_from_paths(path, poly_with_offset, segs, polylines_out, params);
         }
     }
     else

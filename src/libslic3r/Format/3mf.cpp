@@ -138,6 +138,7 @@ static constexpr const char *CUSTOM_SUPPORTS_ATTR = "slic3rpe:custom_supports";
 static constexpr const char *CUSTOM_SEAM_ATTR = "slic3rpe:custom_seam";
 static constexpr const char *MM_SEGMENTATION_ATTR = "slic3rpe:mmu_segmentation";
 static constexpr const char *FUZZY_SKIN_ATTR = "slic3rpe:fuzzy_skin";
+static constexpr const char *COUNTERBORE_BRIDGE_ATTR = "slic3rpe:counterbore_bridge";
 
 static constexpr const char *KEY_ATTR = "key";
 static constexpr const char *VALUE_ATTR = "value";
@@ -368,6 +369,7 @@ class _3MF_Importer : public _3MF_Base
         std::vector<std::string> custom_seam;
         std::vector<std::string> mm_segmentation;
         std::vector<std::string> fuzzy_skin;
+        std::vector<std::string> counterbore_bridge;
 
         bool empty() { return vertices.empty() || triangles.empty(); }
 
@@ -379,6 +381,7 @@ class _3MF_Importer : public _3MF_Base
             custom_seam.clear();
             mm_segmentation.clear();
             fuzzy_skin.clear();
+            counterbore_bridge.clear();
         }
     };
 
@@ -483,6 +486,8 @@ class _3MF_Importer : public _3MF_Base
     boost::optional<Semver> m_generator_version;
     // Raw Application metadata string (e.g. "OrcaSlicer-2.3.1", "PrusaSlicer-2.8.0")
     std::string m_generator_application;
+    // True if post_process scripts were found and suppressed during import
+    bool m_post_process_suppressed{false};
     unsigned int m_fdm_supports_painting_version = 0;
     unsigned int m_seam_painting_version = 0;
     unsigned int m_mm_painting_version = 0;
@@ -522,6 +527,7 @@ public:
     unsigned int version() const { return m_version; }
     boost::optional<Semver> generator_version() const { return m_generator_version; }
     const std::string &generator_application() const { return m_generator_application; }
+    bool post_process_suppressed() const { return m_post_process_suppressed; }
 
 private:
     void _destroy_xml_parser();
@@ -1355,6 +1361,17 @@ void _3MF_Importer::_extract_print_config_from_archive(mz_zip_archive &archive, 
         // Handle duplicated entries in older 3MF files.
         //config_substitutions.substitutions = config.load_from_ini_string_commented(std::move(buffer), config_substitutions.rule);
         ConfigBase::load_from_gcode_string_legacy(config, buffer.data(), config_substitutions);
+
+        // Security: suppress post_process scripts embedded in 3MF files (CVE-2023-47268).
+        // A malicious 3MF can embed shell commands that execute on G-code export.
+        if (auto *post_process = config.opt<ConfigOptionStrings>("post_process");
+            post_process != nullptr && !post_process->values.empty())
+        {
+            BOOST_LOG_TRIVIAL(warning) << "Security: suppressed post_process scripts from 3MF file \""
+                                       << archive_filename << "\": " << post_process->serialize();
+            config.opt<ConfigOptionStrings>("post_process")->values.clear();
+            m_post_process_suppressed = true;
+        }
     }
 }
 
@@ -2345,6 +2362,8 @@ bool _3MF_Importer::_handle_start_triangle(const char **attributes, unsigned int
         get_attribute_value_string(attributes, num_attributes, CUSTOM_SEAM_ATTR));
     m_curr_object.geometry.fuzzy_skin.push_back(
         get_attribute_value_string(attributes, num_attributes, FUZZY_SKIN_ATTR));
+    m_curr_object.geometry.counterbore_bridge.push_back(
+        get_attribute_value_string(attributes, num_attributes, COUNTERBORE_BRIDGE_ATTR));
 
     // Now load MM segmentation data. Unfortunately, BambuStudio has changed the attribute name after they forked us,
     // Try to load both keys for compatibility with different 3MF sources.
@@ -2932,6 +2951,7 @@ bool _3MF_Importer::_generate_volumes(ModelObject &object, const Geometry &geome
         volume->seam_facets.reserve(triangles_count);
         volume->mm_segmentation_facets.reserve(triangles_count);
         volume->fuzzy_skin_facets.reserve(triangles_count);
+        volume->counterbore_bridge_facets.reserve(triangles_count);
         for (size_t i = 0; i < triangles_count; ++i)
         {
             size_t index = volume_data.first_triangle_id + i;
@@ -2943,11 +2963,14 @@ bool _3MF_Importer::_generate_volumes(ModelObject &object, const Geometry &geome
             volume->seam_facets.set_triangle_from_string(i, geometry.custom_seam[index]);
             volume->mm_segmentation_facets.set_triangle_from_string(i, geometry.mm_segmentation[index]);
             volume->fuzzy_skin_facets.set_triangle_from_string(i, geometry.fuzzy_skin[index]);
+            if (index < geometry.counterbore_bridge.size())
+                volume->counterbore_bridge_facets.set_triangle_from_string(i, geometry.counterbore_bridge[index]);
         }
         volume->supported_facets.shrink_to_fit();
         volume->seam_facets.shrink_to_fit();
         volume->mm_segmentation_facets.shrink_to_fit();
         volume->fuzzy_skin_facets.shrink_to_fit();
+        volume->counterbore_bridge_facets.shrink_to_fit();
 
         if (auto &es = volume_data.shape_configuration; es.has_value())
             volume->emboss_shape = std::move(es);
@@ -3707,6 +3730,16 @@ bool _3MF_Exporter::_add_mesh_to_object_stream(mz_zip_writer_staged_context &con
                 output_buffer += FUZZY_SKIN_ATTR;
                 output_buffer += "=\"";
                 output_buffer += fuzzy_skin_data_string;
+                output_buffer += "\"";
+            }
+
+            std::string counterbore_bridge_data_string = volume->counterbore_bridge_facets.get_triangle_as_string(i);
+            if (!counterbore_bridge_data_string.empty())
+            {
+                output_buffer += " ";
+                output_buffer += COUNTERBORE_BRIDGE_ATTR;
+                output_buffer += "=\"";
+                output_buffer += counterbore_bridge_data_string;
                 output_buffer += "\"";
             }
 
@@ -4506,7 +4539,7 @@ ProjectFileInfo is_project_3mf(const std::string &filename)
 
 bool load_3mf(const char *path, DynamicPrintConfig &config, ConfigSubstitutionContext &config_substitutions,
               Model *model, bool check_version, boost::optional<Semver> &generator_version,
-              std::string *generator_application)
+              std::string *generator_application, bool *post_process_suppressed)
 {
     if (path == nullptr || model == nullptr)
         return false;
@@ -4520,6 +4553,8 @@ bool load_3mf(const char *path, DynamicPrintConfig &config, ConfigSubstitutionCo
     generator_version = importer.generator_version();
     if (generator_application)
         *generator_application = importer.generator_application();
+    if (post_process_suppressed)
+        *post_process_suppressed = importer.post_process_suppressed();
 
     return res;
 }

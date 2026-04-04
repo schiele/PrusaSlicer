@@ -31,6 +31,8 @@
 #include "slic3r/GUI/Gizmos/GLGizmoSVG.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoMeasure.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoAlign.hpp"
+#include "slic3r/GUI/Gizmos/GLGizmoRelief.hpp"
+#include "slic3r/GUI/Gizmos/GLGizmoCounterboreBridge.hpp"
 
 #include "libslic3r/format.hpp"
 #include "libslic3r/Model.hpp"
@@ -122,13 +124,15 @@ bool GLGizmosManager::init()
     m_gizmos.emplace_back(new GLGizmoFdmSupports(m_parent, "fdm_supports.svg", 5));
     m_gizmos.emplace_back(new GLGizmoSeam(m_parent, "seam.svg", 6));
     m_gizmos.emplace_back(new GLGizmoFuzzySkin(m_parent, "fuzzy_skin_painting.svg", 7));
-    m_gizmos.emplace_back(new GLGizmoAlign(m_parent, "align.svg", 8));
-    m_gizmos.emplace_back(new GLGizmoMmuSegmentation(m_parent, "mmu_segmentation.svg", 9));
-    m_gizmos.emplace_back(new GLGizmoMeasure(m_parent, "measure.svg", 10));
+    m_gizmos.emplace_back(new GLGizmoCounterboreBridge(m_parent, "counterbore.svg", 8));
+    m_gizmos.emplace_back(new GLGizmoAlign(m_parent, "align.svg", 9));
+    m_gizmos.emplace_back(new GLGizmoMmuSegmentation(m_parent, "mmu_segmentation.svg", 10));
+    m_gizmos.emplace_back(new GLGizmoMeasure(m_parent, "measure.svg", 11));
     m_gizmos.emplace_back(new GLGizmoEmboss(m_parent));
     m_gizmos.emplace_back(new GLGizmoSVG(m_parent));
     m_gizmos.emplace_back(new GLGizmoSimplify(m_parent));
-    m_gizmos.emplace_back(new GLGizmoBrimEars(m_parent, "brim_ears.svg", 11));
+    m_gizmos.emplace_back(new GLGizmoBrimEars(m_parent, "brim_ears.svg", 12));
+    m_gizmos.emplace_back(new GLGizmoRelief(m_parent)); // No toolbar icon
 
     m_common_gizmos_data.reset(new CommonGizmosDataPool(&m_parent));
 
@@ -193,8 +197,14 @@ void GLGizmosManager::reset_all_states()
 
     const EType current = get_current_type();
     if (current != Undefined)
+    {
+        // Don't close Relief gizmo on deselect - it works without selection
+        if (current == Relief)
+            return;
+
         // close any open gizmo
         open_gizmo(current);
+    }
 
     activate_gizmo(Undefined);
     m_hover = Undefined;
@@ -949,7 +959,12 @@ void GLGizmosManager::do_render_overlay() const
 
     const float du = (float) (tex_width - 1) /
                      (6.0f * (float) tex_width); // 6 is the number of possible states if the icons
-    const float dv = (float) (tex_height - 1) / (float) (m_gizmos.size() * tex_height);
+    // Count gizmos that contribute icons to the texture (non-empty icon filename)
+    size_t icons_count = 0;
+    for (const auto &g : m_gizmos)
+        if (g && !g->get_icon_filename().empty())
+            ++icons_count;
+    const float dv = (float) (tex_height - 1) / (float) (icons_count * tex_height);
 
     // tiles in the texture are spaced by 1 pixel
     const float u_offset = 1.0f / (float) tex_width;

@@ -1,5 +1,77 @@
 # preFlight Changelog
 
+## v0.9.10
+
+### Windows ARM
+- Added Windows ARM64 native support for compatible hardware
+
+### Counterbore Bridge Gizmo
+- Added Counterbore Bridge paint-on gizmo for controlling bridge layers above counterbore holes
+- Per-hole bridge layer count with smart fill that only bridges painted regions
+- Fill direction follows corridor angle for each painted hole independently
+- Transition starts at the painted layer and extends upward through the specified bridge count
+- Activated through new gizmo menu item in the vertical toolbar
+
+### Relief Gizmo
+- Added Relief gizmo for embossing images as 3D heightmaps onto mesh surfaces
+- Smoothing, gamma correction, and minimum thickness controls
+- Real-time preview with CSG subtraction result shown in slicing shell animation
+- Activated through right clicking on the platter
+
+### Athena Perimeter Generation
+- Allowed center bead split when wide enough for two beads
+- Deduplicated overlapping center-pair perimeters in Athena toolpaths
+- Fixed Athena center-pair overlap when perimeter overlap was active
+- Fixed out-of-bounds in LimitedBeadingStrategy marker placement
+- Enforced nozzle-based minimum bead width
+
+### Interlocking Perimeters
+- Interleaved interlocking with perimeters by structural feature ID for correct ordering
+- Fixed interlocking inner contour missing corners, leaving infill voids
+- Fixed interlocking shell spacing for even-layer boundary bead
+- Fixed interlocking flow boundary detection to check both layers
+
+### Overhang Perimeters
+- Discarded extra overhang perimeters when oscillation was detected
+- Fixed infinite loop in overhang perimeter generation
+
+### Infill / Fill
+- Merged stBottom with adjacent solid fill when bridge_no_gap was OFF
+- Fixed bridge infill gaps when bridge_infill_overlap was above 0%
+- Fixed crash in rectilinear fill when slicing dense relief meshes
+
+### Seams
+- Fixed seam notch taper creating tiny travel moves at element boundaries
+
+### Security
+- Suppressed post-process scripts in 3MF imports (CVE-2023-47268)
+- Confirmed preFlight is not affected by the Zip Slip path traversal vulnerability - all 3MF extraction uses in-memory buffers
+
+### G-code / Post-Processing
+- Fixed G-code command window not displaying when binary G-code support was enabled
+- Fixed post-processing scripts on exported G-code from virtual file
+- Fixed several post-processing issues
+
+### Orca Import
+- Fixed Orca import silently destroying ConfigOptionStrings array values
+
+### Platform / Build
+- Added unified build script for all platforms
+- Unified Windows deps build path to deps/build
+- Renamed platform identifiers to win-amd64/linux-amd64
+- Fixed deps build reliability on Windows
+
+### UI / Bug Fixes
+- Fixed bridge infill double extrusion along obstacle boundaries
+- Fixed text emboss gizmo closing on keypress and restored font preview rendering
+- Fixed negative volumes invisibility
+- Fixed Slice Platter button getting stuck on Export G-code
+- Fixed preset save dialog rejecting valid names with shared prefixes
+- Guarded delete_preset against nonexistent preset names
+- Rebuilt preset maps after deletion to prevent stale matches on re-import
+- Suppressed all config validation dialogs during startup to prevent splash deadlock
+- Renamed bridge_no_gap label for clarity
+
 ## v0.9.9
 
 ### Align to Face Gizmo

@@ -65,7 +65,7 @@ public:
             std::string casei_name;
             std::string name;
 
-            bool operator<(const PresetName &other) const { return other.casei_name > this->casei_name; }
+            bool operator<(const PresetName &other) const { return this->casei_name < other.casei_name; }
         };
 
     private:

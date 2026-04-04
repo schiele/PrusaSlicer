@@ -90,7 +90,7 @@ PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUplo
 
     if (combo_storage != nullptr)
     {
-        // LocalLink specific: User needs to choose a storage
+        // PrusaLink specific: User needs to choose a storage
         auto *label_group = new wxStaticText(this, wxID_ANY, _L("Upload to storage") + ":");
         content_sizer->Add(label_group);
         content_sizer->Add(combo_storage, 0, wxBOTTOM, 2 * GetScaledVertSpacing());
@@ -101,7 +101,7 @@ PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUplo
     }
     else if (storage_names.GetCount() == 1)
     {
-        // LocalLink specific: Show which storage has been detected.
+        // PrusaLink specific: Show which storage has been detected.
         auto *label_group = new wxStaticText(this, wxID_ANY, _L("Upload to storage") + ": " + storage_names.front());
         content_sizer->Add(label_group);
         m_preselected_storage = storage_paths.front();

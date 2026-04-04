@@ -447,10 +447,15 @@ static PerimeterExtrusions extract_ordered_perimeter_extrusions(const PerimeterE
         order_of_grouped_perimeter_extrusions_to_minimize_distances(grouped_extrusions, Point::Zero());
 
     PerimeterExtrusions ordered_extrusions;
+    uint16_t group_counter = 1; // 1-based so 0 means "unset"
     for (size_t order_idx : grouped_extrusion_order)
     {
         for (const PerimeterExtrusion *perimeter_extrusion : grouped_extrusions[order_idx].extrusions)
+        {
             ordered_extrusions.emplace_back(*perimeter_extrusion);
+            ordered_extrusions.back().group_id = group_counter;
+        }
+        ++group_counter;
     }
 
     return ordered_extrusions;

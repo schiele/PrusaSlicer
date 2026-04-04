@@ -196,6 +196,9 @@ struct ExtrusionAttributes : ExtrusionFlow
     std::optional<OverhangAttributes> overhang_attributes;
     // Set only for external and internal perimeters. The external perimeter has value 0, the first internal perimeter has 1, and so on.
     std::optional<uint16_t> perimeter_index;
+    // Identifies which contour feature (perimeter group from PerimeterOrder) this entity belongs to.
+    // Used to interleave interlocking with their correct perimeter group.
+    std::optional<uint16_t> feature_id;
 };
 
 inline bool operator==(const ExtrusionAttributes &lhs, const ExtrusionAttributes &rhs)
@@ -256,6 +259,7 @@ public:
     double length() const override;
 
     const ExtrusionAttributes &attributes() const { return m_attributes; }
+    void set_feature_id(uint16_t id) { m_attributes.feature_id = id; }
     ExtrusionRole role() const override { return m_attributes.role; }
     float width() const { return m_attributes.width; }
     float height() const { return m_attributes.height; }

@@ -41,6 +41,10 @@ struct PerimeterExtrusion
     size_t depth = std::numeric_limits<size_t>::max();
     PerimeterExtrusion *nearest_external_perimeter = nullptr;
 
+    // Sequential group index: all perimeters with the same nearest_external_perimeter
+    // share the same group_id. Assigned during ordered_perimeter_extrusions().
+    uint16_t group_id = 0;
+
     // Returns if ExtrusionLine is a contour or a hole.
     bool is_contour() const { return extrusion.is_contour(); }
 

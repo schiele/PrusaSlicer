@@ -1670,9 +1670,11 @@ void GCodeProcessor::post_process_virtual_file()
     VirtualGCodeFile *output_vf = new VirtualGCodeFile();
     output_vf->reserve_lines(m_virtual_file->line_count() * 1.1); // +10% for M73
 
-    // Initialize moves for rendering - CRITICAL!
+    // Clear moves from the streaming phase and re-initialize with dummy move.
+    // Pass 1 will rebuild them via process_gcode_line.
+    m_result.moves.clear();
     initialize_result_moves();
-    m_line_id = 0; // Will be incremented to 1 on first line
+    m_line_id = 0;
     size_t g1_lines_counter = 0;
 
     // Clear and initialize lines_ends for virtual file
@@ -1686,11 +1688,12 @@ void GCodeProcessor::post_process_virtual_file()
     // Save TimeProcessor-level settings
     MachineEnvelopeConfig saved_machine_limits = m_time_processor.machine_limits;
     bool saved_envelope_processing_enabled = m_time_processor.machine_envelope_processing_enabled;
+    bool saved_export_remaining_time = m_time_processor.export_remaining_time_enabled;
     std::vector<float> saved_filament_load_times = m_time_processor.filament_load_times;
     std::vector<float> saved_filament_unload_times = m_time_processor.filament_unload_times;
 
-    // Save per-machine acceleration values (from M204)
-    struct SavedMachineAccel
+    // Save per-machine settings (acceleration, enabled, M73 masks) that reset() wipes
+    struct SavedMachineState
     {
         float acceleration;
         float max_acceleration;
@@ -1698,38 +1701,51 @@ void GCodeProcessor::post_process_virtual_file()
         float max_retract_acceleration;
         float travel_acceleration;
         float max_travel_acceleration;
+        float extrude_factor_override_percentage;
+        bool enabled;
+        std::string line_m73_main_mask;
+        std::string line_m73_stop_mask;
     };
-    std::array<SavedMachineAccel, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> saved_machine_accels;
+    std::array<SavedMachineState, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> saved_machine_state;
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i)
     {
-        saved_machine_accels[i] = {m_time_processor.machines[i].acceleration,
-                                   m_time_processor.machines[i].max_acceleration,
-                                   m_time_processor.machines[i].retract_acceleration,
-                                   m_time_processor.machines[i].max_retract_acceleration,
-                                   m_time_processor.machines[i].travel_acceleration,
-                                   m_time_processor.machines[i].max_travel_acceleration};
+        saved_machine_state[i] = {m_time_processor.machines[i].acceleration,
+                                  m_time_processor.machines[i].max_acceleration,
+                                  m_time_processor.machines[i].retract_acceleration,
+                                  m_time_processor.machines[i].max_retract_acceleration,
+                                  m_time_processor.machines[i].travel_acceleration,
+                                  m_time_processor.machines[i].max_travel_acceleration,
+                                  m_time_processor.machines[i].extrude_factor_override_percentage,
+                                  m_time_processor.machines[i].enabled,
+                                  m_time_processor.machines[i].line_m73_main_mask,
+                                  m_time_processor.machines[i].line_m73_stop_mask};
     }
 
     // Initialize time estimation
     m_time_processor.reset();
 
-    // Restore the machine envelope settings that were configured for this print
+    // Restore all settings that were configured for this print
     m_time_processor.machine_limits = saved_machine_limits;
     m_time_processor.machine_envelope_processing_enabled = saved_envelope_processing_enabled;
+    m_time_processor.export_remaining_time_enabled = saved_export_remaining_time;
     m_time_processor.filament_load_times = saved_filament_load_times;
     m_time_processor.filament_unload_times = saved_filament_unload_times;
 
-    // Restore per-machine acceleration values
+    // Restore per-machine settings
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i)
     {
-        m_time_processor.machines[i].acceleration = saved_machine_accels[i].acceleration;
-        m_time_processor.machines[i].max_acceleration = saved_machine_accels[i].max_acceleration;
-        m_time_processor.machines[i].retract_acceleration = saved_machine_accels[i].retract_acceleration;
-        m_time_processor.machines[i].max_retract_acceleration = saved_machine_accels[i].max_retract_acceleration;
-        m_time_processor.machines[i].travel_acceleration = saved_machine_accels[i].travel_acceleration;
-        m_time_processor.machines[i].max_travel_acceleration = saved_machine_accels[i].max_travel_acceleration;
+        m_time_processor.machines[i].acceleration = saved_machine_state[i].acceleration;
+        m_time_processor.machines[i].max_acceleration = saved_machine_state[i].max_acceleration;
+        m_time_processor.machines[i].retract_acceleration = saved_machine_state[i].retract_acceleration;
+        m_time_processor.machines[i].max_retract_acceleration = saved_machine_state[i].max_retract_acceleration;
+        m_time_processor.machines[i].travel_acceleration = saved_machine_state[i].travel_acceleration;
+        m_time_processor.machines[i].max_travel_acceleration = saved_machine_state[i].max_travel_acceleration;
+        m_time_processor.machines[i].extrude_factor_override_percentage =
+            saved_machine_state[i].extrude_factor_override_percentage;
+        m_time_processor.machines[i].enabled = saved_machine_state[i].enabled;
+        m_time_processor.machines[i].line_m73_main_mask = saved_machine_state[i].line_m73_main_mask;
+        m_time_processor.machines[i].line_m73_stop_mask = saved_machine_state[i].line_m73_stop_mask;
     }
-    // Note: simulate_st_synchronize behavior is handled in the processor, not individual machines
 
     // Calculate filament statistics
     std::vector<double> filament_mm(m_result.extruders_count, 0.0);
@@ -1750,17 +1766,42 @@ void GCodeProcessor::post_process_virtual_file()
         filament_total_cost += filament_cost[id];
     }
 
-    // Lambda functions for time formatting and M73 lines
+    // Format helpers - mirrors post_process() for identical behavior
     auto time_in_minutes = [](float time_in_seconds)
     {
         assert(time_in_seconds >= 0.f);
         return int((time_in_seconds + 0.5f) / 60.0f);
     };
 
+    auto time_in_last_minute = [](float time_in_seconds)
+    {
+        assert(time_in_seconds <= 60.0f);
+        return time_in_seconds / 60.0f;
+    };
+
     auto format_line_M73_main = [](const std::string &mask, int percent, int time)
     {
         char line_M73[64];
         sprintf(line_M73, mask.c_str(), std::to_string(percent).c_str(), std::to_string(time).c_str());
+        return std::string(line_M73);
+    };
+
+    auto format_line_M73_stop_int = [](const std::string &mask, int time)
+    {
+        char line_M73[64];
+        sprintf(line_M73, mask.c_str(), std::to_string(time).c_str());
+        return std::string(line_M73);
+    };
+
+    auto format_time_float = [](float time)
+    {
+        return Slic3r::float_to_string_decimal_point(time, 2);
+    };
+
+    auto format_line_M73_stop_float = [format_time_float](const std::string &mask, float time)
+    {
+        char line_M73[64];
+        sprintf(line_M73, mask.c_str(), format_time_float(time).c_str());
         return std::string(line_M73);
     };
 
@@ -1771,37 +1812,120 @@ void GCodeProcessor::post_process_virtual_file()
         last_exported_main[i] = {0, time_in_minutes(m_time_processor.machines[i].time)};
     }
 
-    // Iterators for time cache
-    auto g1_times_cache_it = Slic3r::reserve_vector<std::vector<TimeMachine::G1LinesCacheItem>::const_iterator>(
-        m_time_processor.machines.size());
-    for (const auto &machine : m_time_processor.machines)
-        g1_times_cache_it.emplace_back(machine.g1_times_cache.begin());
-
-    // Lambda to insert M73 progress
-    auto insert_m73 = [&](size_t g1_counter)
+    // Track last exported remaining time to next printer stop
+    std::array<int, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> last_exported_stop;
+    for (size_t i = 0; i < last_exported_stop.size(); ++i)
     {
-        if (m_time_processor.export_remaining_time_enabled)
+        last_exported_stop[i] = time_in_minutes(m_time_processor.machines[i].time);
+    }
+
+    // Index-based cache tracking (not iterators - vectors are repopulated during the loop,
+    // which causes reallocations that would invalidate iterators)
+    std::array<size_t, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> g1_times_cache_idx;
+    g1_times_cache_idx.fill(0);
+
+    // Output buffer with time tracking for M104 backtrace support
+    struct BufferedLine
+    {
+        std::string line;
+        std::array<float, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> times;
+        size_t input_line_id; // 0 for inserted lines (M73, M104)
+    };
+    std::deque<BufferedLine> output_lines;
+    std::array<float, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> current_times{0.0f, 0.0f};
+
+    // Append a line to the output buffer
+    auto append_output = [&output_lines, &current_times](const std::string &line, size_t input_id = 0)
+    {
+        output_lines.push_back({line, current_times, input_id});
+    };
+
+    // Insert M73 progress after G1/G0 moves, with stop time tracking
+    auto process_line_G1 = [&](size_t g1_counter)
+    {
+        if (!m_time_processor.export_remaining_time_enabled)
+            return;
+
+        for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i)
         {
-            for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i)
+            const TimeMachine &machine = m_time_processor.machines[i];
+            if (!machine.enabled)
+                continue;
+
+            auto &idx = g1_times_cache_idx[i];
+            while (idx < machine.g1_times_cache.size() && machine.g1_times_cache[idx].id < g1_counter)
+                ++idx;
+            if (idx >= machine.g1_times_cache.size() || machine.g1_times_cache[idx].id != g1_counter)
+                continue;
+
+            const auto &cache_entry = machine.g1_times_cache[idx];
+
+            // Update current time for backtrace tracking
+            current_times[i] = cache_entry.elapsed_time;
+
+            // Export pair <percent, remaining time>
+            std::pair<int, int> to_export_main = {int(100.0f * cache_entry.elapsed_time / machine.time),
+                                                  time_in_minutes(machine.time - cache_entry.elapsed_time)};
+            if (last_exported_main[i] != to_export_main)
             {
-                const TimeMachine &machine = m_time_processor.machines[i];
-                if (machine.enabled)
+                append_output(format_line_M73_main(machine.line_m73_main_mask.c_str(), to_export_main.first,
+                                                   to_export_main.second));
+                last_exported_main[i] = to_export_main;
+            }
+
+            // Export remaining time to next printer stop
+            auto it_stop = std::upper_bound(machine.stop_times.begin(), machine.stop_times.end(),
+                                            cache_entry.elapsed_time, [](float value, const TimeMachine::StopTime &t)
+                                            { return value < t.elapsed_time; });
+
+            if (it_stop != machine.stop_times.end())
+            {
+                int to_export_stop = time_in_minutes(it_stop->elapsed_time - cache_entry.elapsed_time);
+                if (last_exported_stop[i] != to_export_stop)
                 {
-                    // Skip to current position in cache
-                    auto &it = g1_times_cache_it[i];
-                    while (it != machine.g1_times_cache.end() && it->id < g1_counter)
-                        ++it;
-                    if (it != machine.g1_times_cache.end() && it->id == g1_counter)
+                    if (to_export_stop > 0)
                     {
-                        std::pair<int, int> to_export_main = {int(100.0f * it->elapsed_time / machine.time),
-                                                              time_in_minutes(machine.time - it->elapsed_time)};
-                        if (last_exported_main[i] != to_export_main)
+                        if (last_exported_stop[i] != to_export_stop)
                         {
-                            const std::string &line_M73 = format_line_M73_main(machine.line_m73_main_mask.c_str(),
-                                                                               to_export_main.first,
-                                                                               to_export_main.second);
-                            output_vf->write_line(line_M73);
-                            last_exported_main[i] = to_export_main;
+                            append_output(format_line_M73_stop_int(machine.line_m73_stop_mask.c_str(), to_export_stop));
+                            last_exported_stop[i] = to_export_stop;
+                        }
+                    }
+                    else
+                    {
+                        bool is_last = false;
+                        size_t next_idx = idx + 1;
+                        is_last |= (next_idx >= machine.g1_times_cache.size());
+
+                        if (next_idx < machine.g1_times_cache.size())
+                        {
+                            const auto &next_entry = machine.g1_times_cache[next_idx];
+                            auto next_it_stop = std::upper_bound(machine.stop_times.begin(), machine.stop_times.end(),
+                                                                 next_entry.elapsed_time,
+                                                                 [](float value, const TimeMachine::StopTime &t)
+                                                                 { return value < t.elapsed_time; });
+                            is_last |= (next_it_stop != it_stop);
+
+                            std::string time_float_str = format_time_float(
+                                time_in_last_minute(it_stop->elapsed_time - cache_entry.elapsed_time));
+                            std::string next_time_float_str = format_time_float(
+                                time_in_last_minute(it_stop->elapsed_time - next_entry.elapsed_time));
+                            is_last |= (string_to_double_decimal_point(time_float_str) > 0. &&
+                                        string_to_double_decimal_point(next_time_float_str) == 0.);
+                        }
+
+                        if (is_last)
+                        {
+                            if (std::distance(machine.stop_times.begin(), it_stop) ==
+                                static_cast<ptrdiff_t>(machine.stop_times.size() - 1))
+                                append_output(
+                                    format_line_M73_stop_int(machine.line_m73_stop_mask.c_str(), to_export_stop));
+                            else
+                                append_output(format_line_M73_stop_float(
+                                    machine.line_m73_stop_mask.c_str(),
+                                    time_in_last_minute(it_stop->elapsed_time - cache_entry.elapsed_time)));
+
+                            last_exported_stop[i] = to_export_stop;
                         }
                     }
                 }
@@ -1809,123 +1933,340 @@ void GCodeProcessor::post_process_virtual_file()
         }
     };
 
-    // CRITICAL: Parse G-code to generate moves!
-    GCodeReader parser;
+    // Insert M104.1 pre-heat commands before tool changes via backtrace (XL printers)
+    auto process_line_T = [&](const std::string &gcode_line)
+    {
+        if (!m_result.backtrace_enabled)
+            return;
 
-    // Parse G-code to generate moves
+        const std::string cmd = GCodeReader::GCodeLine::extract_cmd(gcode_line);
+        if (cmd.size() < 2)
+            return;
 
+        std::stringstream ss(cmd.substr(1));
+        int tool_number = -1;
+        ss >> tool_number;
+        if (tool_number == -1)
+            return;
+
+        if (tool_number < 0 || static_cast<int>(m_extruder_temps_config.size()) <= tool_number)
+        {
+            tool_number = std::clamp(tool_number, 0, static_cast<int>(m_extruder_temps_config.size()) - 1);
+            std::string warning = _u8L(
+                "GCode Post-Processor encountered an invalid toolchange, maybe from a custom gcode:");
+            warning += "\n> " + gcode_line;
+            warning += _u8L("Generated M104 lines may be incorrect.");
+            BOOST_LOG_TRIVIAL(error) << warning;
+            if (m_print != nullptr)
+                m_print->active_step_add_warning(PrintStateBase::WarningLevel::CRITICAL, warning);
+        }
+
+        static constexpr float backtrace_time = 120.0f;
+        static constexpr unsigned int backtrace_steps = 10;
+        static constexpr float time_step = backtrace_time / backtrace_steps;
+        const size_t Normal = static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Normal);
+        const size_t Stealth = static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Stealth);
+
+        size_t rev_dist = 0;
+        float last_time_insertion = 0.0f;
+
+        for (unsigned int step = 0; step < backtrace_steps; ++step)
+        {
+            const float backtrace_time_i = (step + 1) * time_step;
+            const float time_threshold_i = current_times[Normal] - backtrace_time_i;
+
+            if (rev_dist >= output_lines.size())
+                break;
+
+            auto rev_it = output_lines.rbegin() + rev_dist;
+            auto start_rev_it = rev_it;
+
+            std::string curr_cmd = GCodeReader::GCodeLine::extract_cmd(rev_it->line);
+            while (rev_it != output_lines.rend() && rev_it->times[Normal] > time_threshold_i && curr_cmd != cmd &&
+                   curr_cmd != "G28" && curr_cmd != "G29")
+            {
+                // Replace existing M104 cooldown lines for this tool
+                if (GCodeReader::GCodeLine::cmd_is(rev_it->line, "M104"))
+                {
+                    GCodeReader::GCodeLine gline;
+                    GCodeReader reader;
+                    reader.parse_line(rev_it->line,
+                                      [&gline](GCodeReader &, const GCodeReader::GCodeLine &l) { gline = l; });
+                    float val;
+                    if (gline.has_value('T', val) && gline.raw().find("cooldown") != std::string::npos &&
+                        m_is_XL_printer)
+                    {
+                        if (static_cast<int>(val) == tool_number)
+                            rev_it->line = "; removed M104\n";
+                    }
+                }
+                ++rev_it;
+                if (rev_it != output_lines.rend())
+                    curr_cmd = GCodeReader::GCodeLine::extract_cmd(rev_it->line);
+            }
+
+            if (rev_it != output_lines.rend() && (curr_cmd == cmd || curr_cmd == "G28" || curr_cmd == "G29"))
+                break;
+
+            if (rev_it != output_lines.rend() && rev_it != start_rev_it && rev_it->times[Normal] != last_time_insertion)
+            {
+                last_time_insertion = rev_it->times[Normal];
+
+                const int temperature = int(m_layer_id != 1 ? m_extruder_temps_config[tool_number]
+                                                            : m_extruder_temps_first_layer_config[tool_number]);
+                std::string out_line = "M104.1 T" + std::to_string(tool_number);
+                out_line += " P" + std::to_string(int(std::round(current_times[Normal] - last_time_insertion)));
+                if (!m_time_processor.machines[Stealth].g1_times_cache.empty())
+                    out_line += " Q" + std::to_string(int(std::round(current_times[Stealth] - rev_it->times[Stealth])));
+                out_line += " S" + std::to_string(temperature) + "\n";
+
+                rev_dist = std::distance(output_lines.rbegin(), rev_it) + 1;
+                output_lines.insert(rev_it.base(), {out_line, rev_it->times, 0});
+            }
+        }
+    };
+
+    // Replace filament stat comment placeholders with actual values
+    auto process_used_filament = [&](std::string &gcode_line) -> bool
+    {
+        if (gcode_line.size() < 8 || gcode_line[0] != ';' || gcode_line[1] != ' ')
+            return false;
+        if (const char c = gcode_line[2]; c != 'f' && c != 't')
+            return false;
+        auto process_tag = [](std::string &gl, const std::string_view tag, const std::vector<double> &values)
+        {
+            if (boost::algorithm::starts_with(gl, tag))
+            {
+                gl = std::string(tag);
+                char buf[1024];
+                for (size_t i = 0; i < values.size(); ++i)
+                {
+                    sprintf(buf, i == values.size() - 1 ? " %.2lf\n" : " %.2lf,", values[i]);
+                    gl += buf;
+                }
+                return true;
+            }
+            return false;
+        };
+        bool ret = false;
+        ret |= process_tag(gcode_line, PrintStatistics::FilamentUsedMmMask, filament_mm);
+        ret |= process_tag(gcode_line, PrintStatistics::FilamentUsedGMask, filament_g);
+        ret |= process_tag(gcode_line, PrintStatistics::TotalFilamentUsedGMask, {filament_total_g});
+        ret |= process_tag(gcode_line, PrintStatistics::FilamentUsedCm3Mask, filament_cm3);
+        ret |= process_tag(gcode_line, PrintStatistics::FilamentCostMask, filament_cost);
+        ret |= process_tag(gcode_line, PrintStatistics::TotalFilamentCostMask, {filament_total_cost});
+        return ret;
+    };
+
+    // Replace placeholder comments with actual values
+    auto process_placeholders = [&](std::string &gcode_line) -> bool
+    {
+        // gcode_line includes trailing \n
+        auto line = std::string_view(gcode_line).substr(0, gcode_line.length() - 1);
+        if (line.length() > 1)
+        {
+            line = line.substr(1); // Skip leading ';'
+
+            // M73 placeholder replacement
+            if (m_time_processor.export_remaining_time_enabled &&
+                (line == reserved_tag(ETags::First_Line_M73_Placeholder) ||
+                 line == reserved_tag(ETags::Last_Line_M73_Placeholder)))
+            {
+                for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i)
+                {
+                    const TimeMachine &machine = m_time_processor.machines[i];
+                    if (machine.enabled)
+                    {
+                        append_output(
+                            format_line_M73_main(machine.line_m73_main_mask.c_str(),
+                                                 (line == reserved_tag(ETags::First_Line_M73_Placeholder)) ? 0 : 100,
+                                                 (line == reserved_tag(ETags::First_Line_M73_Placeholder))
+                                                     ? time_in_minutes(machine.time)
+                                                     : 0));
+
+                        if (line == reserved_tag(ETags::First_Line_M73_Placeholder) && !machine.stop_times.empty())
+                        {
+                            const int to_export_stop = time_in_minutes(machine.stop_times.front().elapsed_time);
+                            append_output(format_line_M73_stop_int(machine.line_m73_stop_mask.c_str(), to_export_stop));
+                            last_exported_stop[i] = to_export_stop;
+                        }
+                    }
+                }
+                return true;
+            }
+
+            // Estimated printing time placeholder
+            if (line == reserved_tag(ETags::Estimated_Printing_Time_Placeholder))
+            {
+                for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i)
+                {
+                    const TimeMachine &machine = m_time_processor.machines[i];
+                    PrintEstimatedStatistics::ETimeMode mode = static_cast<PrintEstimatedStatistics::ETimeMode>(i);
+                    if (mode == PrintEstimatedStatistics::ETimeMode::Normal || machine.enabled)
+                    {
+                        char buf[128];
+                        sprintf(buf, "; estimated printing time (%s mode) = %s\n",
+                                (mode == PrintEstimatedStatistics::ETimeMode::Normal) ? "normal" : "silent",
+                                get_time_dhms(machine.time).c_str());
+                        append_output(buf);
+                    }
+                }
+                for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i)
+                {
+                    const TimeMachine &machine = m_time_processor.machines[i];
+                    PrintEstimatedStatistics::ETimeMode mode = static_cast<PrintEstimatedStatistics::ETimeMode>(i);
+                    if (mode == PrintEstimatedStatistics::ETimeMode::Normal || machine.enabled)
+                    {
+                        char buf[128];
+                        sprintf(buf, "; estimated first layer printing time (%s mode) = %s\n",
+                                (mode == PrintEstimatedStatistics::ETimeMode::Normal) ? "normal" : "silent",
+                                get_time_dhms(machine.first_layer_time).c_str());
+                        append_output(buf);
+                    }
+                }
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // PASS 1: Parse G-code to generate moves and build time estimation data.
+    // This populates m_result.moves and time processor blocks.
+    {
+        GCodeReader parser;
+        for (size_t line_idx = 0; line_idx < m_virtual_file->line_count(); ++line_idx)
+        {
+            std::string line = m_virtual_file->get_line(line_idx);
+
+            if (!line.empty() && line.back() == '\n')
+                line.pop_back();
+            if (!line.empty() && line.back() == '\r')
+                line.pop_back();
+
+            m_line_id = line_idx;
+
+            parser.parse_line(line, [&](GCodeReader &reader, const GCodeReader::GCodeLine &gline)
+                              { this->process_gcode_line(gline, true); });
+        }
+    }
+
+    // Finalize time estimation - this processes remaining time blocks and fully
+    // populates g1_times_cache, which is needed for M73 insertion in pass 2.
+    this->finalize(false);
+
+    // PASS 2: Post-process the virtual file using the now-complete g1_times_cache.
+    // This mirrors the file-based post_process() logic exactly.
     for (size_t line_idx = 0; line_idx < m_virtual_file->line_count(); ++line_idx)
     {
         std::string line = m_virtual_file->get_line(line_idx);
 
-        // Remove trailing newline for parser
         if (!line.empty() && line.back() == '\n')
-        {
             line.pop_back();
-        }
         if (!line.empty() && line.back() == '\r')
-        {
             line.pop_back();
-        }
 
-        // Set m_line_id to line_idx (0-based) so that after process_gcode_line
-        // increments it with ++m_line_id, it becomes the correct 1-based line number.
-        // This ensures store_move_vertex gets the correct gcode_id for the G1 command.
-        m_line_id = line_idx;
+        // Format line with trailing newline for post-processing
+        std::string gcode_line = line + "\n";
 
-        // Parse line to generate moves
-        parser.parse_line(line,
-                          [&](GCodeReader &reader, const GCodeReader::GCodeLine &gline)
-                          {
-                              // Save current line ID AFTER increment happens inside process_gcode_line
-                              // We need to save/restore to prevent the outer loop from seeing the increment
+        // Detect command type
+        bool is_g0_g1 = GCodeReader::GCodeLine::cmd_is(gcode_line, "G0") ||
+                        GCodeReader::GCodeLine::cmd_is(gcode_line, "G1");
+        bool is_g2_g3 = GCodeReader::GCodeLine::cmd_is(gcode_line, "G2") ||
+                        GCodeReader::GCodeLine::cmd_is(gcode_line, "G3");
+        bool is_g28 = GCodeReader::GCodeLine::cmd_is(gcode_line, "G28");
 
-                              // CRITICAL: This generates the move vertices!
-                              this->process_gcode_line(gline, true);
-
-                              // After process_gcode_line, m_line_id has been incremented to line_idx + 1
-                              // We don't need to restore it since the outer loop will set it fresh next iteration
-
-                              // Track G1/G0 for M73 insertion
-                              if (gline.cmd_is("G1") || gline.cmd_is("G0"))
-                              {
-                                  // Check if M73 needed after this move
-                                  insert_m73(g1_lines_counter);
-                                  g1_lines_counter++;
-                              }
-                          });
-
-        // Check for placeholders and replace them with actual values
-        // Placeholder format in G-code: ";_GP_ESTIMATED_PRINTING_TIME_PLACEHOLDER"
-        // We need to skip the leading semicolon when comparing
-        bool placeholder_processed = false;
-        std::string_view line_view(line);
-        if (line_view.length() > 1 && line_view[0] == ';')
+        // Count internal G1 lines for G2/G3 arcs
+        unsigned int internal_g1_lines = 0;
+        if (is_g2_g3)
         {
-            line_view = line_view.substr(1); // Skip the semicolon
-        }
-
-        if (line_view == reserved_tag(ETags::Estimated_Printing_Time_Placeholder))
-        {
-            // Replace placeholder with actual estimated printing time
-            for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i)
+            const auto &cache = m_time_processor.machines[0].g1_times_cache;
+            size_t temp_idx = g1_times_cache_idx[0];
+            while (temp_idx < cache.size() && cache[temp_idx].id <= g1_lines_counter)
+                ++temp_idx;
+            while (temp_idx < cache.size() && cache[temp_idx].remaining_internal_g1_lines > 0)
             {
-                const TimeMachine &machine = m_time_processor.machines[i];
-                PrintEstimatedStatistics::ETimeMode mode = static_cast<PrintEstimatedStatistics::ETimeMode>(i);
-                if (mode == PrintEstimatedStatistics::ETimeMode::Normal || machine.enabled)
-                {
-                    char buf[128];
-                    sprintf(buf, "; estimated printing time (%s mode) = %s\n",
-                            (mode == PrintEstimatedStatistics::ETimeMode::Normal) ? "normal" : "silent",
-                            get_time_dhms(machine.time).c_str());
-                    output_vf->write_line(buf);
-                }
+                ++temp_idx;
+                ++internal_g1_lines;
             }
-            // Also write first layer time
-            for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i)
-            {
-                const TimeMachine &machine = m_time_processor.machines[i];
-                PrintEstimatedStatistics::ETimeMode mode = static_cast<PrintEstimatedStatistics::ETimeMode>(i);
-                if (mode == PrintEstimatedStatistics::ETimeMode::Normal || machine.enabled)
-                {
-                    char buf[128];
-                    sprintf(buf, "; estimated first layer printing time (%s mode) = %s\n",
-                            (mode == PrintEstimatedStatistics::ETimeMode::Normal) ? "normal" : "silent",
-                            get_time_dhms(machine.first_layer_time).c_str());
-                    output_vf->write_line(buf);
-                }
-            }
-            placeholder_processed = true;
         }
 
-        // Write original line to output (with newline) if not a placeholder
-        if (!placeholder_processed)
+        // Replace placeholder comments
+        bool processed = process_placeholders(gcode_line);
+        if (processed)
+            gcode_line.clear();
+
+        // Replace filament stat comments
+        if (!processed)
+            processed = process_used_filament(gcode_line);
+
+        // Process movement and tool change commands
+        if (!processed)
         {
-            output_vf->write_line(line + "\n");
+            if (is_g0_g1)
+            {
+                append_output(gcode_line, line_idx + 1);
+                process_line_G1(g1_lines_counter++);
+                gcode_line.clear();
+            }
+            else if (is_g2_g3)
+            {
+                append_output(gcode_line, line_idx + 1);
+                process_line_G1(g1_lines_counter + internal_g1_lines);
+                g1_lines_counter += (1 + internal_g1_lines);
+                gcode_line.clear();
+            }
+            else if (is_g28)
+            {
+                ++g1_lines_counter;
+            }
+            else if (m_result.backtrace_enabled && GCodeReader::GCodeLine::cmd_starts_with(gcode_line, "T"))
+            {
+                process_line_T(gcode_line);
+            }
         }
+
+        // Append remaining non-empty lines (G28, T commands, filament stats, other)
+        if (!gcode_line.empty())
+            append_output(gcode_line, line_idx + 1);
     }
 
-    // Moves generated successfully
+    // Write buffered output to output virtual file
+    for (const auto &buf_line : output_lines)
+        output_vf->write_line(buf_line.line);
 
     // Store output in result
     m_result.output_virtual_file = output_vf;
     m_result.owns_output_virtual_file = true;
 
     // Populate lines_ends for compatibility with libvgcode
-    // Each entry is the cumulative character position after each line
     size_t cumulative_pos = 0;
     for (size_t i = 0; i < output_vf->line_count(); ++i)
     {
-        std::string line = output_vf->get_line(i);
-        cumulative_pos += line.length();
+        std::string out_line = output_vf->get_line(i);
+        cumulative_pos += out_line.length();
         m_result.lines_ends.front().push_back(cumulative_pos);
     }
 
-    // lines_ends populated successfully
+    // Synchronize move gcode_ids with output line numbers after M73/M104 insertions
+    {
+        std::vector<std::pair<size_t, size_t>> gcode_lines_map;
+        size_t output_line_id = 1; // 1-based
+        for (const auto &buf_line : output_lines)
+        {
+            if (buf_line.input_line_id > 0)
+                gcode_lines_map.push_back({buf_line.input_line_id, output_line_id});
+            ++output_line_id;
+        }
 
-    // Must call finalize() to process accumulated filament data into print statistics
-    // Without this, legend shows 0.00 for all values because used_filaments_per_role is empty
-    this->finalize(false);
+        auto map_it = gcode_lines_map.begin();
+        for (GCodeProcessorResult::MoveVertex &move : m_result.moves)
+        {
+            while (map_it != gcode_lines_map.end() && map_it->first < move.gcode_id)
+                ++map_it;
+            if (map_it != gcode_lines_map.end() && map_it->first == move.gcode_id)
+                move.gcode_id = map_it->second;
+        }
+    }
 }
 
 static inline const char *skip_whitespaces(const char *begin, const char *end)
@@ -6184,7 +6525,7 @@ void GCodeProcessor::post_process()
                 if (tool_number < 0 || (int) m_extruder_temps_config.size() <= tool_number)
                 {
                     // found an invalid value, clamp it to a valid one
-                    tool_number = std::clamp<int>(0, m_extruder_temps_config.size() - 1, tool_number);
+                    tool_number = std::clamp(tool_number, 0, static_cast<int>(m_extruder_temps_config.size()) - 1);
                     // emit warning
                     std::string warning = _u8L(
                         "GCode Post-Processor encountered an invalid toolchange, maybe from a custom gcode:");
@@ -7212,7 +7553,7 @@ double GCodeProcessor::extract_absolute_position_on_axis(Axis axis, const GCodeR
             ss >> tool_number;
             if (tool_number != -1) {
                 if (tool_number < 0 || (int)m_extruder_temps_config.size() <= tool_number) {
-                    tool_number = std::clamp<int>(0, m_extruder_temps_config.size() - 1, tool_number);
+                    tool_number = std::clamp(tool_number, 0, static_cast<int>(m_extruder_temps_config.size()) - 1);
                     std::string warning = _u8L("GCode Post-Processor encountered an invalid toolchange, maybe from a custom gcode:");
                     warning += "\n> ";
                     warning += gcode_line;

@@ -1239,10 +1239,19 @@ ColorRGBA TriangleSelectorGUI::get_seed_fill_color(const ColorRGBA &base_color)
 
 void TriangleSelectorGUI::render(ImGuiWrapper *imgui, const Transform3d &matrix)
 {
-    static const ColorRGBA enforcers_color = {0.47f, 0.47f, 1.0f, 1.0f};       // Blue - Snug
-    static const ColorRGBA blockers_color = {1.0f, 0.44f, 0.44f, 1.0f};        // Red - Blocker
-    static const ColorRGBA organic_enforcers_color = {0.3f, 0.7f, 0.3f, 1.0f}; // Green - Organic
-    static const ColorRGBA grid_enforcers_color = {1.0f, 0.6f, 0.2f, 1.0f};    // Orange - Grid
+    // Colors indexed by state value (0-9). 0=unused, 1=ENFORCER, 2=BLOCKER, 3=ORGANIC, 4=GRID, 5-9=extended.
+    static const std::array<ColorRGBA, 10> state_colors = {{
+        GLVolume::NEUTRAL_COLOR,    // 0: NONE
+        {0.47f, 0.47f, 1.0f, 1.0f}, // 1: Enforcer - blue
+        {1.0f, 0.44f, 0.44f, 1.0f}, // 2: Blocker - red
+        {0.3f, 0.7f, 0.3f, 1.0f},   // 3: Organic - green
+        {1.0f, 0.6f, 0.2f, 1.0f},   // 4: Grid - orange
+        {0.6f, 0.3f, 0.85f, 1.0f},  // 5: purple
+        {0.2f, 0.75f, 0.75f, 1.0f}, // 6: teal
+        {0.9f, 0.85f, 0.15f, 1.0f}, // 7: yellow
+        {0.9f, 0.35f, 0.65f, 1.0f}, // 8: pink
+        {0.35f, 0.55f, 0.8f, 1.0f}, // 9: steel blue
+    }};
 
     if (m_update_render_data)
     {
@@ -1256,28 +1265,28 @@ void TriangleSelectorGUI::render(ImGuiWrapper *imgui, const Transform3d &matrix)
 
     assert(shader->get_name() == "gouraud");
 
-    for (auto iva : {std::make_pair(&m_iva_enforcers, enforcers_color), std::make_pair(&m_iva_blockers, blockers_color),
-                     std::make_pair(&m_iva_organic_enforcers, organic_enforcers_color),
-                     std::make_pair(&m_iva_grid_enforcers, grid_enforcers_color)})
+    for (auto iva :
+         {std::make_pair(&m_iva_enforcers, state_colors[1]), std::make_pair(&m_iva_blockers, state_colors[2]),
+          std::make_pair(&m_iva_organic_enforcers, state_colors[3]),
+          std::make_pair(&m_iva_grid_enforcers, state_colors[4])})
     {
         iva.first->set_color(iva.second);
         iva.first->render();
     }
 
-    for (auto &iva : m_iva_seed_fills)
+    // Render extended state buffers (states 5-9)
+    for (size_t i = 0; i < m_iva_extended.size(); ++i)
     {
-        size_t color_idx = &iva - &m_iva_seed_fills.front();
-        const ColorRGBA &color = TriangleSelectorGUI::get_seed_fill_color(color_idx == 1 ? enforcers_color
-                                                                                         : // Snug - blue
-                                                                              color_idx == 2 ? blockers_color
-                                                                                             : // Blocker - red
-                                                                              color_idx == 3 ? organic_enforcers_color
-                                                                                             : // Organic - green
-                                                                              color_idx == 4 ? grid_enforcers_color
-                                                                                             : // Grid - orange
-                                                                              GLVolume::NEUTRAL_COLOR);
-        iva.set_color(color);
-        iva.render();
+        m_iva_extended[i].set_color(state_colors[5 + i]);
+        m_iva_extended[i].render();
+    }
+
+    // Seed fill preview
+    for (size_t i = 0; i < m_iva_seed_fills.size(); ++i)
+    {
+        const ColorRGBA &color = TriangleSelectorGUI::get_seed_fill_color(state_colors[i]);
+        m_iva_seed_fills[i].set_color(color);
+        m_iva_seed_fills[i].render();
     }
 
     render_paint_contour(matrix);
@@ -1292,35 +1301,26 @@ void TriangleSelectorGUI::render(ImGuiWrapper *imgui, const Transform3d &matrix)
 
 void TriangleSelectorGUI::update_render_data()
 {
-    int enf_cnt = 0;
-    int blc_cnt = 0;
-    int org_cnt = 0;
-    int grid_cnt = 0;
-    std::vector<int> seed_fill_cnt(m_iva_seed_fills.size(), 0);
+    // Counters for committed state buffers: [0]=enforcer, [1]=blocker, [2]=organic, [3]=grid, [4..8]=extended(5-9)
+    std::array<int, 9> committed_cnt{};
+    std::array<int, 10> seed_fill_cnt{};
 
     for (auto *iva : {&m_iva_enforcers, &m_iva_blockers, &m_iva_organic_enforcers, &m_iva_grid_enforcers})
-    {
         iva->reset();
-    }
-
-    for (auto &iva : m_iva_seed_fills)
-    {
+    for (auto &iva : m_iva_extended)
         iva.reset();
-    }
+    for (auto &iva : m_iva_seed_fills)
+        iva.reset();
 
-    GLModel::Geometry iva_enforcers_data;
-    iva_enforcers_data.format = {GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3N3};
-    GLModel::Geometry iva_blockers_data;
-    iva_blockers_data.format = {GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3N3};
-    GLModel::Geometry iva_organic_enforcers_data;
-    iva_organic_enforcers_data.format = {GLModel::Geometry::EPrimitiveType::Triangles,
-                                         GLModel::Geometry::EVertexLayout::P3N3};
-    GLModel::Geometry iva_grid_enforcers_data;
-    iva_grid_enforcers_data.format = {GLModel::Geometry::EPrimitiveType::Triangles,
-                                      GLModel::Geometry::EVertexLayout::P3N3};
-    std::array<GLModel::Geometry, 5> iva_seed_fills_data;
-    for (auto &data : iva_seed_fills_data)
-        data.format = {GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3N3};
+    // Geometry data: 4 named + 5 extended (states 5-9) + 10 seed fill (states 0-9)
+    static const auto tri_format = GLModel::Geometry::Format{GLModel::Geometry::EPrimitiveType::Triangles,
+                                                             GLModel::Geometry::EVertexLayout::P3N3};
+    std::array<GLModel::Geometry, 9> committed_data;
+    for (auto &d : committed_data)
+        d.format = tri_format;
+    std::array<GLModel::Geometry, 10> seed_data;
+    for (auto &d : seed_data)
+        d.format = tri_format;
 
     // small value used to offset triangles along their normal to avoid z-fighting
     static const float offset = 0.001f;
@@ -1332,44 +1332,68 @@ void TriangleSelectorGUI::update_render_data()
             continue;
 
         int tr_state = int(tr.get_state());
-        GLModel::Geometry &iva = tr.is_selected_by_seed_fill()                           ? iva_seed_fills_data[tr_state]
-                                 : tr.get_state() == TriangleStateType::ENFORCER         ? iva_enforcers_data
-                                 : tr.get_state() == TriangleStateType::ORGANIC_ENFORCER ? iva_organic_enforcers_data
-                                 : tr.get_state() == TriangleStateType::GRID_ENFORCER    ? iva_grid_enforcers_data
-                                                                                         : iva_blockers_data;
-        int &cnt = tr.is_selected_by_seed_fill()                           ? seed_fill_cnt[tr_state]
-                   : tr.get_state() == TriangleStateType::ENFORCER         ? enf_cnt
-                   : tr.get_state() == TriangleStateType::ORGANIC_ENFORCER ? org_cnt
-                   : tr.get_state() == TriangleStateType::GRID_ENFORCER    ? grid_cnt
-                                                                           : blc_cnt;
+
+        // Select geometry buffer and counter
+        GLModel::Geometry *iva;
+        int *cnt;
+        if (tr.is_selected_by_seed_fill())
+        {
+            int idx = std::clamp(tr_state, 0, 9);
+            iva = &seed_data[idx];
+            cnt = &seed_fill_cnt[idx];
+        }
+        else
+        {
+            // Map state to committed buffer index:
+            // 1=enforcer(0), 2=blocker(1), 3=organic(2), 4=grid(3), 5-9=extended(4-8)
+            int idx;
+            switch (tr_state)
+            {
+            case 1:
+                idx = 0;
+                break;
+            case 2:
+                idx = 1;
+                break;
+            case 3:
+                idx = 2;
+                break;
+            case 4:
+                idx = 3;
+                break;
+            default:
+                idx = (tr_state >= 5 && tr_state <= 9) ? tr_state - 1 : 0;
+                break;
+            }
+            iva = &committed_data[idx];
+            cnt = &committed_cnt[idx];
+        }
+
         const Vec3f &v0 = m_vertices[tr.verts_idxs[0]].v;
         const Vec3f &v1 = m_vertices[tr.verts_idxs[1]].v;
         const Vec3f &v2 = m_vertices[tr.verts_idxs[2]].v;
-        //FIXME the normal may likely be pulled from m_triangle_selectors, but it may not be worth the effort
-        // or the current implementation may be more cache friendly.
         const Vec3f n = (v1 - v0).cross(v2 - v1).normalized();
-        // small value used to offset triangles along their normal to avoid z-fighting
         const Vec3f offset_n = offset * n;
-        iva.add_vertex(v0 + offset_n, n);
-        iva.add_vertex(v1 + offset_n, n);
-        iva.add_vertex(v2 + offset_n, n);
-        iva.add_triangle((unsigned int) cnt, (unsigned int) cnt + 1, (unsigned int) cnt + 2);
-        cnt += 3;
+        iva->add_vertex(v0 + offset_n, n);
+        iva->add_vertex(v1 + offset_n, n);
+        iva->add_vertex(v2 + offset_n, n);
+        iva->add_triangle((unsigned int) *cnt, (unsigned int) *cnt + 1, (unsigned int) *cnt + 2);
+        *cnt += 3;
     }
 
-    if (!iva_enforcers_data.is_empty())
-        m_iva_enforcers.init_from(std::move(iva_enforcers_data));
-    if (!iva_blockers_data.is_empty())
-        m_iva_blockers.init_from(std::move(iva_blockers_data));
-    if (!iva_organic_enforcers_data.is_empty())
-        m_iva_organic_enforcers.init_from(std::move(iva_organic_enforcers_data));
-    if (!iva_grid_enforcers_data.is_empty())
-        m_iva_grid_enforcers.init_from(std::move(iva_grid_enforcers_data));
+    // Upload committed buffers: [0]=enforcer, [1]=blocker, [2]=organic, [3]=grid
+    GLModel *committed_models[] = {&m_iva_enforcers, &m_iva_blockers, &m_iva_organic_enforcers, &m_iva_grid_enforcers};
+    for (int i = 0; i < 4; ++i)
+        if (!committed_data[i].is_empty())
+            committed_models[i]->init_from(std::move(committed_data[i]));
+    // [4..8] = extended states 5-9
+    for (int i = 0; i < 5; ++i)
+        if (!committed_data[4 + i].is_empty())
+            m_iva_extended[i].init_from(std::move(committed_data[4 + i]));
+    // Seed fill
     for (size_t i = 0; i < m_iva_seed_fills.size(); ++i)
-    {
-        if (!iva_seed_fills_data[i].is_empty())
-            m_iva_seed_fills[i].init_from(std::move(iva_seed_fills_data[i]));
-    }
+        if (!seed_data[i].is_empty())
+            m_iva_seed_fills[i].init_from(std::move(seed_data[i]));
 
     update_paint_contour();
 }

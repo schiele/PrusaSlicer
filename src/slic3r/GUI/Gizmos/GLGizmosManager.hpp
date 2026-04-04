@@ -90,6 +90,7 @@ public:
         FdmSupports,
         Seam,
         FuzzySkin,
+        CounterboreBridge,
         Align,
         MmSegmentation,
         Measure,
@@ -97,6 +98,7 @@ public:
         Svg,
         Simplify,
         BrimEars,
+        Relief, // No toolbar icon - activated via menu
         Undefined
     };
 

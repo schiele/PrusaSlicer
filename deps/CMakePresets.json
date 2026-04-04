@@ -54,6 +54,38 @@
                 "CMAKE_OSX_ARCHITECTURES": "arm64",
                 "CMAKE_OSX_DEPLOYMENT_TARGET": "11.0"
             }
+        },
+        {
+            "name": "win_arm64",
+            "inherits": "default",
+            "displayName": "Windows ARM64",
+            "description": "Native ARM64 build for Windows on ARM",
+            "binaryDir": "${sourceDir}/build",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            },
+            "architecture": {
+                "value": "ARM64",
+                "strategy": "set"
+            }
+        },
+        {
+            "name": "win_amd64",
+            "inherits": "default",
+            "displayName": "Windows x64",
+            "description": "x64 build for Windows",
+            "binaryDir": "${sourceDir}/build",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            },
+            "architecture": {
+                "value": "x64",
+                "strategy": "set"
+            }
         }
     ]
 }

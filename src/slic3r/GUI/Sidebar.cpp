@@ -1801,7 +1801,7 @@ wxPanel *PrintSettingsPanel::BuildSupportContent()
         CreateSettingRow(content, opts_group, "support_material_bottom_contact_extrusion_width",
                          _L("Bottom contact extrusion width"));
         CreateSettingRow(content, opts_group, "support_material_pattern", _L("Pattern"));
-        CreateSettingRow(content, opts_group, "support_material_bridge_no_gap", _L("Bridge with no gap"));
+        CreateSettingRow(content, opts_group, "support_material_bridge_no_gap", _L("Bridge fill when \"no gap\" selected"));
         CreateSettingRow(content, opts_group, "support_material_with_sheath", _L("With sheath around support"));
         CreateSettingRow(content, opts_group, "support_material_spacing", _L("Pattern spacing"));
         CreateSettingRow(content, opts_group, "support_material_angle", _L("Pattern angle"));

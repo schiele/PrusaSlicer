@@ -248,40 +248,6 @@ void mac_set_view_corner_radius(void *nsview_handle, double radius)
     view.layer.masksToBounds = YES;
 }
 
-void mac_safe_destroy_children(wxWindow *window)
-{
-    if (!window)
-        return;
-    @try
-    {
-        window->DestroyChildren();
-    }
-    @catch (NSException *)
-    {
-        // Suppress Cocoa exceptions during shutdown teardown.
-        // wxWidgetCocoaImpl::~wxWidgetCocoaImpl() can throw when the native
-        // NSView hierarchy is partially torn down before the C++ side finishes.
-    }
-}
-
-void mac_safe_detach_native_view(wxWindow *window)
-{
-    if (!window)
-        return;
-    WXWidget handle = window->GetHandle();
-    if (!handle)
-        return;
-    NSView *view = (__bridge NSView *)handle;
-    @try
-    {
-        [view removeFromSuperview];
-    }
-    @catch (NSException *)
-    {
-        // Superview already deallocated or in an inconsistent state during shutdown.
-    }
-}
-
 }
 }
 

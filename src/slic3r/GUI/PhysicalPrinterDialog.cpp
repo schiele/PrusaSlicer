@@ -715,8 +715,8 @@ void PhysicalPrinterDialog::update(bool printer_change)
         const auto opt = m_config->option<ConfigOptionEnum<PrintHostType>>("host_type");
         m_optgroup->show_field("host_type");
 
-        if (opt->value == htLocalLink)
-        { // LocalLink supports HTTP digest authentication
+        if (opt->value == htPrusaLink)
+        { // PrusaLink supports HTTP digest authentication
             m_optgroup->show_field("printhost_authorization_type");
             AuthorizationType auth_type =
                 m_config->option<ConfigOptionEnum<AuthorizationType>>("printhost_authorization_type")->value;
@@ -799,32 +799,8 @@ void PhysicalPrinterDialog::update_host_type(bool printer_change)
         return true;
     };
 
-    // set all_presets_are_link_supported
-    for (PresetForPrinter *prstft : m_presets)
-    {
-        std::string preset_name = prstft->get_preset_name();
-        if (Preset *preset = wxGetApp().preset_bundle->printers.find_preset(preset_name))
-        {
-            std::string model_id = preset->config.opt_string("printer_model");
-            const PresetWithVendorProfile &printer_with_vendor =
-                wxGetApp().preset_bundle->printers.get_preset_with_vendor_profile(*preset);
-            std::string model_id_no_pref = preset->trim_vendor_repo_prefix(model_id, printer_with_vendor.vendor);
-            if (printer_with_vendor.vendor)
-            {
-                if (printer_with_vendor.vendor->name.find("oozeBot") != std::string::npos)
-                {
-                    const std::vector<VendorProfile::PrinterModel> &models = printer_with_vendor.vendor->models;
-                    auto it = std::find_if(models.begin(), models.end(),
-                                           [model_id](const VendorProfile::PrinterModel &model)
-                                           { return model.id == model_id; });
-                    if (it != models.end() && model_supports_service(model_id_no_pref))
-                        continue;
-                }
-            }
-        }
-        link.supported = false;
-        break;
-    }
+    // PrusaLink is always available - it's a standard print host protocol
+    link.supported = true;
 
     // Connect service preset check (kept for structure, service disabled)
     for (PresetForPrinter *prstft : m_presets)
@@ -864,7 +840,7 @@ void PhysicalPrinterDialog::update_host_type(bool printer_change)
     for (size_t i = 0; i < ht->m_opt.enum_def->labels().size(); ++i)
     {
         wxString label = _(ht->m_opt.enum_def->label(i));
-        if (const std::string &value = ht->m_opt.enum_def->value(i); value == "locallink")
+        if (const std::string &value = ht->m_opt.enum_def->value(i); value == "prusalink")
         {
             link.label = label;
             if (!link.supported)

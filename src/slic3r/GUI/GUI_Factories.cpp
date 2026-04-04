@@ -21,6 +21,8 @@
 #include "format.hpp"
 #include "Gizmos/GLGizmoEmboss.hpp"
 #include "Gizmos/GLGizmoSVG.hpp"
+#include "Gizmos/GLGizmosManager.hpp"
+#include "Gizmos/GLGizmoRelief.hpp"
 
 #include <boost/algorithm/string.hpp>
 #include "slic3r/Utils/FixModelByWin10.hpp"
@@ -1269,6 +1271,22 @@ void MenuFactory::create_default_menu()
         &m_default_menu, wxID_ANY, _L("Open Project"), _L("Open a project file"),
         [](wxCommandEvent &) { plater()->load_project(); }, "open", &m_default_menu, []() { return true; }, m_parent);
 
+    // Create Relief - opens file dialog first, then the gizmo
+    append_menu_item(
+        &m_default_menu, wxID_ANY, _L("Create Relief"), _L("Create a 3D relief from a grayscale image"),
+        [](wxCommandEvent &)
+        {
+            auto *canvas = plater()->canvas3D();
+            if (!canvas)
+                return;
+            auto &mgr = canvas->get_gizmos_manager();
+            mgr.open_gizmo(GLGizmosManager::Relief);
+            auto *gizmo = mgr.get_gizmo(GLGizmosManager::Relief);
+            if (gizmo)
+                dynamic_cast<GLGizmoRelief *>(gizmo)->request_load_image();
+        },
+        "", &m_default_menu, []() { return true; }, m_parent);
+
     // Add object
     append_menu_item(
         &m_default_menu, wxID_ANY, _L("Add object"), _L("Add an object to the platter"),
@@ -1605,6 +1623,9 @@ void MenuFactory::update_default_menu()
     const auto add_shape_id = m_default_menu.FindItem(_("Add Shape"));
     if (add_shape_id != wxNOT_FOUND)
         m_default_menu.Destroy(add_shape_id);
+    const auto create_relief_id = m_default_menu.FindItem(_("Create Relief"));
+    if (create_relief_id != wxNOT_FOUND)
+        m_default_menu.Destroy(create_relief_id);
     const auto notes_id = m_default_menu.FindItem(_("Notes"));
     if (notes_id != wxNOT_FOUND)
         m_default_menu.Destroy(notes_id);

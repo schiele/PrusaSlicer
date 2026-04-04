@@ -88,6 +88,10 @@ set(SLIC3R_GUI_SOURCES
     GUI/Gizmos/GLGizmoMeasure.hpp
     GUI/Gizmos/GLGizmoAlign.cpp
     GUI/Gizmos/GLGizmoAlign.hpp
+    GUI/Gizmos/GLGizmoRelief.cpp
+    GUI/Gizmos/GLGizmoRelief.hpp
+    GUI/Gizmos/GLGizmoCounterboreBridge.cpp
+    GUI/Gizmos/GLGizmoCounterboreBridge.hpp
     GUI/CSGPreviewManager.cpp
     GUI/CSGPreviewManager.hpp
     GUI/LibVGCode/LibVGCodeWrapper.hpp

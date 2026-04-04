@@ -746,6 +746,10 @@ void BackgroundSlicingProcess::direct_export_gcode(const std::string &path, bool
             boost::filesystem::remove(export_path);
             throw Slic3r::ExportError(GUI::format(_L("Failed to write complete G-code to file: %1%"), export_path));
         }
+
+        // Run post-processing scripts on the exported file (in-place, no temp copy
+        // needed since preview reads from the in-memory virtual file, not this file)
+        run_post_process_scripts(export_path, m_fff_print->full_print_config());
     }
     catch (const std::exception &e)
     {
@@ -880,8 +884,9 @@ void BackgroundSlicingProcess::finalize_gcode(const std::string &path, const boo
 
             fclose(file);
 
-            // TODO: Support post-processing scripts on the array if needed
-            // For now, skip post-processing when using array
+            // Run post-processing scripts on the exported file (in-place, no temp copy
+            // needed since preview reads from the in-memory virtual file, not this file)
+            run_post_process_scripts(export_path, m_fff_print->full_print_config());
         }
         catch (const std::exception &e)
         {

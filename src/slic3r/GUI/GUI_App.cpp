@@ -1916,11 +1916,11 @@ bool GUI_App::on_init_inner()
     }
     else
     {
-        // Suppress extrusion width warnings during initial load.
-        // User hasn't configured anything yet - don't warn about default values.
-        ConfigManipulation::set_suppress_extrusion_width_warnings(true);
+        // Suppress config validation dialogs during initial load.
+        // Modal dialogs deadlock behind the wxSTAY_ON_TOP splash screen.
+        ConfigManipulation::set_suppress_startup_dialogs(true);
         load_current_presets();
-        ConfigManipulation::set_suppress_extrusion_width_warnings(false);
+        ConfigManipulation::set_suppress_startup_dialogs(false);
     }
 
     // Save the active profiles as a "saved into project".
@@ -2737,10 +2737,10 @@ void GUI_App::recreate_GUI(const wxString &msg_name)
 
     dlg.Update(80, _L("Loading of current presets") + dots);
     m_printhost_job_queue.reset(new PrintHostJobQueue(mainframe->printhost_queue_dlg()));
-    // Suppress extrusion width warnings during GUI recreation (same as initial load)
-    ConfigManipulation::set_suppress_extrusion_width_warnings(true);
+    // Suppress config validation dialogs during GUI recreation (same as initial load)
+    ConfigManipulation::set_suppress_startup_dialogs(true);
     load_current_presets();
-    ConfigManipulation::set_suppress_extrusion_width_warnings(false);
+    ConfigManipulation::set_suppress_startup_dialogs(false);
     mainframe->Show(true);
 
     dlg.Update(90, _L("Loading of a mode view") + dots);

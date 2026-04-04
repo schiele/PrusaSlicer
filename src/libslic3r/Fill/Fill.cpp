@@ -490,6 +490,14 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                         // use concentric pattern for visual distinction
                         params.pattern = ipConcentric;
                     }
+                    else if (surface.surface_type == stBottom && !is_bridge && layer.object()->has_support() &&
+                             layer.object()->config().support_material_contact_distance.value == stcgNoGap &&
+                             !layer.object()->config().support_material_bridge_no_gap)
+                    {
+                        // Non-bridge bottom over soluble support (bridge_no_gap OFF):
+                        // use solid_fill_pattern so this merges with adjacent stInternalSolid.
+                        params.pattern = region_config.solid_fill_pattern.value;
+                    }
                     else if (surface.is_external())
                     {
                         // External bottom surface
@@ -1135,76 +1143,111 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
 
     dbg_fill_phase("TINY_SOB_RM", layer, surface_fills);
 
-    // preFlight: Merge fragmented bridge infill into a unified region.
+    // preFlight: Merge fragmented bridge infill into unified regions per angle.
     // Bridge detection creates separate ExPolygons for bridge-over-open-space (stBottomBridge)
-    // and bridge-over-sparse (stInternalBridge) with different angles. Merge all bridge fills
-    // into one SurfaceFill, preferring stBottomBridge's angle (optimized for anchoring over
-    // open spans). Apply grow/union/shrink to bridge micro-gaps between fragments.
+    // and bridge-over-sparse (stInternalBridge). Merge fragments that share the same bridge angle
+    // into one SurfaceFill each. Bridges with different angles (e.g. counterbore corridors)
+    // remain separate to preserve their per-corridor fill direction.
     if (sparse_erode_radius > 0)
     {
-        // Find all bridge SurfaceFill entries and select the primary (winning) one.
-        // Prefer stBottomBridge (bridge-over-open-space) with the largest total area.
-        SurfaceFill *primary_bridge = nullptr;
-        double primary_area = 0;
-        for (SurfaceFill &sf : surface_fills)
+        // Group bridge SurfaceFills by angle (within 5 degrees tolerance).
+        // For each angle group, pick a primary (prefer stBottomBridge, then largest area)
+        // and merge other same-angle bridges into it.
+        static constexpr double angle_merge_tolerance = 5.0 * M_PI / 180.0;
+
+        // Collect bridge indices
+        std::vector<size_t> bridge_indices;
+        for (size_t i = 0; i < surface_fills.size(); ++i)
+            if (!surface_fills[i].expolygons.empty() && surface_fills[i].surface.is_bridge())
+                bridge_indices.push_back(i);
+
+        // Group by angle: each entry is (primary_idx, list of same-angle indices)
+        std::vector<std::pair<size_t, std::vector<size_t>>> angle_groups;
+        std::vector<bool> assigned(surface_fills.size(), false);
+        for (size_t bi : bridge_indices)
         {
-            if (sf.expolygons.empty() || !sf.surface.is_bridge())
+            if (assigned[bi])
                 continue;
-            double total_area = 0;
-            for (const ExPolygon &ep : sf.expolygons)
-                total_area += std::abs(ep.area());
-            // stBottomBridge always wins over stInternalBridge; among same type, largest area wins
-            bool dominated = primary_bridge && primary_bridge->surface.surface_type == stBottomBridge &&
-                             sf.surface.surface_type != stBottomBridge;
-            bool dominates = !primary_bridge ||
-                             (sf.surface.surface_type == stBottomBridge &&
-                              primary_bridge->surface.surface_type != stBottomBridge) ||
-                             (sf.surface.surface_type == primary_bridge->surface.surface_type &&
-                              total_area > primary_area);
-            if (!dominated && dominates)
+            double ref_angle = fmod(surface_fills[bi].surface.bridge_angle + 2 * M_PI, M_PI);
+            std::vector<size_t> group = {bi};
+            assigned[bi] = true;
+            for (size_t bj : bridge_indices)
             {
-                primary_bridge = &sf;
-                primary_area = total_area;
+                if (assigned[bj])
+                    continue;
+                double a = fmod(surface_fills[bj].surface.bridge_angle + 2 * M_PI, M_PI);
+                double diff = std::abs(a - ref_angle);
+                if (diff < angle_merge_tolerance || diff > M_PI - angle_merge_tolerance)
+                {
+                    group.push_back(bj);
+                    assigned[bj] = true;
+                }
             }
+
+            // Pick primary within this angle group (prefer stBottomBridge, then largest area)
+            size_t primary_idx = group[0];
+            double primary_area = 0;
+            for (size_t gi : group)
+            {
+                double area = 0;
+                for (const ExPolygon &ep : surface_fills[gi].expolygons)
+                    area += std::abs(ep.area());
+                bool better = (surface_fills[gi].surface.surface_type == stBottomBridge &&
+                               surface_fills[primary_idx].surface.surface_type != stBottomBridge) ||
+                              (surface_fills[gi].surface.surface_type ==
+                                   surface_fills[primary_idx].surface.surface_type &&
+                               area > primary_area);
+                if (gi == group[0] || better)
+                {
+                    primary_idx = gi;
+                    primary_area = area;
+                }
+            }
+            angle_groups.push_back({primary_idx, group});
         }
 
-        if (primary_bridge)
+        // Merge each angle group
+        Polygons all_bridge_polys;
+        for (auto &[primary_idx, group] : angle_groups)
         {
-            // Merge all other bridge ExPolygons into the primary
+            SurfaceFill &primary = surface_fills[primary_idx];
             bool merged = false;
-            for (SurfaceFill &sf : surface_fills)
+            for (size_t gi : group)
             {
-                if (&sf == primary_bridge || sf.expolygons.empty() || !sf.surface.is_bridge())
+                if (gi == primary_idx)
                     continue;
-                append(primary_bridge->expolygons, std::move(sf.expolygons));
-                sf.expolygons.clear();
+                append(primary.expolygons, std::move(surface_fills[gi].expolygons));
+                surface_fills[gi].expolygons.clear();
                 merged = true;
             }
 
             // Grow/union/shrink to bridge micro-gaps between fragments
-            if (primary_bridge->expolygons.size() > 1)
+            if (primary.expolygons.size() > 1)
             {
-                const float merge_delta = float(scale_(primary_bridge->params.flow.width()));
+                const float merge_delta = float(scale_(primary.params.flow.width()));
                 Polygons grown;
-                for (const ExPolygon &ep : primary_bridge->expolygons)
+                for (const ExPolygon &ep : primary.expolygons)
                     append(grown, offset(ep, merge_delta));
-                primary_bridge->expolygons = intersection_ex(offset_ex(union_(grown), -merge_delta),
-                                                             total_fill_boundary);
+                primary.expolygons = intersection_ex(offset_ex(union_(grown), -merge_delta), total_fill_boundary);
             }
 
-            // Re-trim adjacent fills against the expanded bridge region to prevent overlap
-            if (merged)
-            {
-                Polygons bridge_polys = to_polygons(primary_bridge->expolygons);
-                if (!bridge_polys.empty())
-                    for (SurfaceFill &sf : surface_fills)
-                    {
-                        if (&sf == primary_bridge || sf.expolygons.empty() || sf.surface.is_bridge())
-                            continue;
-                        sf.expolygons = diff_ex(sf.expolygons, bridge_polys);
-                    }
-            }
+            // Clip against previously processed bridge groups to prevent polygon overlap.
+            // Without this, grow/union/shrink can extend a group beyond its trimmed boundary
+            // into another group's territory, causing fill lines to cross.
+            if (!all_bridge_polys.empty())
+                primary.expolygons = diff_ex(primary.expolygons, all_bridge_polys);
+
+            append(all_bridge_polys, to_polygons(primary.expolygons));
         }
+
+        // Re-trim non-bridge fills against all expanded bridge regions
+        if (!all_bridge_polys.empty())
+            for (SurfaceFill &sf : surface_fills)
+            {
+                if (sf.expolygons.empty() || sf.surface.is_bridge())
+                    continue;
+                sf.expolygons = diff_ex(sf.expolygons, all_bridge_polys);
+            }
     }
 
     dbg_fill_phase("BRIDGE_MERGED", layer, surface_fills);
@@ -1473,6 +1516,7 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                 }
 
                 params.dont_adjust = false; //  surface_fill.params.dont_adjust;
+                params.bridge = surface_fill.params.bridge;
                 params.anchor_length = surface_fill.params.anchor_length;
                 params.anchor_length_max = surface_fill.params.anchor_length_max;
                 params.resolution = resolution;
@@ -1528,9 +1572,29 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                     for (ExPolygon &expoly : island_expolygons)
                     {
                         f->spacing = surface_fill.params.spacing;
+                        // For bridges: use original flow width so boundary offset is independent of line spacing
                         f->bounding_width = surface_fill.params.bridge ? surface_fill.params.flow.width()
                                                                        : surface_fill.params.spacing;
                         params.start_near = have_last_pos ? last_fill_pos : expoly.contour.centroid();
+
+                        // Override fill direction for counterbore bridges to match corridor angle.
+                        // The surface keeps its detected bridge_angle for correct grouping.
+                        f->counterbore_fill_angle = -1.f;
+                        if (surface_fill.surface.is_bridge() && !this->counterbore_bridge_regions.empty())
+                        {
+                            double ep_area = std::abs(expoly.area());
+                            for (const auto &[cb_region, cb_angle] : this->counterbore_bridge_regions)
+                            {
+                                double overlap_area = 0;
+                                for (const ExPolygon &ov : intersection_ex(ExPolygons{expoly}, cb_region))
+                                    overlap_area += std::abs(ov.area());
+                                if (ep_area > 0 && overlap_area / ep_area > 0.01)
+                                {
+                                    f->counterbore_fill_angle = float(cb_angle);
+                                    break;
+                                }
+                            }
+                        }
 
                         surface_fill.surface.expolygon = std::move(expoly);
                         Polylines polylines;
@@ -1628,6 +1692,7 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                     for (ExPolygon &expoly : island_expolygons)
                     {
                         f->spacing = surface_fill.params.spacing;
+                        // For bridges: use original flow width so boundary offset is independent of line spacing
                         f->bounding_width = surface_fill.params.bridge ? surface_fill.params.flow.width()
                                                                        : surface_fill.params.spacing;
                         params.start_near = have_last_pos ? last_fill_pos : expoly.contour.centroid();
@@ -1892,6 +1957,7 @@ Polylines Layer::generate_sparse_infill_polylines_for_anchoring(FillAdaptive::Oc
         }
 
         params.dont_adjust = false; //  surface_fill.params.dont_adjust;
+        params.bridge = surface_fill.params.bridge;
         params.anchor_length = surface_fill.params.anchor_length;
         params.anchor_length_max = surface_fill.params.anchor_length_max;
         params.resolution = resolution;
@@ -1906,7 +1972,6 @@ Polylines Layer::generate_sparse_infill_polylines_for_anchoring(FillAdaptive::Oc
             // Spacing is modified by the filler to indicate adjustments. Reset it for each expolygon.
             f->spacing = surface_fill.params.spacing;
             // For bridges: use original flow width so boundary offset is independent of line spacing
-            // For non-bridges: use spacing (normal behavior)
             f->bounding_width = surface_fill.params.bridge ? surface_fill.params.flow.width()
                                                            : surface_fill.params.spacing;
 

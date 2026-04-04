@@ -84,7 +84,6 @@ MsgDialog::MsgDialog(wxWindow *parent, const wxString &title, const wxString &he
     boldfont.SetWeight(wxFONTWEIGHT_BOLD);
 
     this->SetFont(wxGetApp().normal_font());
-    this->CenterOnParent();
 
     auto *main_sizer = new wxBoxSizer(wxVERTICAL);
     auto *topsizer = new wxBoxSizer(wxHORIZONTAL);
@@ -173,14 +172,9 @@ void MsgDialog::finalize()
     wxGetApp().UpdateDlgDarkUI(this);
     Fit();
 
-    // preFlight: Center on the main application window if our parent isn't visible
-    // (e.g. dialogs spawned from hidden queue dialogs would otherwise center on the monitor)
-    wxWindow *parent = GetParent();
-    if (parent && parent->IsShownOnScreen())
-    {
-        this->CenterOnParent();
-    }
-    else if (wxGetApp().mainframe && wxGetApp().mainframe->IsShownOnScreen())
+    // Always center on the main frame. The dialog's immediate parent is often
+    // an internal panel (e.g. settings tab), not the top-level window.
+    if (wxGetApp().mainframe && wxGetApp().mainframe->IsShownOnScreen())
     {
         wxPoint frame_pos = wxGetApp().mainframe->GetPosition();
         wxSize frame_size = wxGetApp().mainframe->GetSize();

@@ -41,7 +41,7 @@ static const std::string MODEL_PREFIX = "model:";
 // are phased out, then we will revert to the original name.
 // For 2.6.0-alpha1 we have switched back to the original. The file should contain data for AppUpdater.cpp
 // Version check URL removed
-static const std::string VERSION_CHECK_URL = "http://pkg.ooze.bot/preFlight.version";
+static const std::string VERSION_CHECK_URL = "http://pkg.ooze.bot/preFlight.latest";
 static const std::string RELEASE_NOTES_URL = "http://pkg.ooze.bot/preFlight.notes";
 // Url to index archive zip that contains latest indicies
 // Index archive URL removed

@@ -36,7 +36,7 @@ namespace GUI
 {
 
 // Named constants for alignment behavior
-static constexpr double SURFACE_EPSILON = 0.0001;      // Micron overshoot to prevent coplanar z-fighting
+static constexpr double SURFACE_EPSILON = 0.0005;      // Half-micron overshoot to prevent coplanar z-fighting
 static constexpr double EDGE_EPSILON = 0.0001;         // Micron overshoot past edges for snap alignment
 static constexpr double RAY_PLANE_PARALLEL_TOL = 1e-8; // Tolerance for ray-plane parallel detection
 static constexpr int FACE_SWITCH_DELAY_MS = 500;       // Debounce delay for snap point face switching
@@ -155,6 +155,12 @@ static Transform3d rotation_from_to(const Vec3d &from, const Vec3d &to)
     return result;
 }
 
+static bool is_relief_object(const ModelObject *obj)
+{
+    static const std::string prefix = "[Relief] ";
+    return obj && obj->name.size() >= prefix.size() && obj->name.compare(0, prefix.size(), prefix) == 0;
+}
+
 bool GLGizmoAlign::raycast_face(const Vec2d &mouse_pos, FaceData &face_out)
 {
     const Camera &camera = wxGetApp().plater()->get_camera();
@@ -181,13 +187,33 @@ bool GLGizmoAlign::raycast_face(const Vec2d &mouse_pos, FaceData &face_out)
             for (size_t vol_idx = 0; vol_idx < obj->volumes.size(); ++vol_idx)
             {
                 const ModelVolume *vol = obj->volumes[vol_idx];
-                if (vol == nullptr || !vol->is_model_part())
+                if (vol == nullptr)
                     continue;
+
+                // For relief objects, ONLY raycast against the "Alignment Box" modifier
+                // (skip the actual relief mesh - it has too many triangles and no flat faces).
+                // For normal objects, only raycast against model parts.
+                bool is_relief = is_relief_object(obj);
+                if (is_relief)
+                {
+                    if (!vol->is_modifier() || vol->name != "Alignment Box")
+                        continue;
+                }
+                else
+                {
+                    if (!vol->is_model_part())
+                        continue;
+                }
 
                 Transform3d world_trafo = inst_trafo * vol->get_matrix();
 
                 auto mesh = std::make_shared<const TriangleMesh>(vol->mesh());
                 MeshRaycaster raycaster(mesh);
+
+                // For bbox-derived hits, compute the bounding box for center snapping
+                BoundingBoxf3 vol_bb;
+                if (is_relief)
+                    vol_bb = vol->mesh().bounding_box();
 
                 Vec3f hit_pos;
                 Vec3f hit_normal;
@@ -209,11 +235,32 @@ bool GLGizmoAlign::raycast_face(const Vec2d &mouse_pos, FaceData &face_out)
                         Vec3d world_normal = (normal_matrix * hit_normal.cast<double>()).normalized();
 
                         face_out.normal = world_normal;
-                        face_out.center = world_hit;
                         face_out.object_idx = static_cast<int>(obj_idx);
                         face_out.instance_idx = static_cast<int>(inst_idx);
                         face_out.volume_idx = static_cast<int>(vol_idx);
-                        face_out.facet_idx = facet_idx;
+                        face_out.facet_idx = is_relief ? SIZE_MAX : facet_idx;
+
+                        if (is_relief)
+                        {
+                            // Snap center to the geometric center of the hit bounding box face
+                            Vec3d bb_center = vol_bb.center();
+                            Vec3f n = hit_normal.normalized();
+                            Vec3d local_center;
+                            if (std::abs(n.z()) > 0.5f)
+                                local_center = Vec3d(bb_center.x(), bb_center.y(),
+                                                     n.z() > 0 ? vol_bb.max.z() : vol_bb.min.z());
+                            else if (std::abs(n.y()) > 0.5f)
+                                local_center = Vec3d(bb_center.x(), n.y() > 0 ? vol_bb.max.y() : vol_bb.min.y(),
+                                                     bb_center.z());
+                            else
+                                local_center = Vec3d(n.x() > 0 ? vol_bb.max.x() : vol_bb.min.x(), bb_center.y(),
+                                                     bb_center.z());
+                            face_out.center = world_trafo * local_center;
+                        }
+                        else
+                        {
+                            face_out.center = world_hit;
+                        }
                     }
                 }
             }
@@ -228,9 +275,9 @@ void GLGizmoAlign::apply_alignment()
     if (m_source.object_idx < 0 || m_target.object_idx < 0)
         return;
 
-    // Normal alignment: source face opposes target face.
-    // Flip: source face points same direction as target (object on the other side of the plane).
-    Vec3d desired_normal = m_inverted ? m_target.normal : -m_target.normal;
+    // Always align source face opposing target face. Flip is handled later
+    // as a through-plane mirror, which preserves in-plane orientation for any face.
+    Vec3d desired_normal = -m_target.normal;
 
     // Compute rotation that aligns source normal to desired direction
     Transform3d align_rot = rotation_from_to(m_source.normal, desired_normal);
@@ -279,12 +326,13 @@ void GLGizmoAlign::apply_alignment()
                     Eigen::Translation3d(-target_with_offset) * new_trafo;
     }
 
-    // Apply mirror in the target plane's coordinate system (around the click point)
-    if (m_mirror_h || m_mirror_v)
+    // Apply mirror in the target plane's coordinate system (around the click point).
+    // Flip is a through-plane (z-axis) mirror - preserves in-plane orientation on any face.
+    if (m_mirror_h || m_mirror_v || m_inverted)
     {
-        // Build mirror matrix in the plane's local frame
         double mx = m_mirror_h ? -1.0 : 1.0;
         double my = m_mirror_v ? -1.0 : 1.0;
+        double mz = m_inverted ? -1.0 : 1.0;
 
         // Construct world-space mirror: translate to target point, apply mirror in
         // the plane's local axes, translate back
@@ -293,7 +341,7 @@ void GLGizmoAlign::apply_alignment()
         plane_basis.col(1) = y_axis;
         plane_basis.col(2) = z_axis;
 
-        Matrix3d local_mirror = Eigen::Scaling(mx, my, 1.0);
+        Matrix3d local_mirror = Eigen::Scaling(mx, my, mz);
         Matrix3d world_mirror = plane_basis * local_mirror * plane_basis.transpose();
 
         Transform3d mirror_trafo = Eigen::Translation3d(target_with_offset) * Transform3d(world_mirror) *
@@ -535,6 +583,8 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
         m_target.object_idx >= static_cast<int>(model.objects.size()))
         return;
 
+    wxBeginBusyCursor();
+
     ModelObject *src_obj = model.objects[m_source.object_idx];
     ModelObject *tgt_obj = model.objects[m_target.object_idx];
 
@@ -543,6 +593,26 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
     if (m_source.instance_idx >= static_cast<int>(src_obj->instances.size()) ||
         m_target.instance_idx >= static_cast<int>(tgt_obj->instances.size()))
         return;
+
+    // Strip Alignment Box modifiers from the source before boolean operations.
+    // The source is deleted after accept, so this is safe.
+    printf("[Align] Source volumes before strip: %zu\n", src_obj->volumes.size());
+    for (int vi = static_cast<int>(src_obj->volumes.size()) - 1; vi >= 0; --vi)
+    {
+        ModelVolume *v = src_obj->volumes[vi];
+        if (v != nullptr && v->is_modifier() && v->name == "Alignment Box")
+        {
+            printf("[Align] Stripping Alignment Box modifier (volume %d)\n", vi);
+            src_obj->delete_volume(vi);
+        }
+    }
+    printf("[Align] Source volumes after strip: %zu\n", src_obj->volumes.size());
+    for (size_t i = 0; i < src_obj->volumes.size(); ++i)
+    {
+        ModelVolume *v = src_obj->volumes[i];
+        printf("[Align]   vol[%zu]: name='%s' type=%d\n", i, v->name.c_str(), static_cast<int>(v->type()));
+    }
+    fflush(stdout);
 
     // If source has multiple instances, split the aligned instance into its own
     // standalone object first. This prevents modifying the shared object from
@@ -572,7 +642,15 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
     ModelInstance *src_inst = src_obj->instances[m_source.instance_idx];
     ModelInstance *tgt_inst = tgt_obj->instances[m_target.instance_idx];
 
-    if (volume_type == ModelVolumeType::MODEL_PART)
+    // Relief objects: skip immediate CGAL boolean - the slicer handles overlapping
+    // volumes (MODEL_PART for weld, NEGATIVE_VOLUME for subtract) at slice time.
+    // CGAL's EPIC kernel has numerical precision issues with dense heightmap meshes.
+    bool is_relief_src = is_relief_object(src_obj);
+    printf("[Align] accept_as_volume: src='%s' tgt='%s' is_relief=%s volume_type=%d\n", src_obj->name.c_str(),
+           tgt_obj->name.c_str(), is_relief_src ? "YES" : "NO", static_cast<int>(volume_type));
+    fflush(stdout);
+
+    if (volume_type == ModelVolumeType::MODEL_PART && !is_relief_src)
     {
         // True weld: boolean union of source meshes into the target's first model part.
         ModelVolume *tgt_vol = nullptr;
@@ -600,17 +678,76 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
                 TriangleMesh src_mesh = src_vol->mesh();
                 src_mesh.transform(src_to_tgt_local, true);
 
+                // Debug: log mesh stats before boolean
+                auto log_mesh = [](const std::string &label, const TriangleMesh &m)
+                {
+                    auto stats = m.stats();
+                    // Find z range
+                    float zmin = std::numeric_limits<float>::max();
+                    float zmax = std::numeric_limits<float>::lowest();
+                    float min_edge = std::numeric_limits<float>::max();
+                    for (const auto &v : m.its.vertices)
+                    {
+                        zmin = std::min(zmin, v.z());
+                        zmax = std::max(zmax, v.z());
+                    }
+                    // Find shortest edge to detect near-degenerate triangles
+                    for (const auto &f : m.its.indices)
+                    {
+                        for (int e = 0; e < 3; ++e)
+                        {
+                            Vec3f d = m.its.vertices[f[e]] - m.its.vertices[f[(e + 1) % 3]];
+                            float len = d.norm();
+                            if (len > 0.f)
+                                min_edge = std::min(min_edge, len);
+                        }
+                    }
+                    printf("[Align Weld] %s: %d tris, %zu verts, %d open edges, z=[%.4f..%.4f], min_edge=%.6f\n",
+                           label.c_str(), stats.number_of_facets, m.its.vertices.size(), stats.open_edges, zmin, zmax,
+                           min_edge);
+                    fflush(stdout);
+                };
+
+                log_mesh("Source", src_mesh);
+                log_mesh("Target", tgt_vol->mesh());
+
+                // Check for self-intersections
+                bool src_si = MeshBoolean::cgal::does_self_intersect(src_mesh);
+                bool tgt_si = MeshBoolean::cgal::does_self_intersect(tgt_vol->mesh());
+                printf("[Align Weld] Self-intersect: source=%s target=%s\n", src_si ? "YES" : "no",
+                       tgt_si ? "YES" : "no");
+                fflush(stdout);
+
                 try
                 {
+                    // If source self-intersects, try self_union to repair first
+                    if (src_si)
+                    {
+                        printf("[Align Weld] Running self_union on source to fix self-intersections...\n");
+                        fflush(stdout);
+                        MeshBoolean::self_union(src_mesh);
+                        log_mesh("Source (after self_union)", src_mesh);
+                    }
+
                     TriangleMesh tgt_mesh = tgt_vol->mesh();
                     MeshBoolean::cgal::plus(tgt_mesh, src_mesh);
+                    printf("[Align Weld] CGAL boolean succeeded\n");
+                    fflush(stdout);
+
+                    log_mesh("Result", tgt_mesh);
+
                     tgt_vol->set_mesh(std::move(tgt_mesh));
                     tgt_vol->calculate_convex_hull();
                     tgt_vol->set_new_unique_id();
                 }
-                catch (...)
+                catch (const std::exception &e)
                 {
-                    // Boolean union failed - fall back to adding as separate volume
+                    std::string err = std::string("Boolean union exception: ") + e.what();
+                    BOOST_LOG_TRIVIAL(error) << "[Align Weld] " << err;
+                    printf("[Align Weld] %s\n", err.c_str());
+                    fflush(stdout);
+
+                    // Fall back to adding as separate volume
                     Transform3d relative_trafo = tgt_inst->get_matrix().inverse() * src_inst->get_matrix() *
                                                  src_vol->get_matrix();
                     ModelVolume *new_vol = tgt_obj->add_volume(*src_vol, volume_type);
@@ -620,10 +757,28 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
                     new_vol->name = src_obj->name + " (welded)";
 
                     auto *notif = wxGetApp().plater()->get_notification_manager();
-                    notif->push_notification(
-                        NotificationType::BooleanOperationFailed,
-                        NotificationManager::NotificationLevel::WarningNotificationLevel,
-                        _u8L("Boolean union failed. The part was added as a separate volume instead."));
+                    notif->push_notification(NotificationType::BooleanOperationFailed,
+                                             NotificationManager::NotificationLevel::WarningNotificationLevel,
+                                             std::string("Boolean union failed: ") + e.what());
+                }
+                catch (...)
+                {
+                    BOOST_LOG_TRIVIAL(error) << "[Align Weld] Boolean union: unknown exception";
+                    printf("[Align Weld] Boolean union: unknown exception\n");
+                    fflush(stdout);
+
+                    Transform3d relative_trafo = tgt_inst->get_matrix().inverse() * src_inst->get_matrix() *
+                                                 src_vol->get_matrix();
+                    ModelVolume *new_vol = tgt_obj->add_volume(*src_vol, volume_type);
+                    Geometry::Transformation vol_trafo;
+                    vol_trafo.set_matrix(relative_trafo);
+                    new_vol->set_transformation(vol_trafo);
+                    new_vol->name = src_obj->name + " (welded)";
+
+                    auto *notif = wxGetApp().plater()->get_notification_manager();
+                    notif->push_notification(NotificationType::BooleanOperationFailed,
+                                             NotificationManager::NotificationLevel::WarningNotificationLevel,
+                                             std::string("Boolean union failed with unknown error."));
                 }
             }
         }
@@ -636,6 +791,17 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
             if (src_vol == nullptr || !src_vol->is_model_part())
                 continue;
 
+            // Debug: log source mesh stats
+            {
+                auto stats = src_vol->mesh().stats();
+                std::string msg = "Subtract source: " + std::to_string(stats.number_of_facets) + " tris, " +
+                                  std::to_string(src_vol->mesh().its.vertices.size()) + " verts, " +
+                                  std::to_string(stats.open_edges) + " open edges, name=" + src_vol->name;
+                BOOST_LOG_TRIVIAL(info) << "[Align Subtract] " << msg;
+                printf("[Align Subtract] %s\n", msg.c_str());
+                fflush(stdout);
+            }
+
             Transform3d relative_trafo = tgt_inst->get_matrix().inverse() * src_inst->get_matrix() *
                                          src_vol->get_matrix();
 
@@ -645,6 +811,11 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
             vol_trafo.set_matrix(relative_trafo);
             new_vol->set_transformation(vol_trafo);
             new_vol->name = src_obj->name + " (subtract)";
+
+            printf("[Align Subtract] Added as NEGATIVE_VOLUME: %s, preview_its=%s (%zu tris)\n", new_vol->name.c_str(),
+                   new_vol->preview_its ? "YES" : "NO",
+                   new_vol->preview_its ? new_vol->preview_its->indices.size() : 0);
+            fflush(stdout);
         }
     }
 
@@ -663,13 +834,23 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
     m_accept_in_progress = false;
 
     // Delete source, then invalidate CSG cache so reload_scene sees correct indices
+    printf("[Align] Deleting source object at index %d (total objects: %zu)\n", src_idx, model.objects.size());
+    if (src_idx >= 0 && src_idx < static_cast<int>(model.objects.size()))
+        printf("[Align]   Object name: '%s'\n", model.objects[src_idx]->name.c_str());
+    fflush(stdout);
     model.delete_object(src_idx);
+    printf("[Align] After delete: %zu objects remain\n", model.objects.size());
+    fflush(stdout);
     if (m_parent.get_csg_preview())
         m_parent.get_csg_preview()->invalidate_all();
 
     wxGetApp().plater()->update();
     wxGetApp().obj_list()->update_after_undo_redo();
     m_parent.set_as_dirty();
+    // End busy cursor now for weld. For subtract, the CSG preview will run
+    // async and render()'s process_completed() handler ends the cursor.
+    if (volume_type != ModelVolumeType::NEGATIVE_VOLUME)
+        wxEndBusyCursor();
 }
 
 bool GLGizmoAlign::intersect_target_plane(const Vec2d &mouse_pos, Vec3d &hit_point)
@@ -1267,6 +1448,10 @@ void GLGizmoAlign::update_hover_snap_points(const Vec2d &mouse_pos)
 
 Vec3d GLGizmoAlign::compute_face_center(const FaceData &face)
 {
+    // Bbox-derived faces already have correct centers from raycast_face()
+    if (face.facet_idx == SIZE_MAX)
+        return face.center;
+
     const Model &model = *m_parent.get_selection().get_model();
     if (face.object_idx >= static_cast<int>(model.objects.size()))
         return face.center;
@@ -1352,6 +1537,10 @@ Vec3d GLGizmoAlign::compute_face_center(const FaceData &face)
 
 void GLGizmoAlign::detect_feature_centers(const FaceData &face, std::vector<SnapPoint> &out)
 {
+    // Bbox-derived faces have no mesh features to detect
+    if (face.facet_idx == SIZE_MAX)
+        return;
+
     const Model &model = *m_parent.get_selection().get_model();
     if (face.object_idx >= static_cast<int>(model.objects.size()))
         return;
@@ -1815,7 +2004,7 @@ void GLGizmoAlign::draw_align_panel(float toolbar_x, float icon_y, float toolbar
         ImGui::SameLine();
         if (ImGuiPureWrap::icon_button(ImGui::MirrorHIcon, _u8L("Mirror").c_str()))
         {
-            m_mirror_h = !m_mirror_h;
+            m_mirror_v = !m_mirror_v;
             changed = true;
         }
         if (ImGui::IsItemHovered())
@@ -1823,7 +2012,7 @@ void GLGizmoAlign::draw_align_panel(float toolbar_x, float icon_y, float toolbar
         ImGui::SameLine();
         if (ImGuiPureWrap::icon_button(ImGui::MirrorVIcon, _u8L("Mirror").c_str()))
         {
-            m_mirror_v = !m_mirror_v;
+            m_mirror_h = !m_mirror_h;
             changed = true;
         }
         if (ImGui::IsItemHovered())

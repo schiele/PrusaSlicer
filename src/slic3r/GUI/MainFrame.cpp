@@ -325,6 +325,15 @@ MainFrame::MainFrame(const int font_point_size)
                  return;
              }
              this->shutdown();
+#ifdef __APPLE__
+             // preFlight: wxWidgets' SetDrawingEnabled calls enableFlushWindow
+             // (deprecated since 10.14), which throws on macOS 26+.  The exception
+             // fires inside the noexcept wxWidgetCocoaImpl destructor during the
+             // window destruction chain, triggering std::terminate / abort.
+             // All important state is already saved by shutdown() above, so
+             // exit cleanly instead of running the crashy Cocoa teardown.
+             _exit(0);
+#endif
              // propagate event
              event.Skip();
          });

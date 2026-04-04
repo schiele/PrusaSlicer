@@ -246,8 +246,13 @@ if (DEP_DEBUG AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
   else()
     set(_generator_arg "")
   endif()
+  # Forward the platform/architecture for the debug build (e.g. ARM64)
+  set(_platform_arg "")
+  if(CMAKE_GENERATOR_PLATFORM)
+    set(_platform_arg "-A${CMAKE_GENERATOR_PLATFORM}")
+  endif()
   execute_process(
-    COMMAND ${CMAKE_COMMAND} ${CMAKE_CURRENT_SOURCE_DIR} ${_generator_arg}
+    COMMAND ${CMAKE_COMMAND} ${CMAKE_CURRENT_SOURCE_DIR} ${_generator_arg} ${_platform_arg}
       -DCMAKE_BUILD_TYPE=Debug
       -DDEP_WX_GTK3=${DEP_WX_GTK3}
       -D${PROJECT_NAME}_DEP_DOWNLOAD_DIR=${${PROJECT_NAME}_DEP_DOWNLOAD_DIR}

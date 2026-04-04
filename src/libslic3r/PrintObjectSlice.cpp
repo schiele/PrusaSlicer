@@ -17,6 +17,7 @@
 
 #include "ClipperUtils.hpp"
 #include "ElephantFootCompensation.hpp"
+#include "Geometry/ConvexHull.hpp"
 #include "I18N.hpp"
 #include "Layer.hpp"
 #include "MultiMaterialSegmentation.hpp"
@@ -609,7 +610,163 @@ std::string fix_slicing_errors(LayerPtrs &layers, const std::function<void()> &t
 
 // Called by make_perimeters()
 // 1) Decides Z positions of the layers,
-// 2) Initializes layers and their regions
+// Counterbore bridge: modify slice geometry to progressively close holes.
+// For each painted transition layer, find the bore (large hole) and shaft (small hole).
+// The transition starts AT the painted layer (step 0, least fill) and extends upward -
+// each subsequent layer gets more corridor fills, progressively closing the bore toward
+// the shaft shape. More transition layers = counterbore extends deeper into the object.
+void apply_counterbore_bridge_geometry(PrintObject &po)
+{
+    // Helper: extract a hole from lslices that overlaps the given area
+    auto find_hole_overlapping = [](const ExPolygons &lslices, const ExPolygons &overlap_area) -> ExPolygons
+    {
+        ExPolygons holes;
+        for (const ExPolygon &lslice : lslices)
+        {
+            for (const Polygon &hole : lslice.holes)
+            {
+                ExPolygon hole_ex(hole);
+                hole_ex.contour.make_counter_clockwise();
+                if (!intersection_ex(ExPolygons{hole_ex}, overlap_area).empty())
+                    holes.push_back(hole_ex);
+            }
+        }
+        return holes.empty() ? ExPolygons{} : union_ex(holes);
+    };
+
+    for (size_t layer_id = 0; layer_id < po.layer_count(); ++layer_id)
+    {
+        Layer *layer = po.get_layer(layer_id);
+        if (layer->counterbore_bridge_painted_areas.empty())
+            continue;
+        if (layer_id == 0)
+            continue;
+
+        // Snapshot lslices for layers ABOVE the painted layer (the transition zone).
+        int max_transition = 0;
+        for (const auto &[gp, ntl] : layer->counterbore_bridge_painted_areas)
+            max_transition = std::max(max_transition, std::min(ntl, (int) (po.layer_count() - 1 - layer_id)));
+        std::vector<ExPolygons> target_lslices_snap(max_transition);
+        for (int s = 0; s < max_transition; ++s)
+            target_lslices_snap[s] = po.get_layer(layer_id + 1 + s)->lslices;
+        ExPolygons ceiling_lslices_snap = layer->lslices;
+
+        // Process each (ExPolygons, bridge_layers) group independently.
+        // Each group may contain multiple ExPolygons (separate holes with the same bridge_layers).
+        for (const auto &[group_polys, num_transition_layers] : layer->counterbore_bridge_painted_areas)
+        {
+            int layers_available = std::min(num_transition_layers, (int) (po.layer_count() - 1 - layer_id));
+            if (layers_available <= 0)
+                continue;
+
+            // Process each ExPolygon in the group as a separate counterbore hole
+            for (const ExPolygon &painted_region : group_polys)
+            {
+                ExPolygons single_painted = {painted_region};
+
+                // Find bore from the painted layer (large hole).
+                ExPolygons bore_poly = find_hole_overlapping(ceiling_lslices_snap, single_painted);
+                if (bore_poly.empty())
+                    continue;
+
+                // Find shaft from the first layer above (small hole), using snapshot.
+                ExPolygons shaft_poly;
+                if (!target_lslices_snap.empty())
+                    shaft_poly = find_hole_overlapping(target_lslices_snap[0], single_painted);
+                if (shaft_poly.empty())
+                    continue;
+
+                BoundingBox shaft_bb = get_extents(shaft_poly);
+                double shaft_extent = std::max(shaft_bb.size().x(), shaft_bb.size().y());
+
+                // Build shaft-shaped corridors for each step. Instead of rectangular strips,
+                // create the convex hull of the shaft polygon shifted in both perpendicular
+                // directions. This follows the shaft shape exactly (hexagons, ovals, etc.)
+                // so the crescent edges support the perimeters of the shaft layers above.
+                struct CorridorInfo
+                {
+                    ExPolygons corridor;
+                    double angle_rad;
+                };
+                std::vector<CorridorInfo> corridors;
+
+                double smear_dist = shaft_extent * 2.0;
+
+                for (int step = 0; step < layers_available; ++step)
+                {
+                    double angle_rad = step * M_PI / num_transition_layers;
+                    double perp_angle = angle_rad + M_PI / 2.0;
+                    coord_t dx = coord_t(cos(perp_angle) * smear_dist);
+                    coord_t dy = coord_t(sin(perp_angle) * smear_dist);
+
+                    // Collect all points from shaft + two shifted copies, then convex hull.
+                    // Convex hull fills the gap between non-overlapping shifted copies,
+                    // creating a continuous shaft-shaped corridor.
+                    Points all_pts;
+                    for (const ExPolygon &ep : shaft_poly)
+                    {
+                        for (const Point &p : ep.contour.points)
+                        {
+                            all_pts.push_back(p);
+                            all_pts.push_back(p + Point(dx, dy));
+                            all_pts.push_back(p + Point(-dx, -dy));
+                        }
+                    }
+                    Polygon hull = Geometry::convex_hull(all_pts);
+                    hull.make_counter_clockwise();
+                    corridors.push_back({ExPolygons{ExPolygon(hull)}, angle_rad});
+                }
+
+                // Ring = bore - shaft (the gap that needs bridging)
+                ExPolygons ring = diff_ex(bore_poly, shaft_poly, ApplySafetyOffset::Yes);
+                if (ring.empty())
+                    continue;
+
+                // Transition starts AT the painted layer and extends upward.
+                // The painted layer is step 0 (least fill), higher steps have more fill.
+                for (int step = 0; step < layers_available; ++step)
+                {
+                    size_t target_layer_id = layer_id + step;
+                    Layer *target_layer = po.get_layer(target_layer_id);
+
+                    // Cumulative corridor intersection: step 0 = least fill, step N-1 = most fill.
+                    ExPolygons remaining_hole;
+                    for (int s = 0; s <= step; ++s)
+                    {
+                        if (s == 0)
+                            remaining_hole = corridors[s].corridor;
+                        else
+                            remaining_hole = intersection_ex(remaining_hole, corridors[s].corridor);
+                    }
+
+                    // Bridge material = ring minus the remaining hole
+                    ExPolygons bridge_material = diff_ex(ring, remaining_hole);
+                    if (bridge_material.empty())
+                        continue;
+
+                    // Carve bore from current lslices (not snapshot) so multiple groups accumulate.
+                    // For the painted layer (step 0), bore already exists as a hole so carve is a no-op.
+                    ExPolygons carved = diff_ex(target_layer->lslices, bore_poly);
+                    target_layer->lslices = union_ex(carved, bridge_material);
+                    target_layer->lslice_indices_sorted_by_print_order = chain_expolygons(target_layer->lslices);
+
+                    // Store corridor angle (perpendicular to corridor direction)
+                    double bridge_angle = corridors[step].angle_rad + M_PI / 2.0;
+                    target_layer->counterbore_bridge_regions.push_back(std::make_pair(bridge_material, bridge_angle));
+
+                    if (target_layer->region_count() > 0)
+                    {
+                        LayerRegion *layerm = target_layer->get_region(0);
+                        ExPolygons carved_surfaces = diff_ex(to_expolygons(layerm->m_slices.surfaces), bore_poly);
+                        ExPolygons merged = union_ex(carved_surfaces, bridge_material);
+                        layerm->m_slices.set(std::move(merged), stInternal);
+                    }
+                }
+            }
+        }
+    }
+}
+
 // 3) Slices the object meshes
 // 4) Slices the modifier meshes and reclassifies the slices of the object meshes by the slices of the modifier meshes
 // 5) Applies size compensation (offsets the slices in XY plane)
@@ -666,10 +823,85 @@ void PrintObject::slice()
     accum += g_progress_config.slicing.process_sliced_regions;
     m_print->set_status(static_cast<int>((accum / total_weight) * 33.0f), _u8L("Processing regions"));
 
+    // Counterbore bridge: project painted faces to layers, then modify slice geometry
+    // to progressively close detected counterbore holes. This runs BEFORE lslices_ex
+    // and build_up_down_graph so modified geometry is picked up by everything downstream.
+    if (this->model_object()->is_counterbore_bridge_painted())
+    {
+        // Direct projection: iterate painted triangles, find their Z, project onto nearest layer.
+        // This works for horizontal faces (overhang ceilings) that the segmentation pipeline misses.
+        const Transform3d trafo = this->trafo_centered();
+        for (const ModelVolume *mv : this->model_object()->volumes)
+        {
+            if (!mv->is_model_part() || !mv->is_counterbore_bridge_painted())
+                continue;
+
+            const TriangleMesh &mesh = mv->mesh();
+            const indexed_triangle_set &its = mesh.its;
+            const Transform3d vol_trafo = trafo * mv->get_matrix();
+
+            // Iterate each possible state value (= bridge_layers count).
+            // State 1 is legacy ENFORCER from old projects, treated as bridge_layers=2.
+            // States 2-9 directly encode bridge_layers.
+            for (int state_val = 1; state_val <= 9; ++state_val)
+            {
+                const int bridge_layers = std::max(state_val, 2);
+                const indexed_triangle_set painted_its =
+                    mv->counterbore_bridge_facets.get_facets(*mv, static_cast<TriangleStateType>(state_val));
+                if (painted_its.indices.empty())
+                    continue;
+
+                // Collect per-layer ExPolygons for this bridge_layers group
+                std::vector<ExPolygons> per_layer_polys(m_layers.size());
+
+                int painted_tri_count = (int) painted_its.indices.size();
+                for (int face_idx = 0; face_idx < painted_tri_count; ++face_idx)
+                {
+                    const auto &tri = painted_its.indices[face_idx];
+                    Vec3d v0 = vol_trafo * painted_its.vertices[tri[0]].cast<double>();
+                    Vec3d v1 = vol_trafo * painted_its.vertices[tri[1]].cast<double>();
+                    Vec3d v2 = vol_trafo * painted_its.vertices[tri[2]].cast<double>();
+
+                    double z_min = std::min({v0.z(), v1.z(), v2.z()});
+                    double z_max = std::max({v0.z(), v1.z(), v2.z()});
+
+                    for (size_t layer_id = 0; layer_id < m_layers.size(); ++layer_id)
+                    {
+                        Layer *layer = m_layers[layer_id];
+                        double lz = layer->print_z;
+                        double half_lh = layer->height * 0.5;
+                        if (z_min <= lz + half_lh && z_max >= lz - half_lh)
+                        {
+                            Polygon tri_poly;
+                            tri_poly.points.push_back(Point(scaled(v0.x()), scaled(v0.y())));
+                            tri_poly.points.push_back(Point(scaled(v1.x()), scaled(v1.y())));
+                            tri_poly.points.push_back(Point(scaled(v2.x()), scaled(v2.y())));
+                            tri_poly.make_counter_clockwise();
+                            if (tri_poly.area() > 0)
+                                per_layer_polys[layer_id].emplace_back(ExPolygon(tri_poly));
+                        }
+                    }
+                }
+
+                // Merge and store per-layer painted areas for this bridge_layers group
+                for (size_t layer_id = 0; layer_id < m_layers.size(); ++layer_id)
+                {
+                    if (per_layer_polys[layer_id].empty())
+                        continue;
+                    ExPolygons merged = offset2_ex(union_ex(per_layer_polys[layer_id]), scaled<float>(0.2),
+                                                   scaled<float>(-0.2));
+                    if (!merged.empty())
+                        m_layers[layer_id]->counterbore_bridge_painted_areas.emplace_back(
+                            std::make_pair(std::move(merged), bridge_layers));
+                }
+            }
+        }
+
+        // Now apply the progressive hole-closing geometry modification.
+        apply_counterbore_bridge_geometry(*this);
+        m_print->throw_if_canceled();
+    }
     // Update bounding boxes, back up raw slices of complex models.
-    // printf("[%lld] SLICING - Processing geometry\n",
-    //     std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
-    // fflush(stdout);
     accum += g_progress_config.slicing.process_geometry;
     m_print->set_status(static_cast<int>((accum / total_weight) * 33.0f), _u8L("Processing geometry"));
     tbb::parallel_for(tbb::blocked_range<size_t>(0, m_layers.size()),

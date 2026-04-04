@@ -1279,6 +1279,20 @@ bool TriangleSelector::select_triangle_recursive(int facet_idx, const Vec3i &nei
     return true;
 }
 
+TriangleStateType TriangleSelector::get_triangle_leaf_state(int facet_idx) const
+{
+    if (facet_idx < 0 || facet_idx >= int(m_triangles.size()))
+        return TriangleStateType::NONE;
+    const Triangle &t = m_triangles[facet_idx];
+    if (!t.is_split())
+        return t.get_state();
+    // Traverse to the first valid leaf child
+    for (int child : t.children)
+        if (child >= 0)
+            return get_triangle_leaf_state(child);
+    return TriangleStateType::NONE;
+}
+
 void TriangleSelector::set_facet(int facet_idx, TriangleStateType state)
 {
     assert(this->is_original_triangle(facet_idx));

@@ -86,9 +86,9 @@ public:
     static void approve_extrusion_width(const std::string &width_key, double width_mm);
     static void clear_approved_widths();
 
-    // Suppress extrusion width validation during initial app load
-    // (user hasn't configured anything yet - don't warn about defaults)
-    static void set_suppress_extrusion_width_warnings(bool suppress);
+    // Suppress all config validation dialogs during startup/GUI recreation
+    // to prevent modal dialogs from deadlocking behind the splash screen
+    static void set_suppress_startup_dialogs(bool suppress);
 };
 
 } // namespace GUI

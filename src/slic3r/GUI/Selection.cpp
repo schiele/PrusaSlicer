@@ -2269,6 +2269,19 @@ void Selection::update_type()
     for (GLVolume *v : *m_volumes)
     {
         v->disabled = requires_disable ? (v->object_idx() != object_idx) || (v->instance_idx() != instance_idx) : false;
+
+        // Alignment Box modifiers are never scene-selectable
+        if (!v->disabled && v->is_modifier && v->object_idx() >= 0)
+        {
+            int oi = v->object_idx();
+            int vi = v->volume_idx();
+            if (oi < (int) m_model->objects.size() && vi >= 0 &&
+                vi < (int) m_model->objects[oi]->volumes.size() &&
+                m_model->objects[oi]->volumes[vi]->name == "Alignment Box")
+            {
+                v->disabled = true;
+            }
+        }
     }
 
 #if ENABLE_SELECTION_DEBUG_OUTPUT

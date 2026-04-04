@@ -11,6 +11,7 @@
 #include <regex>
 #include <set>
 
+#include <boost/algorithm/string/join.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/log/trivial.hpp>
@@ -585,6 +586,94 @@ int OrcaConfigImporter::parse_and_map_profile(const std::string &json_content, P
                 }
                 if (all_nil)
                     continue; // Skip - default config already has correct values
+
+                // G-code arrays need special handling: the strings contain ';' (G-code comments)
+                // that deserialize would split on, destroying the G-code. Set directly to
+                // bypass the serialize/deserialize roundtrip.
+                if (gcode_fields.count(key) > 0)
+                {
+                    std::vector<std::string> gcode_strings;
+                    for (const auto &elem : value)
+                    {
+                        if (elem.is_string() && elem.get<std::string>() != "nil")
+                            gcode_strings.push_back(elem.get<std::string>());
+                        else
+                            gcode_strings.push_back("");
+                    }
+
+                    // Translate Orca placeholders to preFlight format
+                    for (auto &s : gcode_strings)
+                        s = translate_gcode(s, profile_name, key, result.gcode_warnings);
+
+                    // Map the key name (e.g. filament_start_gcode -> start_filament_gcode)
+                    auto [pf_key, pf_val_unused] = mapper.map_key_value(key, "", preset_type);
+                    if (pf_key.empty())
+                    {
+                        result.dropped_keys.push_back(key);
+                        continue;
+                    }
+
+                    try
+                    {
+                        // Filament G-code fields (start_filament_gcode, end_filament_gcode) are
+                        // coStrings (one entry per extruder). Printer-level G-code fields
+                        // (start_gcode, end_gcode, etc.) are coString (singular).
+                        const ConfigOptionDef *opt_def = print_config_def.get(pf_key);
+                        if (opt_def && opt_def->type == coStrings)
+                            out_config.set_key_value(pf_key, new ConfigOptionStrings(std::move(gcode_strings)));
+                        else
+                            out_config.set_key_value(pf_key, new ConfigOptionString(boost::join(gcode_strings, "\n")));
+                        ++mapped_count;
+                    }
+                    catch (const std::exception &e)
+                    {
+                        BOOST_LOG_TRIVIAL(warning)
+                            << "OrcaImporter: Failed to set " << pf_key << " in " << profile_name << ": " << e.what();
+                    }
+                    continue;
+                }
+
+                // Any array targeting a ConfigOptionStrings option must be set directly.
+                // The generic comma-separated path below feeds into set_deserialize_strict,
+                // which calls unescape_strings_cstyle - that splits on ';' and interprets '\'
+                // as escape sequences, corrupting values that contain those characters.
+                {
+                    auto [pf_key_peek, unused] = mapper.map_key_value(key, "", preset_type);
+                    const ConfigOptionDef *opt_def = pf_key_peek.empty() ? nullptr : print_config_def.get(pf_key_peek);
+                    if (opt_def && opt_def->type == coStrings)
+                    {
+                        std::vector<std::string> strings;
+                        for (const auto &elem : value)
+                        {
+                            if (elem.is_string())
+                            {
+                                std::string s = elem.get<std::string>();
+                                if (s != "nil")
+                                    strings.push_back(std::move(s));
+                                else
+                                    strings.push_back("");
+                            }
+                            else if (elem.is_number_float())
+                                strings.push_back(std::to_string(elem.get<double>()));
+                            else if (elem.is_number_integer())
+                                strings.push_back(std::to_string(elem.get<int>()));
+                            else
+                                strings.push_back("");
+                        }
+
+                        try
+                        {
+                            out_config.set_key_value(pf_key_peek, new ConfigOptionStrings(std::move(strings)));
+                            ++mapped_count;
+                        }
+                        catch (const std::exception &e)
+                        {
+                            BOOST_LOG_TRIVIAL(warning) << "OrcaImporter: Failed to set " << pf_key_peek << " in "
+                                                       << profile_name << ": " << e.what();
+                        }
+                        continue;
+                    }
+                }
 
                 // Convert array to comma-separated values (preFlight format for multi-value options)
                 for (size_t i = 0; i < value.size(); ++i)

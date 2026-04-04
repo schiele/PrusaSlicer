@@ -126,6 +126,8 @@ static inline void model_volume_list_copy_configs(ModelObject &model_object_dst,
         mv_dst.mm_segmentation_facets.assign(mv_src.mm_segmentation_facets);
         assert(mv_dst.fuzzy_skin_facets.id() == mv_src.fuzzy_skin_facets.id());
         mv_dst.fuzzy_skin_facets.assign(mv_src.fuzzy_skin_facets);
+        assert(mv_dst.counterbore_bridge_facets.id() == mv_src.counterbore_bridge_facets.id());
+        mv_dst.counterbore_bridge_facets.assign(mv_src.counterbore_bridge_facets);
         //FIXME what to do with the materials?
         // mv_dst.m_material_id = mv_src.m_material_id;
         ++i_src;
@@ -1568,7 +1570,8 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                                                                   solid_or_modifier_types) ||
                                         model_mmu_segmentation_data_changed(model_object, model_object_new) ||
                                         (model_object_new.is_mm_painted() && num_extruders_changed) ||
-                                        model_fuzzy_skin_data_changed(model_object, model_object_new);
+                                        model_fuzzy_skin_data_changed(model_object, model_object_new) ||
+                                        model_counterbore_bridge_data_changed(model_object, model_object_new);
         bool supports_differ = model_volume_list_changed(model_object, model_object_new,
                                                          ModelVolumeType::SUPPORT_BLOCKER) ||
                                model_volume_list_changed(model_object, model_object_new,

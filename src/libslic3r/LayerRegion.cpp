@@ -393,10 +393,17 @@ void apply_bridge_overlap_compensation(Surfaces &bridges, const LayerRegion *lay
     Surfaces adjusted_bridges;
     adjusted_bridges.reserve(bridges.size());
 
+    // Partial bridge polygons can be narrower than fill_expolygons because
+    // overhang detection (diff of current vs lower layer) misses perimeter
+    // overlap zones at the sides. Grow the bridge to fill_expolygons boundary
+    // so the fill algorithm has the full area to work with.
+    const float perimeter_expand = float(scale_(layer_region->flow(frPerimeter).width()));
+
     for (Surface &s : bridges)
     {
-        // Clip bridge surface to fill_expolygons (no overlap expansion here)
         ExPolygons clipped = intersection_ex(ExPolygons{s.expolygon}, fill_expolygons);
+        if (!clipped.empty())
+            clipped = intersection_ex(offset_ex(clipped, perimeter_expand), fill_expolygons);
 
         for (ExPolygon &ep : clipped)
         {
@@ -687,6 +694,11 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
                                                                     closing_radius);
         BOOST_LOG_TRIVIAL(trace) << "Processing external surface, detecting bridges - done";
 
+        // For counterbore bridges, DON'T override bridge_angle here. Keeping the
+        // detected angle preserves natural bridge grouping (same angle = same group,
+        // no inter-group overlap). The fill DIRECTION is overridden at fill time in
+        // make_fills via Fill::counterbore_fill_angle.
+
         // Apply bridge overlap compensation to original bridge surfaces
         apply_bridge_overlap_compensation(bridges.surfaces, this, this->fill_expolygons());
     }
@@ -839,15 +851,30 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
                 combined = offset_ex(combined, closing_dist);
                 combined = offset_ex(combined, -closing_dist);
 
-                // Get bridge angle from first bridge
-                double bridge_angle = bridges.surfaces.front().bridge_angle;
-
-                // Replace bridge surfaces with merged version
-                bridges.surfaces.clear();
+                // Preserve per-surface bridge angles through the merge.
+                // Each merged ExPolygon gets the angle from the original bridge surface
+                // it overlaps most with. This keeps counterbore corridors with different
+                // angles from collapsing to a single direction.
+                Surfaces old_bridges;
+                old_bridges.swap(bridges.surfaces);
                 for (const ExPolygon &ep : combined)
                 {
+                    // Find the original bridge surface with the most overlap
+                    double best_overlap = 0;
+                    double best_angle = old_bridges.empty() ? 0 : old_bridges.front().bridge_angle;
+                    for (const Surface &orig : old_bridges)
+                    {
+                        double overlap = 0;
+                        for (const ExPolygon &ov : intersection_ex(ExPolygons{ep}, ExPolygons{orig.expolygon}))
+                            overlap += std::abs(ov.area());
+                        if (overlap > best_overlap)
+                        {
+                            best_overlap = overlap;
+                            best_angle = orig.bridge_angle;
+                        }
+                    }
                     Surface s(stBottomBridge, ep);
-                    s.bridge_angle = bridge_angle;
+                    s.bridge_angle = best_angle;
                     bridges.surfaces.push_back(s);
                 }
 

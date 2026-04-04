@@ -85,6 +85,10 @@ struct FillParams
     // Monotonic infill - strictly left to right for better surface quality of top infills.
     bool monotonic{false};
 
+    // Bridge infill - skip contour-following connections between lines.
+    // Prevents doubled-up extrusion where fill routes along obstacle boundaries.
+    bool bridge{false};
+
     // For Honeycomb.
     // we were requested to complete each loop;
     // in this case we don't try to make more continuous paths
@@ -116,15 +120,19 @@ public:
     // in unscaled coordinates
     coordf_t spacing;
 
-    // For bridges: original flow width (bridge diameter), independent of line spacing
-    // For non-bridges: same as spacing
-    // This decouples line-to-line spacing from boundary offset for bridges
+    // For bridges: original flow width (bridge diameter), independent of line spacing.
+    // For non-bridges: same as spacing.
+    // Decouples line-to-line spacing from boundary offset for bridges.
     coordf_t bounding_width;
 
     // infill / perimeter overlap, in unscaled coordinates
     coordf_t overlap;
     // in radians, ccw, 0 = East
     float angle;
+    // Counterbore bridge fill direction override (radians). When >= 0, used instead
+    // of surface->bridge_angle for fill direction. Keeps natural bridge grouping
+    // intact while rotating fill lines to match the corridor direction.
+    float counterbore_fill_angle{-1.f};
     // In scaled coordinates. Maximum lenght of a perimeter segment connecting two infill lines.
     // Used by the FillRectilinear2, FillGrid2, FillTriangles, FillStars and FillCubic.
     // If left to zero, the links will not be limited.

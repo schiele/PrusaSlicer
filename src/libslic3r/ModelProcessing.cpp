@@ -278,6 +278,7 @@ size_t split(ModelVolume *volume, unsigned int /*max_extruders*/)
     // Capture painting data from the original volume before we modify anything.
     const auto orig_mm = volume->mm_segmentation_facets.get_data();
     const auto orig_fuzzy = volume->fuzzy_skin_facets.get_data();
+    const auto orig_cb = volume->counterbore_bridge_facets.get_data();
     const auto orig_seam = volume->seam_facets.get_data();
 
     // splited volume should not be text object
@@ -314,6 +315,7 @@ size_t split(ModelVolume *volume, unsigned int /*max_extruders*/)
         vol->supported_facets.reset();
         vol->mm_segmentation_facets.assign_remapped(orig_mm, sr.face_mapping);
         vol->fuzzy_skin_facets.assign_remapped(orig_fuzzy, sr.face_mapping);
+        vol->counterbore_bridge_facets.assign_remapped(orig_cb, sr.face_mapping);
         vol->seam_facets.assign_remapped(orig_seam, sr.face_mapping);
 
         vol->set_offset(Vec3d::Zero());
@@ -356,6 +358,7 @@ void split(ModelObject *object, ModelObjectPtrs *new_objects)
         // Capture painting data from the original volume before splitting.
         const auto orig_mm = volume->mm_segmentation_facets.get_data();
         const auto orig_fuzzy = volume->fuzzy_skin_facets.get_data();
+        const auto orig_cb = volume->counterbore_bridge_facets.get_data();
         const auto orig_seam = volume->seam_facets.get_data();
 
         std::vector<SplitResultMesh> split_results = split_mesh_with_mapping(volume->mesh());
@@ -394,6 +397,7 @@ void split(ModelObject *object, ModelObjectPtrs *new_objects)
             new_vol->supported_facets.reset();
             new_vol->mm_segmentation_facets.assign_remapped(orig_mm, sr.face_mapping);
             new_vol->fuzzy_skin_facets.assign_remapped(orig_fuzzy, sr.face_mapping);
+            new_vol->counterbore_bridge_facets.assign_remapped(orig_cb, sr.face_mapping);
             new_vol->seam_facets.assign_remapped(orig_seam, sr.face_mapping);
 
             // Invalidate extruder value in volume's config,

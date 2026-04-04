@@ -73,8 +73,8 @@ PrintHost *PrintHost::get_print_host(DynamicPrintConfig *config)
             return new AstroBox(config);
         case htRepetier:
             return new Repetier(config);
-        case htLocalLink:
-            return new LocalLink(config);
+        case htPrusaLink:
+            return new PrusaLink(config);
         case htMKS:
             return new MKS(config);
         case htMoonraker:

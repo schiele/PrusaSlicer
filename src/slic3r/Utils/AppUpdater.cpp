@@ -267,8 +267,8 @@ boost::filesystem::path AppUpdater::priv::download_file(const DownloadAppData &d
         ,
         [&last_gui_progress, expected_size](Http::Progress progress)
         {
-            // size check
-            if (progress.dltotal > 0 && progress.dltotal > expected_size)
+            // size check (allow 1 byte tolerance for rounding differences)
+            if (progress.dltotal > 0 && progress.dltotal > expected_size + 1)
             {
                 std::string message = GUI::format(
                     "Downloading new %1% has failed. The file has incorrect file size. Aborting download.\nExpected size: %2%\nDownload size: %3%",
@@ -309,9 +309,9 @@ boost::filesystem::path AppUpdater::priv::download_file(const DownloadAppData &d
         ,
         [&file, dest_path, tmp_path, expected_size](std::string body, std::string &error_message)
         {
-            // Size check. Does always 1 char == 1 byte?
+            // Size check with 1 byte tolerance for rounding differences
             size_t body_size = body.size();
-            if (body_size != expected_size)
+            if (body_size > expected_size + 1 || (expected_size > 0 && body_size + 1 < expected_size))
             {
                 error_message =
                     GUI::format(_u8L("Downloaded file has wrong size. Expected size: %1% Downloaded size: %2%"),
@@ -384,7 +384,7 @@ void AppUpdater::priv::version_check(const std::string &version_check_url)
     std::string error_message;
     bool res = http_get_file(
         version_check_url,
-        1024
+        5120
         // on_progress
         ,
         [](Http::Progress progress)
@@ -501,7 +501,11 @@ void AppUpdater::priv::parse_version_string(const std::string &body)
         // Determine platform section name
         std::string platform_section;
 #ifdef _WIN32
+#ifdef _M_ARM64
+        platform_section = "release:win-arm64";
+#else
         platform_section = "release:win-amd64";
+#endif
 #elif __APPLE__
         platform_section = "release:osx";
 #else

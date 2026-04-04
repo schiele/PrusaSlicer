@@ -84,17 +84,46 @@ void CSGPreviewManager::request_update(const ModelObject &obj, int obj_idx)
                 }
                 else
                 {
-                    // Skip check_csgmesh_booleans - it rejects meshes with self-intersections
-                    // or non-manifold geometry that CGAL can often still handle
-                    auto cgalm = csg::perform_csgmesh_booleans(csgrange);
-                    if (cgalm)
-                        result = MeshBoolean::cgal::cgal_to_triangle_mesh(*cgalm);
+                    // Use the igl boolean path (EPECK + winding numbers) instead of
+                    // CGAL corefinement, which fails on dense meshes intersecting surfaces.
+                    TriangleMesh merged;
+                    for (auto &part : *csg_parts)
+                    {
+                        auto op = csg::get_operation(part);
+                        const indexed_triangle_set *its = csg::get_mesh(part);
+                        if (!its || its->indices.empty())
+                            continue;
+
+                        indexed_triangle_set transformed = *its;
+                        its_transform(transformed, csg::get_transform(part), true);
+                        TriangleMesh part_mesh(std::move(transformed));
+
+                        if (merged.empty())
+                        {
+                            merged = std::move(part_mesh);
+                        }
+                        else if (op == csg::CSGType::Union)
+                        {
+                            MeshBoolean::plus(merged, part_mesh);
+                        }
+                        else if (op == csg::CSGType::Difference)
+                        {
+                            MeshBoolean::minus(merged, part_mesh);
+                        }
+                        else if (op == csg::CSGType::Intersection)
+                        {
+                            MeshBoolean::intersect(merged, part_mesh);
+                        }
+                    }
+                    result = std::move(merged);
                 }
             }
             catch (...)
             {
                 std::lock_guard<std::mutex> lock(shared->mutex);
                 shared->completed.push_back({obj_idx, std::move(result), gen, true});
+                // Wake the main thread so render() picks up the result
+                wxTheApp->CallAfter([]() { wxGetApp().plater()->canvas3D()->set_as_dirty(); });
                 return;
             }
 
@@ -102,6 +131,8 @@ void CSGPreviewManager::request_update(const ModelObject &obj, int obj_idx)
                 std::lock_guard<std::mutex> lock(shared->mutex);
                 shared->completed.push_back({obj_idx, std::move(result), gen, false});
             }
+            // Wake the main thread so render() picks up the result
+            wxTheApp->CallAfter([]() { wxGetApp().plater()->canvas3D()->set_as_dirty(); });
         })
         .detach();
 }

@@ -458,6 +458,9 @@ public:
     // Get edges around the selected area by seed fill.
     std::vector<Vec2i> get_seed_fill_contour() const;
 
+    // Get the effective state of a triangle, traversing into split children if needed.
+    TriangleStateType get_triangle_leaf_state(int facet_idx) const;
+
     // Set facet of the mesh to a given state. Only works for original triangles.
     void set_facet(int facet_idx, TriangleStateType state);
 

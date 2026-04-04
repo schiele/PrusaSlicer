@@ -228,6 +228,12 @@ public:
     // make_perimeters() to create PerimeterRegions that apply fuzzy skin selectively to perimeters
     // WITHOUT modifying the underlying slice geometry (no "geometry theft").
     ExPolygons fuzzy_skin_painted_areas;
+    // Counterbore bridge painted areas projected from painted faces.
+    // Each pair: (merged ExPolygons for one bridge_layers value, bridge_layers count).
+    std::vector<std::pair<ExPolygons, int>> counterbore_bridge_painted_areas;
+    // Counterbore bridge regions with forced bridge angle (radians).
+    // One angle per corridor step, perpendicular to the corridor direction.
+    std::vector<std::pair<ExPolygons, double>> counterbore_bridge_regions;
     std::vector<size_t> lslice_indices_sorted_by_print_order;
     LayerSlices lslices_ex;
 

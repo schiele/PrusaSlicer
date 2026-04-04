@@ -2115,21 +2115,23 @@ void generate_support_toolpaths(SupportLayerPtrs &support_layers, const PrintObj
                                                        : &support_params.support_material_interface_flow)
                                       ->with_height(float(layer_ex.layer->height));
 
-                        // This creates a thinner extrusion that leaves a gap between support and object.
-                        // Width from config (50-100%), height always 50%, with a floor of the reduced height.
+                        // Thinner extrusion that leaves a gap between support and object.
+                        // Width from config (50-100%), height always 50%. Floor at the
+                        // rounded-rectangle minimum to prevent negative spacing.
                         if (is_half_gap && !layer_ex.layer->bridging)
                         {
                             float width_percent = float(config.support_material_bottom_contact_extrusion_width.value) /
                                                   100.0f;
                             float reduced_width = interface_flow.width() * width_percent;
                             float reduced_height = interface_flow.height() * 0.5f;
-                            // Enforce minimum width >= reduced height to prevent negative spacing/flow errors
-                            reduced_width = std::max(reduced_width, reduced_height);
+                            float min_width = reduced_height * float(1. - 0.25 * M_PI) + 0.01f;
+                            reduced_width = std::max(reduced_width, min_width);
                             interface_flow = interface_flow.with_width(reduced_width).with_height(reduced_height);
                         }
 
-                        // This creates a thinner extrusion for easier support removal from object bottom.
-                        // Width from config (50-100%), with a floor of layer height to prevent flow errors.
+                        // Reduced width for easier support removal from object surface.
+                        // Width from config (50-100%). Floor at the rounded-rectangle minimum
+                        // to prevent negative spacing (width must exceed height * (1 - PI/4)).
                         if (is_top_contact && !layer_ex.layer->bridging)
                         {
                             float width_percent = float(config.support_material_top_contact_extrusion_width.value) /
@@ -2137,8 +2139,7 @@ void generate_support_toolpaths(SupportLayerPtrs &support_layers, const PrintObj
                             if (width_percent < 1.0f)
                             {
                                 float reduced_width = interface_flow.width() * width_percent;
-                                // Enforce minimum width >= layer height to prevent negative spacing/flow errors
-                                float min_width = interface_flow.height();
+                                float min_width = interface_flow.height() * float(1. - 0.25 * M_PI) + 0.01f;
                                 reduced_width = std::max(reduced_width, min_width);
                                 interface_flow = interface_flow.with_width(reduced_width);
                             }

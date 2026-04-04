@@ -610,6 +610,7 @@ static std::vector<std::string> s_Preset_print_options{
     "narrow_to_athena_threshold",
     "fill_angle",
     "bridge_angle",
+    "counterbore_bridge_layers",
     "solid_infill_below_area",
     "only_retract_when_crossing_perimeters",
     "infill_first",
@@ -1463,6 +1464,9 @@ bool PresetCollection::delete_current_preset()
     }
     // Remove the preset from the list.
     m_presets.erase(m_presets.begin() + m_idx_selected);
+    // Rebuild maps so stale entries don't cause false matches on re-import
+    update_map_alias_to_profile_name();
+    update_map_system_profile_renamed();
     // Find the next visible preset.
     size_t new_selected_idx = m_idx_selected;
     if (new_selected_idx < m_presets.size())
@@ -1483,6 +1487,8 @@ bool PresetCollection::delete_preset(const std::string &name)
     const std::string selected_preset_name = this->get_selected_preset_name();
 
     auto it = this->find_preset_internal(name);
+    if (it == m_presets.end() || it->name != name)
+        return false;
 
     const Preset &preset = *it;
     if (preset.is_default)
@@ -1493,6 +1499,9 @@ bool PresetCollection::delete_preset(const std::string &name)
         boost::nowide::remove(preset.file.c_str());
     }
     m_presets.erase(it);
+    // Rebuild maps so stale entries don't cause false matches on re-import
+    update_map_alias_to_profile_name();
+    update_map_system_profile_renamed();
 
     // update selected preset
     this->select_preset_by_name(selected_preset_name, true);

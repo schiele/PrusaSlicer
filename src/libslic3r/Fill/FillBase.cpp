@@ -132,8 +132,6 @@ bool Fill::use_bridge_flow(const InfillPattern type)
 Polylines Fill::fill_surface(const Surface *surface, const FillParams &params)
 {
     // Perform offset.
-    // For bridges: bounding_width = original flow width, independent of line spacing
-    // For non-bridges: bounding_width = spacing (normal behavior)
     float offset = float(scale_(this->overlap - 0.5 * this->bounding_width));
     Slic3r::ExPolygons expp = offset_ex(surface->expolygon, offset);
 
@@ -251,7 +249,12 @@ std::pair<float, Point> Fill::_infill_direction(const Surface *surface) const
     }
 #endif
 
-    if (surface->bridge_angle >= 0)
+    if (this->counterbore_fill_angle >= 0)
+    {
+        // Counterbore bridge: use corridor angle for fill direction
+        out_angle = this->counterbore_fill_angle;
+    }
+    else if (surface->bridge_angle >= 0)
     {
         // use bridge angle
         //FIXME Vojtech: Add a debugf?

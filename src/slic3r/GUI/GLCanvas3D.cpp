@@ -2029,12 +2029,13 @@ void GLCanvas3D::render()
     GLModel::reset_statistics_counters();
 #endif // ENABLE_GLMODEL_STATISTICS
 
-    // Check for completed boolean preview computations.
-    // If results are ready, trigger a reload_scene which applies them safely
-    // before raycasters are registered.
-    if (m_csg_preview && m_csg_preview->process_completed())
+    // Check for completed boolean preview computations (only when Align gizmo is active).
+    if (m_csg_preview && m_gizmos.get_current_type() == GLGizmosManager::EType::Align &&
+        m_csg_preview->process_completed())
     {
         reload_scene(true);
+        if (wxIsBusy())
+            wxEndBusyCursor();
     }
 
     const Size &cnv_size = get_canvas_size();
@@ -2548,6 +2549,9 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
 
                 volume->is_modifier = !mvs->model_volume->is_model_part();
                 volume->shader_outside_printer_detection_enabled = mvs->model_volume->is_model_part();
+                // Alignment Box modifiers are never scene-selectable
+                if (mvs->model_volume->is_modifier() && mvs->model_volume->name == "Alignment Box")
+                    volume->disabled = true;
                 volume->set_color(color_from_model_volume(*mvs->model_volume));
                 // force update of render_color alpha channel
                 volume->set_render_color(volume->color.is_transparent());
@@ -2750,9 +2754,12 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
             manip->set_dirty();
     }
 
-    // Update CSG cache BEFORE applying previews: objects that lost their negative
-    // volumes (e.g. after undo) get their stale cache entry cleared here.
-    if (m_csg_preview && m_model != nullptr)
+    // CSG boolean preview: only active when the Align gizmo is open.
+    // Outside the gizmo, negative volumes must remain visible and editable.
+    const bool csg_preview_active = m_csg_preview && m_model != nullptr &&
+                                    m_gizmos.get_current_type() == GLGizmosManager::EType::Align;
+
+    if (csg_preview_active)
     {
         for (size_t obj_idx = 0; obj_idx < m_model->objects.size(); ++obj_idx)
         {
@@ -2761,9 +2768,6 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
                 m_csg_preview->request_update(*obj, static_cast<int>(obj_idx));
         }
 
-        // A previously applied CSG preview was cleared (e.g. undo removed negative volumes).
-        // GLVolumes still have the replaced mesh data - force a full scene rebuild to restore
-        // the original meshes from the model.
         if (m_csg_preview->needs_scene_rebuild())
         {
             m_csg_preview->clear_rebuild_flag();
@@ -2771,10 +2775,18 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
             return;
         }
     }
+    else if (m_csg_preview && m_csg_preview->needs_scene_rebuild())
+    {
+        // Leaving the Align gizmo with stale CSG data - rebuild to restore original meshes
+        m_csg_preview->clear_rebuild_flag();
+        m_csg_preview->invalidate_all();
+        reload_scene(true, true);
+        return;
+    }
 
     // Apply boolean preview results BEFORE registering raycasters.
     // This ensures raycasters point to the correct (possibly replaced) mesh data.
-    if (m_csg_preview && m_model != nullptr)
+    if (csg_preview_active)
     {
         std::set<int> replaced_objects;
 
@@ -2834,7 +2846,7 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
         std::shared_ptr<SceneRaycasterItem> raycaster = add_raycaster_for_picking(SceneRaycaster::EType::Volume, i,
                                                                                   *v->mesh_raycaster,
                                                                                   v->world_matrix());
-        raycaster->set_active(v->is_active);
+        raycaster->set_active(v->is_active && !v->disabled);
     }
 
     // refresh gizmo elements raycasters for picking
@@ -3678,7 +3690,8 @@ void GLCanvas3D::on_key(wxKeyEvent &evt)
     const GLGizmosManager::EType gizmo_type = m_gizmos.get_current_type();
     if (keyCode == WXK_ALT &&
         (gizmo_type == GLGizmosManager::FdmSupports || gizmo_type == GLGizmosManager::Seam ||
-         gizmo_type == GLGizmosManager::MmSegmentation || gizmo_type == GLGizmosManager::FuzzySkin))
+         gizmo_type == GLGizmosManager::MmSegmentation || gizmo_type == GLGizmosManager::FuzzySkin ||
+         gizmo_type == GLGizmosManager::CounterboreBridge))
     {
         // Prevents focusing on the menu bar when ALT is pressed in painting gizmos (FdmSupports, Seam, MmSegmentation, and FuzzySkin).
         evt.Skip(false);
@@ -3924,7 +3937,8 @@ void GLCanvas3D::on_mouse(wxMouseEvent &evt)
         // do not return if dragging or tooltip not empty to allow for tooltip update
         // also, do not return if the mouse is moving and also is inside MM gizmo to allow update seed fill selection
         if (!m_mouse.dragging && m_tooltip.is_empty() &&
-            (m_gizmos.get_current_type() != GLGizmosManager::MmSegmentation || !evt.Moving()))
+            (m_gizmos.get_current_type() != GLGizmosManager::MmSegmentation ||
+             !evt.Moving()))
             return;
     }
 
@@ -4134,7 +4148,8 @@ void GLCanvas3D::on_mouse(wxMouseEvent &evt)
                     m_gizmos.get_current_type() != GLGizmosManager::Cut &&
                     m_gizmos.get_current_type() != GLGizmosManager::Measure &&
                     m_gizmos.get_current_type() != GLGizmosManager::MmSegmentation &&
-                    m_gizmos.get_current_type() != GLGizmosManager::FuzzySkin)
+                    m_gizmos.get_current_type() != GLGizmosManager::FuzzySkin &&
+                    m_gizmos.get_current_type() != GLGizmosManager::CounterboreBridge)
                 {
                     m_rectangle_selection.start_dragging(m_mouse.position,
                                                          evt.ShiftDown() ? GLSelectionRectangle::EState::Select

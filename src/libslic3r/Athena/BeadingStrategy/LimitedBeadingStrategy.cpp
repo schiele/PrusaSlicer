@@ -112,8 +112,8 @@ LimitedBeadingStrategy::Beading LimitedBeadingStrategy::compute(coord_t thicknes
     const coord_t first_location = ret.toolpath_locations[first_insert_pos - 1] +
                                    ret.bead_widths[first_insert_pos - 1] / 2;
 
-    //Symmetry on both sides. Symmetry is guaranteed since this code is stopped early if the bead_count <= max_bead_count, and never reaches this point then.
-    const size_t opposite_bead = bead_count - (max_bead_count / 2 - 1);
+    // Clamp to valid index range to prevent out-of-bounds with low perimeter counts
+    const size_t opposite_bead = std::min(bead_count - (max_bead_count / 2 - 1), bead_count - 1);
     const coord_t second_location = ret.toolpath_locations[opposite_bead] - ret.bead_widths[opposite_bead] / 2;
 
     // Build new vectors with both insertions

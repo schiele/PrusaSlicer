@@ -127,12 +127,12 @@ enum PrintHostType
     htRapid,
     htDuet,
     htMoonraker,
+    htPrusaLink,
     htOctoPrint,
     htFlashAir,
     htAstroBox,
     htRepetier,
     htMKS,
-    htLocalLink,
 };
 
 enum AuthorizationType
@@ -985,10 +985,10 @@ PRINT_CONFIG_CLASS_DEFINE(
 
     ((ConfigOptionBool, automatic_infill_combination))(
         (ConfigOptionFloatOrPercent, automatic_infill_combination_max_layer_height))((ConfigOptionFloat, bridge_angle))(
-        (ConfigOptionFloatOrPercent, bridge_extrusion_width))((ConfigOptionInt, bottom_solid_layers))(
-        (ConfigOptionFloat, bottom_solid_min_thickness))((ConfigOptionFloat, bridge_flow_ratio))(
-        (ConfigOptionFloat, bridge_speed))((ConfigOptionEnum<EnsureVerticalShellThickness>,
-                                            ensure_vertical_shell_thickness))(
+        (ConfigOptionInt, counterbore_bridge_layers))((ConfigOptionFloatOrPercent, bridge_extrusion_width))(
+        (ConfigOptionInt, bottom_solid_layers))((ConfigOptionFloat, bottom_solid_min_thickness))(
+        (ConfigOptionFloat, bridge_flow_ratio))((ConfigOptionFloat, bridge_speed))(
+        (ConfigOptionEnum<EnsureVerticalShellThickness>, ensure_vertical_shell_thickness))(
         (ConfigOptionFloatOrPercent, over_bridge_speed))((ConfigOptionEnum<InfillPattern>, top_fill_pattern))(
         (ConfigOptionEnum<InfillPattern>, bottom_fill_pattern))((ConfigOptionFloatOrPercent,
                                                                  external_perimeter_extrusion_width))(
