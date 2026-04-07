@@ -404,32 +404,40 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
     // Check if a solid surface is too narrow for good rectilinear fill.
     // Uses medial axis to find the MAXIMUM width anywhere in the surface.
     // If max width < threshold, the surface is considered narrow.
-    auto is_surface_narrow = [](const Surface &surface, const Flow &flow, float threshold_multiplier) -> bool
+    // Returns the estimated maximum width of a solid surface in scaled coordinates.
+    // Uses area/perimeter ratio for fast reject, then medial axis for precision.
+    // The threshold_multiplier controls the fast-reject cutoff - pass the widest
+    // threshold you'll compare against to avoid unnecessary medial axis computation.
+    auto surface_max_width = [](const Surface &surface, const Flow &flow, float threshold_multiplier) -> coordf_t
     {
         if (!surface.is_solid())
-            return false;
+            return std::numeric_limits<coordf_t>::max();
 
-        // Calculate the threshold width in scaled coordinates
         const coordf_t threshold_width = flow.scaled_width() * threshold_multiplier;
 
-        // Use a small min_width and very large max_width to get the full medial axis
-        const double min_width = flow.scaled_width() * 0.5; // Half extrusion width minimum
-        const double max_width = 1e10;                      // Very large to capture all skeleton edges
+        // Estimate average width from area-to-perimeter ratio. Works for all shapes
+        // including annular rings where bounding box dimensions are misleading.
+        double total_perimeter = surface.expolygon.contour.length();
+        for (const Polygon &hole : surface.expolygon.holes)
+            total_perimeter += hole.length();
+        const coordf_t avg_width = total_perimeter > 0
+                                       ? coordf_t(2.0 * std::abs(surface.expolygon.area()) / total_perimeter)
+                                       : 0;
+
+        // Fast reject: if average width exceeds threshold, skip medial axis.
+        if (avg_width >= threshold_width)
+            return avg_width;
+
+        // Medial axis for precise local width measurement
+        const double min_width = flow.scaled_width() * 0.5;
+        const double max_width = 1e10;
 
         ThickPolylines polylines;
         surface.expolygon.medial_axis(min_width, max_width, &polylines);
 
-        // If no medial axis, fall back to bounding box check.
-        // Medial axis can fail for simple rectangular shapes due to Voronoi edge filtering.
-        // Don't skip large surfaces just because medial axis computation failed.
+        // If medial axis returned nothing, use the average width estimate.
         if (polylines.empty())
-        {
-            // Use bounding box minimum dimension as a simpler narrowness check
-            const BoundingBox bbox = get_extents(surface.expolygon);
-            const coordf_t min_dim = std::min(bbox.size().x(), bbox.size().y());
-            // If the minimum dimension is larger than the threshold, it's not narrow
-            return min_dim < threshold_width;
-        }
+            return avg_width;
 
         // Find the maximum width anywhere in the medial axis
         coordf_t max_found_width = 0;
@@ -442,8 +450,9 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
             }
         }
 
-        // If the maximum width is less than threshold, the surface is narrow
-        return max_found_width < threshold_width;
+        // Clamp against average width to guard against medial axis corner artifacts
+        // producing falsely small widths on large convex shapes.
+        return std::max(max_found_width, avg_width);
     };
 
     // Fill in a map of a region & surface to SurfaceFillParams.
@@ -510,22 +519,26 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                         params.pattern = region_config.solid_fill_pattern.value;
                     }
 
+                    // Compute surface width once for all narrow checks below.
+                    // Use the widest threshold for the fast-reject to avoid redundant medial axis calls.
+                    const Flow solid_flow = layerm.flow(frSolidInfill);
+                    float widest_threshold = 1.5f;
+                    if (region_config.narrow_to_athena.value)
+                        widest_threshold = std::max(widest_threshold,
+                                                    float(region_config.narrow_to_athena_threshold.value));
+                    const coordf_t surf_width = is_bridge ? std::numeric_limits<coordf_t>::max()
+                                                          : surface_max_width(surface, solid_flow, widest_threshold);
+
                     // When Athena perimeters converge, a narrow sliver may be created that should be covered
                     // by perimeters but gets classified as a fill surface. Skip these very narrow surfaces
                     // for stTop and stBottom only (internal solid may legitimately need filling).
-                    // Threshold: 1.5× extrusion width - if narrower, perimeters should cover it.
-                    // This always applies regardless of narrow_to_athena setting.
+                    // Threshold: 1.5x extrusion width - if narrower, perimeters should cover it.
                     if (surface.surface_type == stTop || surface.surface_type == stBottom)
                     {
-                        const Flow solid_flow = layerm.flow(frSolidInfill);
-                        const float skip_threshold = 1.5f; // Very narrow - skip entirely
-
-                        // Don't skip large surfaces - narrow check is only for tiny slivers.
-                        // Area threshold: square of (threshold × extrusion width) ensures we only
-                        // skip surfaces that are genuinely sliver-shaped, not full layers.
-                        const double area_threshold = sqr(solid_flow.scaled_width() * skip_threshold) * 4.0;
+                        // Don't skip large surfaces - area guard ensures only tiny slivers are skipped.
+                        const double area_threshold = sqr(solid_flow.scaled_width() * 1.5f) * 4.0;
                         if (std::abs(surface.expolygon.area()) < area_threshold &&
-                            is_surface_narrow(surface, solid_flow, skip_threshold))
+                            surf_width < solid_flow.scaled_width() * 1.5f)
                         {
                             double a = std::abs(surface.expolygon.area()) * 1e-12;
                             dbg_fill_print("z=%.3f [FILL] SKIP_NARROW type=%-18s area=%8.4fmm2\n", layer.print_z,
@@ -534,40 +547,25 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                         }
                     }
 
-                    // After pattern is selected, check if this is a narrow solid surface
-                    // that should use Ensuring (Athena variable-width fill) instead of the
-                    // configured pattern. Ensuring generates single adaptive-width paths that
-                    // follow the contour - no zigzags like Rectilinear, no diamond artifacts
-                    // like Concentric with Athena at narrow transitions.
-                    // Applies to stInternalSolid, stTop, and stBottom - does NOT affect bridge infill.
+                    // Check if this is a narrow solid surface that should use Ensuring
+                    // (Athena variable-width fill) instead of the configured pattern.
                     if ((surface.surface_type == stInternalSolid || surface.surface_type == stTop ||
                          surface.surface_type == stBottom) &&
                         params.pattern != ipEnsuring && region_config.narrow_to_athena.value)
                     {
-                        const Flow solid_flow = layerm.flow(frSolidInfill);
                         const float threshold = float(region_config.narrow_to_athena_threshold.value);
-                        const double athena_area_threshold = sqr(solid_flow.scaled_width() * threshold) * 4.0;
-
-                        if (std::abs(surface.expolygon.area()) < athena_area_threshold &&
-                            is_surface_narrow(surface, solid_flow, threshold))
-                        {
+                        if (surf_width < solid_flow.scaled_width() * threshold)
                             params.pattern = ipEnsuring;
-                        }
                     }
 
                     // Unconditional fallback: if a solid surface is so thin that it would
                     // collapse under the fill offset (narrower than ~1.5x extrusion width),
                     // force Ensuring regardless of the Narrow to Athena setting.
-                    // Without this, thin bridge anchor strips between perimeters and sparse
-                    // fill produce no extrusions, leaving a visible gap.
                     if (params.pattern != ipEnsuring &&
                         (surface.surface_type == stInternalSolid || surface.surface_type == stTop ||
                          surface.surface_type == stBottom))
                     {
-                        const Flow solid_flow = layerm.flow(frSolidInfill);
-                        const double fallback_area_threshold = sqr(solid_flow.scaled_width() * 1.5) * 4.0;
-                        if (std::abs(surface.expolygon.area()) < fallback_area_threshold &&
-                            is_surface_narrow(surface, solid_flow, 1.5f))
+                        if (surf_width < solid_flow.scaled_width() * 1.5f)
                             params.pattern = ipEnsuring;
                     }
                 }
@@ -1110,7 +1108,15 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
         if (!processed_solid.empty())
             for (SurfaceFill &sf : surface_fills)
                 if (sf.surface.surface_type == stInternal && !sf.expolygons.empty())
+                {
                     sf.expolygons = diff_ex(sf.expolygons, processed_solid);
+                    // Remove thin slivers from the diff at solid/sparse boundaries
+                    if (!sf.expolygons.empty())
+                    {
+                        float min_half_w = float(scale_(sf.params.flow.width() * 0.25));
+                        sf.expolygons = opening_ex(sf.expolygons, min_half_w);
+                    }
+                }
     }
 
     dbg_fill_phase("RETRIMMED", layer, surface_fills);
@@ -1402,6 +1408,13 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
 {
     this->clear_fills();
 
+    // Second sliver removal pass: the first runs in PrintObject after
+    // slices_to_fill_surfaces_clipped(), but discover_horizontal_shells(),
+    // process_external_surfaces(), and bridge_over_infill() can create
+    // new narrow stInternal fragments. Catch those before fill generation.
+    for (size_t region_id = 0; region_id < this->regions().size(); ++region_id)
+        this->regions()[region_id]->remove_narrow_fill_surfaces();
+
     std::vector<SurfaceFill> surface_fills = group_fills(*this);
     const Slic3r::BoundingBox bbox = this->object()->bounding_box();
     const auto resolution = this->object()->print()->config().gcode_resolution.value;
@@ -1612,6 +1625,63 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                                            this->print_z, dbg_stype(surface_fill.surface.surface_type));
                         }
 
+                        // Bridge gap fill: detect uncovered regions between bridge lines
+                        // and the fill boundary, generate variable-width beads to fill them
+                        ThickPolylines bridge_gap_fills;
+                        if (surface_fill.params.bridge && !polylines.empty())
+                        {
+                            const float bridge_width = surface_fill.params.flow.width();
+                            const float half_width_scaled = float(scale_(bridge_width / 2.0));
+                            const float nozzle_dia = surface_fill.params.flow.nozzle_diameter();
+                            const double min_w = double(nozzle_dia) / 3.0;
+                            const double max_w = double(bridge_width);
+
+                            // 10.73% overlap per side so the bead fuses with neighbors
+                            const float layer_h = surface_fill.params.flow.height();
+                            const float overlap = float(scale_(layer_h * (1.0 - M_PI / 4.0) / 2.0));
+
+                            // If overlap >= half the bridge width, lines are already
+                            // fused and there are no gaps to fill
+                            if (overlap < half_width_scaled)
+                            {
+                                // Coverage shrunk by overlap, boundary grown by overlap
+                                Polygons covered;
+                                for (const Polyline &pl : polylines)
+                                    append(covered, offset(pl, half_width_scaled - overlap));
+                                covered = union_(covered);
+
+                                ExPolygons boundary = offset_ex(ExPolygons{surface_fill.surface.expolygon}, overlap);
+
+                                ExPolygons raw_gaps = diff_ex(boundary, covered);
+
+                                // Clean up geometry to prevent Voronoi hangs, then
+                                // extract medial axis (same as PerimeterGenerator)
+                                ExPolygons gaps_clean = diff_ex(opening_ex(raw_gaps, float(scale_(min_w / 2.))),
+                                                                offset2_ex(raw_gaps, -float(scale_(max_w / 2.)),
+                                                                           float(scale_(max_w / 2.) +
+                                                                                 ClipperSafetyOffset)));
+
+                                const double min_area = scale_(min_w) * scale_(min_w);
+                                for (const ExPolygon &gap : gaps_clean)
+                                {
+                                    if (std::abs(gap.area()) < min_area)
+                                        continue;
+                                    // Skip overly complex polygons that could stall
+                                    // the Voronoi computation
+                                    if (gap.contour.points.size() > 5000)
+                                        continue;
+                                    gap.medial_axis(scale_(min_w), scale_(max_w), &bridge_gap_fills);
+                                }
+
+                                // Drop short fragments
+                                const double min_len = scale_(bridge_width * 3.0);
+                                bridge_gap_fills.erase(std::remove_if(bridge_gap_fills.begin(), bridge_gap_fills.end(),
+                                                                      [min_len](const ThickPolyline &tp)
+                                                                      { return tp.length() < min_len; }),
+                                                       bridge_gap_fills.end());
+                            }
+                        }
+
                         if (!polylines.empty())
                         {
                             last_fill_pos = polylines.back().last_point();
@@ -1659,18 +1729,47 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                             }
                             else
                             {
+                                // Bridge lines are always reversible - either direction
+                                // is equivalent over air, and this lets nearest-neighbor
+                                // pick the closest endpoint
+                                const bool can_reverse = surface_fill.params.bridge
+                                                             ? true
+                                                             : !params.prefer_clockwise_movements;
                                 extrusion_entities_append_paths(
                                     eec->entities, std::move(polylines),
                                     ExtrusionAttributes{surface_fill.params.extrusion_role,
                                                         ExtrusionFlow{flow_mm3_per_mm, float(flow_width),
                                                                       surface_fill.params.flow.height()},
                                                         f->is_self_crossing()},
-                                    !params.prefer_clockwise_movements);
+                                    can_reverse);
+                            }
+                        }
+
+                        // Append bridge gap fill beads as variable-width extrusions
+                        if (!bridge_gap_fills.empty())
+                        {
+                            // Use bridge height so the bead matches the bridge lines
+                            // it bonds with, but non-bridge type so variable width works
+                            Flow gap_flow(surface_fill.params.flow.width(), surface_fill.params.flow.height(),
+                                          surface_fill.params.flow.nozzle_diameter());
+                            for (const ThickPolyline &tp : bridge_gap_fills)
+                            {
+                                ExtrusionMultiPath multi_path = PerimeterGenerator::thick_polyline_to_multi_path(
+                                    tp, ExtrusionRole::BridgeInfill, gap_flow, scaled<float>(0.05),
+                                    float(SCALED_EPSILON));
+                                if (!multi_path.empty())
+                                    eec->entities.emplace_back(new ExtrusionMultiPath(std::move(multi_path)));
                             }
                         }
                     }
-                    // Entity-level reorder (safe for monotonic - respects can_reverse)
-                    if (eec->entities.size() > 1)
+                    if (is_monotonic_fill)
+                    {
+                        // The ant-colony sweep order is already correct - same
+                        // order as Monotonic connected fill, just without the
+                        // connections. Prevent reordering here and in G-code export.
+                        eec->no_sort = true;
+                    }
+                    else if (eec->entities.size() > 1)
                     {
                         const Point *start = have_last_pos ? &last_fill_pos : nullptr;
                         chain_and_reorder_extrusion_entities(eec->entities, start);

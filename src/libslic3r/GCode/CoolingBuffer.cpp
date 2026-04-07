@@ -2434,11 +2434,9 @@ std::string CoolingBuffer::apply_layer_cooldown(
         else if (line->type & CoolingLine::TYPE_BRIDGE_FAN_END)
         {
             bridge_ramp_done = false; // Allow early ramp-up for next bridge region
-            if (bridge_fan_control && m_fan_speed != emitted_fan_speed)
-            {
-                new_gcode += GCodeWriter::set_fan(m_config.gcode_flavor, m_config.gcode_comments, m_fan_speed);
-                emitted_fan_speed = m_fan_speed;
-            }
+            // Recompute baseline fan speed from scratch - _SET_FAN_SPEED markers during
+            // bridge regions may have overwritten m_fan_speed with the overhang/bridge value.
+            change_extruder_set_fan();
         }
         else if (line->type & CoolingLine::TYPE_EXTRUDE_END)
         {

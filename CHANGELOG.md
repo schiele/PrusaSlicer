@@ -1,5 +1,36 @@
 # preFlight Changelog
 
+## v0.9.11
+
+### Preview / Legend
+- Added Job Estimate section to G-code preview legend showing estimated print time and filament usage
+- Persisted legend toggle button states across application restarts (seams, tool markers, etc)
+
+### Align to Face Gizmo
+- Fixed subtract operation not baking the CGAL boolean result into the mesh
+- Fixed snap points invisible in orthographic camera mode
+
+### Athena Perimeter Generation
+- Fixed center bead split not producing correct source polygon tags
+- Fixed Narrow to Athena not triggering on long narrow surfaces
+- Fixed polyline stitcher rejecting valid connections across source polygons
+
+### Infill / Fill
+- Fixed monotonic fill line ordering scrambled by entity-level reorder
+- Fixed infill overshoot beyond perimeters on certain geometries
+- Fixed bridge anchor overlapping sparse infill and perimeters in certain geometry
+
+### Cooling
+- Fixed fan speed restoration after overhang/bridge regions
+
+### Orca Import
+- Fixed Orca import dropping acceleration values specified as percentages
+
+### Bug Fixes
+- Fixed painted brim ears not clipping against adjacent object instances
+- Fixed negative volume visibility after Align gizmo operations
+- Fixed black screen after drag-and-drop file load on all platforms
+
 ## v0.9.10
 
 ### Windows ARM

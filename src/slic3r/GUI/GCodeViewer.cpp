@@ -471,6 +471,40 @@ static std::string to_string(libvgcode::EMoveType type)
     }
 }
 
+// Config key names for persisting legend toggle button state
+static const char *preview_option_config_key(Preview::OptionType type)
+{
+    switch (type)
+    {
+    case Preview::OptionType::Travel:
+        return "preview_travel";
+    case Preview::OptionType::Wipe:
+        return "preview_wipe";
+    case Preview::OptionType::Retractions:
+        return "preview_retractions";
+    case Preview::OptionType::Unretractions:
+        return "preview_unretractions";
+    case Preview::OptionType::Seams:
+        return "preview_seams";
+    case Preview::OptionType::ToolChanges:
+        return "preview_toolchanges";
+    case Preview::OptionType::ColorChanges:
+        return "preview_colorchanges";
+    case Preview::OptionType::PausePrints:
+        return "preview_pauseprints";
+    case Preview::OptionType::CustomGCodes:
+        return "preview_customgcodes";
+    case Preview::OptionType::CenterOfGravity:
+        return "preview_cog";
+    case Preview::OptionType::Shells:
+        return "preview_shells";
+    case Preview::OptionType::ToolMarker:
+        return "preview_toolmarker";
+    default:
+        return nullptr;
+    }
+}
+
 static std::string to_string(libvgcode::EGCodeExtrusionRole role)
 {
     switch (role)
@@ -1468,6 +1502,52 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult &gcode_result, const 
     if (current_top_layer_only != required_top_layer_only)
         m_viewer.toggle_top_layer_only_view_range();
 
+    // Restore legend toggle button states from app config
+    {
+        auto restore_option = [this](Preview::OptionType type)
+        {
+            const char *key = preview_option_config_key(type);
+            if (key == nullptr)
+                return;
+            const bool saved = get_app_config()->get_bool(key);
+            bool current = false;
+            switch (type)
+            {
+            case Preview::OptionType::CenterOfGravity:
+                current = m_cog.is_visible();
+                if (current != saved)
+                    m_cog.set_visible(saved);
+                break;
+            case Preview::OptionType::ToolMarker:
+                current = m_sequential_view.marker.is_visible();
+                if (current != saved)
+                    m_sequential_view.marker.set_visible(saved);
+                break;
+            case Preview::OptionType::Shells:
+                if (m_shells.visible != saved)
+                    m_shells.visible = saved;
+                break;
+            default:
+                current = m_viewer.is_option_visible(libvgcode::convert(type));
+                if (current != saved)
+                    m_viewer.toggle_option_visibility(libvgcode::convert(type));
+                break;
+            }
+        };
+        restore_option(Preview::OptionType::Travel);
+        restore_option(Preview::OptionType::Wipe);
+        restore_option(Preview::OptionType::Retractions);
+        restore_option(Preview::OptionType::Unretractions);
+        restore_option(Preview::OptionType::Seams);
+        restore_option(Preview::OptionType::ToolChanges);
+        restore_option(Preview::OptionType::ColorChanges);
+        restore_option(Preview::OptionType::PausePrints);
+        restore_option(Preview::OptionType::CustomGCodes);
+        restore_option(Preview::OptionType::CenterOfGravity);
+        restore_option(Preview::OptionType::Shells);
+        restore_option(Preview::OptionType::ToolMarker);
+    }
+
     // avoid processing if called with the same gcode_result
     if (m_last_result_id == gcode_result.id && !s_beds_switched_since_last_gcode_load && wxGetApp().is_editor() &&
         !s_reload_preview_after_switching_beds)
@@ -1703,6 +1783,9 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult &gcode_result, const 
     m_settings_ids = gcode_result.settings_ids;
     m_filament_diameters = gcode_result.filament_diameters;
     m_filament_densities = gcode_result.filament_densities;
+    m_filament_costs = gcode_result.filament_cost;
+    m_time_cost = gcode_result.time_cost;
+    m_currency_symbol = gcode_result.currency_symbol;
 
     if (!wxGetApp().is_editor())
     {
@@ -1735,6 +1818,41 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult &gcode_result, const 
     }
 
     m_print_statistics = gcode_result.print_statistics;
+
+    // Precompute job estimate from loaded data
+    m_job_estimate.reset();
+    m_job_estimate.time_cost_per_hour = m_time_cost;
+    {
+        // Get wipe tower usage from per-role data (it's a subset of per-extruder volumes)
+        double wipe_tower_g = 0.0;
+        auto wt_it = m_print_statistics.used_filaments_per_role.find(GCodeExtrusionRole::WipeTower);
+        if (wt_it != m_print_statistics.used_filaments_per_role.end())
+            wipe_tower_g = wt_it->second.second; // pair is {meters, grams}
+
+        for (const auto &[id, volume] : m_print_statistics.volumes_per_extruder)
+        {
+            const double diameter = (id < m_filament_diameters.size()) ? m_filament_diameters[id] : 1.75;
+            const double density = (id < m_filament_densities.size()) ? m_filament_densities[id] : 1.25;
+            const double cost_per_kg = (id < m_filament_costs.size()) ? m_filament_costs[id] : 0.0;
+
+            JobEstimate::ExtruderEstimate est;
+            est.filament_m = 0.001 * volume / (PI * sqr(0.5 * diameter));
+            est.filament_g = volume * density * 0.001;
+            est.cost = est.filament_g * cost_per_kg * 0.001;
+
+            if (cost_per_kg > 0.0)
+                m_job_estimate.has_cost_data = true;
+
+            m_job_estimate.per_extruder[id] = est;
+            m_job_estimate.total_filament_m += est.filament_m;
+            m_job_estimate.total_filament_g += est.filament_g;
+            m_job_estimate.total_material_cost += est.cost;
+        }
+        m_job_estimate.total_wipe_tower_g = wipe_tower_g;
+
+        if (m_time_cost > 0.0f)
+            m_job_estimate.has_cost_data = true;
+    }
 
     m_role_metrics = gcode_result.role_metrics;
     m_overall_metrics = gcode_result.overall_metrics;
@@ -1816,6 +1934,10 @@ void GCodeViewer::reset()
     m_z_offset = 0.0f;
     m_filament_diameters = std::vector<float>();
     m_filament_densities = std::vector<float>();
+    m_filament_costs = std::vector<float>();
+    m_time_cost = 0.0f;
+    m_currency_symbol = "$";
+    m_job_estimate.reset();
     m_extruders_count = 0;
     m_print_statistics.reset();
     m_custom_gcode_per_print_z = std::vector<CustomGCode::Item>();
@@ -4047,11 +4169,15 @@ void GCodeViewer::render_legend(float &legend_height)
         }
     }
 
-    // total estimated printing time section
-    if (show_estimated_time)
+    // Job estimate section: time + filament usage + cost
+    // Show in all views where time was shown, plus Tool view
+    const bool show_job_estimate = show_estimated_time || (new_view_type == libvgcode::EViewType::Tool &&
+                                                           !m_job_estimate.per_extruder.empty());
+    if (show_job_estimate)
     {
         ImGui::Spacing();
-        std::string time_title = _u8L("Estimated printing times");
+
+        // Determine if we can show a stealth/normal mode toggle
         auto can_show_mode_button = [this](libvgcode::ETimeMode mode)
         {
             std::vector<std::string> time_strs;
@@ -4069,80 +4195,209 @@ void GCodeViewer::render_legend(float &legend_height)
         };
 
         const libvgcode::ETimeMode time_mode_id = m_viewer.get_time_mode();
+        std::string section_title = _u8L("Job estimate");
         if (can_show_mode_button(time_mode_id))
         {
             switch (time_mode_id)
             {
             case libvgcode::ETimeMode::Normal:
-            {
-                time_title += " [" + _u8L("Normal mode") + "]";
+                section_title += " [" + _u8L("Normal mode") + "]";
                 break;
-            }
             case libvgcode::ETimeMode::Stealth:
-            {
-                time_title += " [" + _u8L("Stealth mode") + "]";
+                section_title += " [" + _u8L("Stealth mode") + "]";
                 break;
-            }
             default:
-            {
-                assert(false);
                 break;
             }
-            }
         }
 
-        ImGuiPureWrap::title(time_title + ":");
+        ImGuiPureWrap::title(section_title + ":");
 
-        if (ImGui::BeginTable("Times", 4))
+        // Extruder table (always shown, even single extruder)
+        if (!m_job_estimate.per_extruder.empty())
         {
-            const std::vector<float> layers_times = get_layers_times();
-            ImGui::TableNextRow();
-            if (!layers_times.empty())
-            {
-                ImGui::TableSetColumnIndex(0);
-                ImGuiPureWrap::text_colored(ImGuiPureWrap::COL_ORANGE_LIGHT, (_u8L("First layer") + ":").c_str());
-                ImGui::TableSetColumnIndex(1);
-                ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR,
-                                            short_time_ui(get_time_dhms(layers_times.front())).c_str());
-            }
-            ImGui::TableSetColumnIndex(2);
-            ImGuiPureWrap::text_colored(ImGuiPureWrap::COL_ORANGE_LIGHT, (_u8L("Total") + ":").c_str());
-            ImGui::TableSetColumnIndex(3);
-            ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR, short_time_ui(get_time_dhms(time_mode.time)).c_str());
+            const bool show_cost = m_job_estimate.has_cost_data;
+            const int num_cols = show_cost ? 4 : 3;
+            const std::string &cs = m_currency_symbol;
 
-            ImGui::EndTable();
-        }
-
-        auto show_mode_button =
-            [this, &imgui, can_show_mode_button](const std::string &label, libvgcode::ETimeMode mode)
-        {
-            if (can_show_mode_button(mode))
+            if (ImGui::BeginTable("JobEstFilament", num_cols, ImGuiTableFlags_SizingStretchProp))
             {
-                if (ImGuiPureWrap::button(label))
+                ImGui::TableSetupColumn("", ImGuiTableColumnFlags_None);
+                ImGui::TableSetupColumn("", ImGuiTableColumnFlags_None);
+                ImGui::TableSetupColumn("", ImGuiTableColumnFlags_None);
+                if (show_cost)
+                    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_None);
+
+                // Per-extruder rows
+                const std::vector<libvgcode::Color> &tool_colors = m_viewer.get_tool_colors();
+                for (const auto &[id, est] : m_job_estimate.per_extruder)
                 {
-                    m_viewer.set_time_mode(mode);
-                    imgui.set_requires_extra_frame();
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+
+                    // Color swatch + extruder name
+                    if (id < tool_colors.size())
+                    {
+                        const libvgcode::Color &c = tool_colors[id];
+                        ImVec4 col(c[0] / 255.0f, c[1] / 255.0f, c[2] / 255.0f, 1.0f);
+                        ImGui::ColorButton(("##ext" + std::to_string(id)).c_str(), col,
+                                           ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoPicker,
+                                           ImVec2(icon_size, icon_size));
+                        ImGui::SameLine();
+                    }
+                    ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR, format(_u8L("Extruder %1%"), id + 1).c_str());
+                    ImGui::TableSetColumnIndex(1);
+                    char buf[64];
+                    ::sprintf(buf, "%.2f m", est.filament_m);
+                    ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR, buf);
+                    ImGui::TableSetColumnIndex(2);
+                    ::sprintf(buf, "%.1f g", est.filament_g);
+                    ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR, buf);
+                    if (show_cost)
+                    {
+                        ImGui::TableSetColumnIndex(3);
+                        ::snprintf(buf, sizeof(buf), "%s%.2f", cs.c_str(), est.cost);
+                        ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR, buf);
+                    }
+                }
+
+                // Wipe tower waste (informational, subset of per-extruder totals)
+                if (m_job_estimate.total_wipe_tower_g > 0.0)
+                {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGuiPureWrap::text_colored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+                                                ("  " + _u8L("(includes waste)")).c_str());
+                    ImGui::TableSetColumnIndex(2);
+                    char buf[64];
+                    ::sprintf(buf, "%.1f g", m_job_estimate.total_wipe_tower_g);
+                    ImGuiPureWrap::text_colored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), buf);
+                }
+
+                // Separator line before totals
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::Separator();
+
+                // Material totals row: only for multi-extruder
+                if (m_job_estimate.per_extruder.size() > 1)
+                {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR, _u8L("Material").c_str());
+                    ImGui::TableSetColumnIndex(1);
+                    {
+                        char buf[64];
+                        ::sprintf(buf, "%.2f m", m_job_estimate.total_filament_m);
+                        ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR, buf);
+                    }
+                    ImGui::TableSetColumnIndex(2);
+                    {
+                        char buf[64];
+                        ::sprintf(buf, "%.1f g", m_job_estimate.total_filament_g);
+                        ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR, buf);
+                    }
+                    if (show_cost)
+                    {
+                        ImGui::TableSetColumnIndex(3);
+                        char buf[64];
+                        ::snprintf(buf, sizeof(buf), "%s%.2f", cs.c_str(), m_job_estimate.total_material_cost);
+                        ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR, buf);
+                    }
+                }
+
+                // Machine time row (inside the same table for alignment)
+                if (show_estimated_time)
+                {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR, _u8L("Machine time").c_str());
+                    ImGui::TableSetColumnIndex(1);
+                    // Total time, with first layer time as tooltip
+                    ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR,
+                                                short_time_ui(get_time_dhms(time_mode.time)).c_str());
+                    if (ImGui::IsItemHovered())
+                    {
+                        const std::vector<float> layers_times = get_layers_times();
+                        if (!layers_times.empty())
+                        {
+                            ImGui::BeginTooltip();
+                            ImGuiPureWrap::text(
+                                (_u8L("First layer") + ": " + short_time_ui(get_time_dhms(layers_times.front())))
+                                    .c_str());
+                            ImGui::EndTooltip();
+                        }
+                    }
+                    // Hourly rate in Weight column
+                    if (m_job_estimate.time_cost_per_hour > 0.0f)
+                    {
+                        ImGui::TableSetColumnIndex(2);
+                        char buf[64];
+                        ::snprintf(buf, sizeof(buf), "%s%.2f/h", cs.c_str(), m_job_estimate.time_cost_per_hour);
+                        ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR, buf);
+                    }
+                    // Time cost in Cost column
+                    if (show_cost && m_job_estimate.time_cost_per_hour > 0.0f)
+                    {
+                        const double time_cost_total = static_cast<double>(m_job_estimate.time_cost_per_hour) *
+                                                       (time_mode.time / 3600.0f);
+                        ImGui::TableSetColumnIndex(3);
+                        char buf[64];
+                        ::snprintf(buf, sizeof(buf), "%s%.2f", cs.c_str(), time_cost_total);
+                        ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR, buf);
+                    }
+                }
+
+                // Total row
+                if (show_cost)
+                {
+                    double grand_total = m_job_estimate.total_material_cost;
+                    if (m_job_estimate.time_cost_per_hour > 0.0f && time_mode.time > 0.0f)
+                        grand_total += static_cast<double>(m_job_estimate.time_cost_per_hour) *
+                                       (time_mode.time / 3600.0f);
+
+                    ImGui::TableNextRow();
+                    // Highlight Total row with header-style background
+                    ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_TableHeaderBg));
+                    ImGui::TableSetColumnIndex(0);
+                    ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR, _u8L("Total").c_str());
+                    ImGui::TableSetColumnIndex(3);
+                    char buf[64];
+                    ::snprintf(buf, sizeof(buf), "%s%.2f", cs.c_str(), grand_total);
+                    ImGuiPureWrap::text_colored(LEGEND_TEXT_COLOR, buf);
+                }
+
+                ImGui::EndTable();
+            }
+
+            // Normal/Stealth toggle button
+            if (show_estimated_time)
+            {
+                auto show_mode_button =
+                    [this, &imgui, can_show_mode_button](const std::string &label, libvgcode::ETimeMode mode)
+                {
+                    if (can_show_mode_button(mode))
+                    {
+                        if (ImGuiPureWrap::button(label))
+                        {
+                            m_viewer.set_time_mode(mode);
+                            imgui.set_requires_extra_frame();
+                        }
+                    }
+                };
+
+                switch (time_mode_id)
+                {
+                case libvgcode::ETimeMode::Normal:
+                    show_mode_button(_u8L("Show stealth mode"), libvgcode::ETimeMode::Stealth);
+                    break;
+                case libvgcode::ETimeMode::Stealth:
+                    show_mode_button(_u8L("Show normal mode"), libvgcode::ETimeMode::Normal);
+                    break;
+                default:
+                    break;
                 }
             }
-        };
-
-        switch (time_mode_id)
-        {
-        case libvgcode::ETimeMode::Normal:
-        {
-            show_mode_button(_u8L("Show stealth mode"), libvgcode::ETimeMode::Stealth);
-            break;
-        }
-        case libvgcode::ETimeMode::Stealth:
-        {
-            show_mode_button(_u8L("Show normal mode"), libvgcode::ETimeMode::Normal);
-            break;
-        }
-        default:
-        {
-            assert(false);
-            break;
-        }
         }
     }
 
@@ -4231,6 +4486,11 @@ void GCodeViewer::render_legend(float &legend_height)
                                                                                  view_visible_range[1])}
                                                                            : std::nullopt;
             wxGetApp().plater()->update_preview_moves_slider(view_visible_range_min, view_visible_range_max);
+
+            // Persist the new toggle state to app config
+            const char *cfg_key = preview_option_config_key(type);
+            if (cfg_key != nullptr)
+                get_app_config()->set(cfg_key, !active ? "1" : "0");
         }
 
         if (ImGui::IsItemHovered())

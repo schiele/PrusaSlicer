@@ -55,6 +55,8 @@
 #include "Print.hpp"
 #include "libslic3r/Line.hpp"
 #include "libslic3r/Print.hpp"
+#include "Fill/FillBase.hpp"
+#include <cstdio>
 
 //#define ARACHNE_DEBUG
 
@@ -2152,6 +2154,8 @@ void PerimeterGenerator::process_arachne(
     Polygons pp;
     for (ExPolygon &ex : infill_contour)
         ex.simplify_p(params.scaled_resolution, &pp);
+    // Clip simplified polygons against original contour (see process_athena)
+    pp = intersection(pp, to_polygons(infill_contour));
     // collapse too narrow infill areas
     const auto min_perimeter_infill_spacing = coord_t(solid_infill_spacing * (1. - INSET_OVERLAP_TOLERANCE));
     // append infill areas to fill_surfaces
@@ -2596,6 +2600,8 @@ void PerimeterGenerator::process_classic(
     Polygons pp;
     for (ExPolygon &ex : last)
         ex.simplify_p(params.scaled_resolution, &pp);
+    // Clip simplified polygons against original contour (see process_athena)
+    pp = intersection(pp, to_polygons(last));
     // collapse too narrow infill areas
     coord_t min_perimeter_infill_spacing = coord_t(solid_infill_spacing * (1. - INSET_OVERLAP_TOLERANCE));
     // append infill areas to fill_surfaces
@@ -2688,6 +2694,78 @@ void PerimeterRegion::merge_compatible_perimeter_regions(PerimeterRegions &perim
 
 namespace Slic3r
 {
+
+// ===================== PERIMETER DEBUG HELPERS =====================
+static void dbg_perim_contours(const char *phase, double z, int layer_id, const ExPolygons &contours, const char *label)
+{
+    if (!FILL_DEBUG || contours.empty())
+        return;
+    double total_area = 0;
+    for (const ExPolygon &ep : contours)
+        total_area += std::abs(ep.area()) * 1e-12;
+    BoundingBox bb = get_extents(contours);
+    dbg_fill_print("z=%.3f [PERIM] %s %s ep=%zu area=%8.4fmm2 bbox=(%.2f,%.2f)-(%.2f,%.2f)\n", z, phase, label,
+                   contours.size(), total_area, unscaled<double>(bb.min.x()), unscaled<double>(bb.min.y()),
+                   unscaled<double>(bb.max.x()), unscaled<double>(bb.max.y()));
+    for (size_t i = 0; i < contours.size(); i++)
+    {
+        const ExPolygon &ep = contours[i];
+        double a = std::abs(ep.area()) * 1e-12;
+        BoundingBox epbb = get_extents(ep);
+        dbg_fill_print("z=%.3f [PERIM]   %s %s [%zu] area=%8.4fmm2 holes=%zu pts=%zu "
+                       "bbox=(%.2f,%.2f)-(%.2f,%.2f)\n",
+                       z, phase, label, i, a, ep.holes.size(), ep.contour.points.size(), unscaled<double>(epbb.min.x()),
+                       unscaled<double>(epbb.min.y()), unscaled<double>(epbb.max.x()), unscaled<double>(epbb.max.y()));
+    }
+}
+
+static void dbg_perim_loops(double z, int layer_id, const Athena::Perimeters &perimeters, coord_t ext_perimeter_width,
+                            coord_t perimeter_width)
+{
+    if (!FILL_DEBUG)
+        return;
+    int total_loops = 0;
+    for (const auto &perim_set : perimeters)
+    {
+        for (const auto &el : perim_set)
+        {
+            if (el.junctions.empty())
+                continue;
+            total_loops++;
+            // Compute bounding box from junctions
+            Point pmin = el.junctions.front().p, pmax = pmin;
+            coord_t min_w = el.junctions.front().w, max_w = min_w;
+            for (const auto &j : el.junctions)
+            {
+                pmin.x() = std::min(pmin.x(), j.p.x());
+                pmin.y() = std::min(pmin.y(), j.p.y());
+                pmax.x() = std::max(pmax.x(), j.p.x());
+                pmax.y() = std::max(pmax.y(), j.p.y());
+                min_w = std::min(min_w, j.w);
+                max_w = std::max(max_w, j.w);
+            }
+            dbg_fill_print("z=%.3f [PERIM] LOOP inset=%zu closed=%d pts=%zu w=%.4f-%.4fmm "
+                           "bbox=(%.2f,%.2f)-(%.2f,%.2f)\n",
+                           z, el.inset_idx, (int) el.is_closed, el.junctions.size(), unscaled<double>(min_w),
+                           unscaled<double>(max_w), unscaled<double>(pmin.x()), unscaled<double>(pmin.y()),
+                           unscaled<double>(pmax.x()), unscaled<double>(pmax.y()));
+        }
+    }
+    dbg_fill_print("z=%.3f [PERIM] LOOPS_TOTAL: %d loops, ext_w=%.4fmm perim_w=%.4fmm\n", z, total_loops,
+                   unscaled<double>(ext_perimeter_width), unscaled<double>(perimeter_width));
+}
+
+static void dbg_perim_overlap(double z, int layer_id, int loop_number, coord_t spacing, coord_t inset_before,
+                              coord_t inset_after, coord_t min_perim_infill_spacing)
+{
+    if (!FILL_DEBUG)
+        return;
+    dbg_fill_print("z=%.3f [PERIM] OVERLAP loops=%d spacing=%.4fmm inset_base=%.4fmm "
+                   "overlap=%.4fmm min_perim_infill_spacing=%.4fmm\n",
+                   z, loop_number + 1, unscaled<double>(spacing), unscaled<double>(inset_before),
+                   unscaled<double>(inset_after), unscaled<double>(min_perim_infill_spacing));
+}
+// ===================== END PERIMETER DEBUG HELPERS =====================
 
 void PerimeterGenerator::process_athena(
     // Inputs:
@@ -2818,6 +2896,11 @@ void PerimeterGenerator::process_athena(
     // for the actual bead widths, so no adjustment is needed (unlike the old system where only
     // spacing was passed and widths were applied later, requiring a compensating offset).
     ExPolygons infill_contour = union_ex(wall_tool_paths.getInnerContour());
+
+    // Debug: log perimeter loops and inner contour
+    const double dbg_z = (params.layer != nullptr) ? params.layer->print_z : 0.0;
+    dbg_perim_loops(dbg_z, params.layer_id, perimeters, ext_perimeter_width, perimeter_width);
+    dbg_perim_contours("INNER_CONTOUR", dbg_z, params.layer_id, infill_contour, "before_overlap");
 
     // Check if there are some remaining perimeters to generate (the number of perimeters
     // is greater than one together with enabled the single perimeter on top surface feature).
@@ -3542,6 +3625,9 @@ void PerimeterGenerator::process_athena(
 skip_interlocking:
     // ===================== END INTERLOCKING =====================
 
+    // Debug: log infill contour after interlocking consumed space
+    dbg_perim_contours("INNER_CONTOUR", dbg_z, params.layer_id, infill_contour, "after_interlocking");
+
     // create one more offset to be used as boundary for fill
     // we offset by half the perimeter spacing (to get to the actual infill boundary)
     // and then we offset back and forth by half the infill spacing to only consider the
@@ -3554,15 +3640,65 @@ skip_interlocking:
                                          // two or more loops?
                         perimeter_spacing;
 
+    coord_t inset_base = inset; // save pre-overlap value
     inset = coord_t(scale_(params.config.get_abs_value("infill_overlap", unscale<double>(inset))));
     Polygons pp;
     for (ExPolygon &ex : infill_contour)
         ex.simplify_p(params.scaled_resolution, &pp);
+    // Clip simplified polygons against the original contour to prevent
+    // simplification-induced overshoot. Douglas-Peucker chord-cuts across
+    // concavities, enlarging the polygon. This clips that enlargement while
+    // preserving the simplified topology that offset2_ex needs.
+    pp = intersection(pp, to_polygons(infill_contour));
+    // Debug: log simplification point count
+    if (FILL_DEBUG)
+    {
+        size_t pp_pts = 0;
+        for (const Polygon &p : pp)
+            pp_pts += p.points.size();
+        size_t ic_pts = 0;
+        for (const ExPolygon &ep : infill_contour)
+        {
+            ic_pts += ep.contour.points.size();
+            for (const Polygon &h : ep.holes)
+                ic_pts += h.points.size();
+        }
+        dbg_fill_print("z=%.3f [PERIM] SIMPLIFY before=%zu after=%zu resolution=%.4fmm\n", dbg_z, ic_pts, pp_pts,
+                       unscaled<double>(params.scaled_resolution));
+    }
     // collapse too narrow infill areas
     const auto min_perimeter_infill_spacing = coord_t(solid_infill_spacing * (1. - INSET_OVERLAP_TOLERANCE));
+    dbg_perim_overlap(dbg_z, params.layer_id, loop_number, spacing, inset_base, inset, min_perimeter_infill_spacing);
     // append infill areas to fill_surfaces
     ExPolygons infill_areas = offset2_ex(union_ex(pp), float(-min_perimeter_infill_spacing / 2.),
                                          float(inset + min_perimeter_infill_spacing / 2.));
+    dbg_perim_contours("INFILL_AREA", dbg_z, params.layer_id, infill_areas, "after_overlap");
+    // Debug: compute overshoot - infill area that extends beyond innermost perimeter inner edge
+    if (FILL_DEBUG && !infill_areas.empty() && !infill_contour.empty())
+    {
+        ExPolygons overshoot = diff_ex(infill_areas, infill_contour);
+        if (!overshoot.empty())
+        {
+            double overshoot_area = 0;
+            for (const ExPolygon &ep : overshoot)
+                overshoot_area += std::abs(ep.area()) * 1e-12;
+            BoundingBox obb = get_extents(overshoot);
+            dbg_fill_print("z=%.3f [PERIM] OVERSHOOT ep=%zu area=%8.4fmm2 bbox=(%.2f,%.2f)-(%.2f,%.2f)\n", dbg_z,
+                           overshoot.size(), overshoot_area, unscaled<double>(obb.min.x()),
+                           unscaled<double>(obb.min.y()), unscaled<double>(obb.max.x()), unscaled<double>(obb.max.y()));
+            for (size_t i = 0; i < overshoot.size(); i++)
+            {
+                const ExPolygon &ep = overshoot[i];
+                double a = std::abs(ep.area()) * 1e-12;
+                BoundingBox epbb = get_extents(ep);
+                dbg_fill_print("z=%.3f [PERIM]   OVERSHOOT [%zu] area=%8.4fmm2 pts=%zu "
+                               "bbox=(%.2f,%.2f)-(%.2f,%.2f)\n",
+                               dbg_z, i, a, ep.contour.points.size(), unscaled<double>(epbb.min.x()),
+                               unscaled<double>(epbb.min.y()), unscaled<double>(epbb.max.x()),
+                               unscaled<double>(epbb.max.y()));
+            }
+        }
+    }
 
     if (lower_slices != nullptr && params.config.overhangs && params.config.extra_perimeters_on_overhangs &&
         params.config.perimeters > 0 && params.layer_id > params.object_config.raft_layers)

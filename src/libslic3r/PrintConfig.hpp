@@ -1207,8 +1207,8 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
         (ConfigOptionFloat, wipe_tower_brim_width))((ConfigOptionFloat, wipe_tower_cone_angle))(
         (ConfigOptionPercent, wipe_tower_extra_spacing))((ConfigOptionPercent, wipe_tower_extra_flow))(
         (ConfigOptionFloat, wipe_tower_bridging))((ConfigOptionInt, wipe_tower_extruder))(
-        (ConfigOptionFloats, wiping_volumes_matrix))((ConfigOptionBool,
-                                                      wiping_volumes_use_custom_matrix))((ConfigOptionFloat, z_offset)))
+        (ConfigOptionFloats, wiping_volumes_matrix))((ConfigOptionBool, wiping_volumes_use_custom_matrix))(
+        (ConfigOptionFloat, z_offset))((ConfigOptionFloat, time_cost))((ConfigOptionString, currency_symbol)))
 
 PRINT_CONFIG_CLASS_DERIVED_DEFINE0(FullPrintConfig, (PrintObjectConfig, PrintRegionConfig, PrintConfig))
 

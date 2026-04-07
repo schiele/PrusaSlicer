@@ -17,6 +17,7 @@
 #include <cstddef>
 
 #include "ExPolygon.hpp"
+#include "Fill/FillBase.hpp"
 #include "Flow.hpp"
 #include "Layer.hpp"
 #include "BridgeDetector.hpp"
@@ -99,6 +100,45 @@ void LayerRegion::slices_to_fill_surfaces_clipped()
         if (!this_surfaces.empty())
             m_fill_surfaces.append(intersection_ex(this_surfaces, this->fill_expolygons()), SurfaceType(surface_type));
     }
+}
+
+void LayerRegion::remove_narrow_fill_surfaces()
+{
+    const float min_half_w = float(scale_(this->flow(frPerimeter).width() * 0.25));
+    const double z = (this->layer() != nullptr) ? this->layer()->print_z : 0.0;
+    Surfaces &surfaces = m_fill_surfaces.surfaces;
+    int removed = 0;
+    surfaces.erase(std::remove_if(surfaces.begin(), surfaces.end(),
+                                  [min_half_w, z, &removed](const Surface &s)
+                                  {
+                                      // Only filter sparse fill slivers - bridges, solid, and
+                                      // top/bottom surfaces can be legitimately narrow
+                                      if (s.surface_type != stInternal)
+                                          return false;
+                                      ExPolygons opened = opening_ex(ExPolygons{s.expolygon}, min_half_w);
+                                      if (opened.empty())
+                                      {
+                                          if (FILL_DEBUG)
+                                          {
+                                              double a = std::abs(s.expolygon.area()) * 1e-12;
+                                              BoundingBox bb = get_extents(s.expolygon);
+                                              dbg_fill_print("z=%.3f [SLIVER] REMOVED type=%d area=%8.6fmm2 "
+                                                             "pts=%zu bbox=(%.2f,%.2f)-(%.2f,%.2f)\n",
+                                                             z, (int) s.surface_type, a,
+                                                             s.expolygon.contour.points.size(),
+                                                             unscaled<double>(bb.min.x()), unscaled<double>(bb.min.y()),
+                                                             unscaled<double>(bb.max.x()),
+                                                             unscaled<double>(bb.max.y()));
+                                          }
+                                          removed++;
+                                          return true;
+                                      }
+                                      return false;
+                                  }),
+                   surfaces.end());
+    if (FILL_DEBUG && removed > 0)
+        dbg_fill_print("z=%.3f [SLIVER] TOTAL removed=%d remaining=%zu min_width=%.4fmm\n", z, removed, surfaces.size(),
+                       unscaled<double>(min_half_w) * 2.0);
 }
 
 // Produce perimeter extrusions, gap fill extrusions and fill polygons for input slices.

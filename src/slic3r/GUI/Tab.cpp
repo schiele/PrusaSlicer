@@ -3719,6 +3719,8 @@ void TabPrinter::build_fff()
     optgroup->append_single_option_line("use_volumetric_e");
     optgroup->append_single_option_line("variable_layer_height");
     optgroup->append_single_option_line("prefer_clockwise_movements");
+    optgroup->append_single_option_line("currency_symbol");
+    optgroup->append_single_option_line("time_cost");
 
     optgroup = page->new_optgroup_for_sidebar(L("Sequential printing limits"));
     optgroup->append_single_option_line("extruder_clearance_radius");

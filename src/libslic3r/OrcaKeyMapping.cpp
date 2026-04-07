@@ -334,7 +334,7 @@ void OrcaKeyMapper::build_printer_mappings()
         ORCA_ONLY("manual_filament_change"),
         ORCA_ONLY("printer_structure"),
         ORCA_ONLY("purge_in_prime_tower"),
-        ORCA_ONLY("time_cost"),
+        // time_cost: supported by preFlight (machine hourly rate)
         ORCA_ONLY("upward_compatible_machine"),
         ORCA_ONLY("bed_exclude_area"),
         ORCA_ONLY("bed_temperature_formula"),

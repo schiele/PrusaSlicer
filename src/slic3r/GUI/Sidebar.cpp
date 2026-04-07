@@ -1801,7 +1801,8 @@ wxPanel *PrintSettingsPanel::BuildSupportContent()
         CreateSettingRow(content, opts_group, "support_material_bottom_contact_extrusion_width",
                          _L("Bottom contact extrusion width"));
         CreateSettingRow(content, opts_group, "support_material_pattern", _L("Pattern"));
-        CreateSettingRow(content, opts_group, "support_material_bridge_no_gap", _L("Bridge fill when \"no gap\" selected"));
+        CreateSettingRow(content, opts_group, "support_material_bridge_no_gap",
+                         _L("Bridge fill when \"no gap\" selected"));
         CreateSettingRow(content, opts_group, "support_material_with_sheath", _L("With sheath around support"));
         CreateSettingRow(content, opts_group, "support_material_spacing", _L("Pattern spacing"));
         CreateSettingRow(content, opts_group, "support_material_angle", _L("Pattern angle"));
@@ -3178,9 +3179,9 @@ bool PrinterSettingsPanel::IsTabVisible(int tab_index) const
         // that are always shown, plus these wrapped groups
         return has_any_visible_setting({"gcode_flavor", "thumbnails", "silent_mode", "remaining_times", "binary_gcode",
                                         "use_relative_e_distances", "use_firmware_retraction", "use_volumetric_e",
-                                        "variable_layer_height", "prefer_clockwise_movements",
-                                        "extruder_clearance_radius", "extruder_clearance_height", "max_print_height",
-                                        "z_offset", "single_extruder_multi_material"});
+                                        "variable_layer_height", "prefer_clockwise_movements", "currency_symbol",
+                                        "time_cost", "extruder_clearance_radius", "extruder_clearance_height",
+                                        "max_print_height", "z_offset", "single_extruder_multi_material"});
     }
     else if (tab_index == 1) // Machine limits
     {
@@ -3621,6 +3622,8 @@ wxPanel *PrinterSettingsPanel::BuildGeneralContent()
         CreateSettingRow(content, adv_group, "use_volumetric_e", _L("Use volumetric E"));
         CreateSettingRow(content, adv_group, "variable_layer_height", _L("Supports variable layer height"));
         CreateSettingRow(content, adv_group, "prefer_clockwise_movements", _L("Prefer clockwise movements"));
+        CreateSettingRow(content, adv_group, "currency_symbol", _L("Currency symbol"));
+        CreateSettingRow(content, adv_group, "time_cost", _L("Machine hourly rate"));
         sizer->Add(adv_group, 0, wxEXPAND | wxALL, em / 4);
     }
 

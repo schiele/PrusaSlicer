@@ -585,272 +585,292 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
 
     wxBeginBusyCursor();
 
-    ModelObject *src_obj = model.objects[m_source.object_idx];
-    ModelObject *tgt_obj = model.objects[m_target.object_idx];
-
-    if (src_obj == nullptr || tgt_obj == nullptr)
-        return;
-    if (m_source.instance_idx >= static_cast<int>(src_obj->instances.size()) ||
-        m_target.instance_idx >= static_cast<int>(tgt_obj->instances.size()))
-        return;
-
-    // Strip Alignment Box modifiers from the source before boolean operations.
-    // The source is deleted after accept, so this is safe.
-    printf("[Align] Source volumes before strip: %zu\n", src_obj->volumes.size());
-    for (int vi = static_cast<int>(src_obj->volumes.size()) - 1; vi >= 0; --vi)
+    try
     {
-        ModelVolume *v = src_obj->volumes[vi];
-        if (v != nullptr && v->is_modifier() && v->name == "Alignment Box")
+        ModelObject *src_obj = model.objects[m_source.object_idx];
+        ModelObject *tgt_obj = model.objects[m_target.object_idx];
+
+        if (src_obj == nullptr || tgt_obj == nullptr)
         {
-            printf("[Align] Stripping Alignment Box modifier (volume %d)\n", vi);
-            src_obj->delete_volume(vi);
+            wxEndBusyCursor();
+            return;
         }
-    }
-    printf("[Align] Source volumes after strip: %zu\n", src_obj->volumes.size());
-    for (size_t i = 0; i < src_obj->volumes.size(); ++i)
-    {
-        ModelVolume *v = src_obj->volumes[i];
-        printf("[Align]   vol[%zu]: name='%s' type=%d\n", i, v->name.c_str(), static_cast<int>(v->type()));
-    }
-    fflush(stdout);
-
-    // If source has multiple instances, split the aligned instance into its own
-    // standalone object first. This prevents modifying the shared object from
-    // affecting the remaining instances (color, transform, etc.)
-    bool was_multi_instance = (src_obj->instances.size() > 1);
-    if (was_multi_instance)
-    {
-        // Clone the source object and keep only the aligned instance
-        ModelObject *standalone = model.add_object(*src_obj);
-        // Remove all instances except the one matching our aligned instance's transform
-        Transform3d aligned_transform = src_obj->instances[m_source.instance_idx]->get_matrix();
-        standalone->clear_instances();
-        standalone->add_instance(Geometry::Transformation(aligned_transform));
-
-        // Remove the aligned instance from the original object
-        src_obj->delete_instance(m_source.instance_idx);
-        src_obj->invalidate_bounding_box();
-
-        // Update references to point to the new standalone object
-        src_obj = standalone;
-        m_source.object_idx = static_cast<int>(model.objects.size()) - 1;
-        m_source.instance_idx = 0;
-
-        // Target index hasn't changed since we only appended
-    }
-
-    ModelInstance *src_inst = src_obj->instances[m_source.instance_idx];
-    ModelInstance *tgt_inst = tgt_obj->instances[m_target.instance_idx];
-
-    // Relief objects: skip immediate CGAL boolean - the slicer handles overlapping
-    // volumes (MODEL_PART for weld, NEGATIVE_VOLUME for subtract) at slice time.
-    // CGAL's EPIC kernel has numerical precision issues with dense heightmap meshes.
-    bool is_relief_src = is_relief_object(src_obj);
-    printf("[Align] accept_as_volume: src='%s' tgt='%s' is_relief=%s volume_type=%d\n", src_obj->name.c_str(),
-           tgt_obj->name.c_str(), is_relief_src ? "YES" : "NO", static_cast<int>(volume_type));
-    fflush(stdout);
-
-    if (volume_type == ModelVolumeType::MODEL_PART && !is_relief_src)
-    {
-        // True weld: boolean union of source meshes into the target's first model part.
-        ModelVolume *tgt_vol = nullptr;
-        for (ModelVolume *v : tgt_obj->volumes)
+        if (m_source.instance_idx >= static_cast<int>(src_obj->instances.size()) ||
+            m_target.instance_idx >= static_cast<int>(tgt_obj->instances.size()))
         {
-            if (v != nullptr && v->is_model_part())
+            wxEndBusyCursor();
+            return;
+        }
+
+        // Strip Alignment Box modifiers from the source before boolean operations.
+        // The source is deleted after accept, so this is safe.
+        for (int vi = static_cast<int>(src_obj->volumes.size()) - 1; vi >= 0; --vi)
+        {
+            ModelVolume *v = src_obj->volumes[vi];
+            if (v != nullptr && v->is_modifier() && v->name == "Alignment Box")
+                src_obj->delete_volume(vi);
+        }
+
+        // If source has multiple instances, split the aligned instance into its own
+        // standalone object first. This prevents modifying the shared object from
+        // affecting the remaining instances (color, transform, etc.)
+        bool was_multi_instance = (src_obj->instances.size() > 1);
+        if (was_multi_instance)
+        {
+            // Clone the source object and keep only the aligned instance
+            ModelObject *standalone = model.add_object(*src_obj);
+            // Remove all instances except the one matching our aligned instance's transform
+            Transform3d aligned_transform = src_obj->instances[m_source.instance_idx]->get_matrix();
+            standalone->clear_instances();
+            standalone->add_instance(Geometry::Transformation(aligned_transform));
+
+            // Remove the aligned instance from the original object
+            src_obj->delete_instance(m_source.instance_idx);
+            src_obj->invalidate_bounding_box();
+
+            // Update references to point to the new standalone object
+            src_obj = standalone;
+            m_source.object_idx = static_cast<int>(model.objects.size()) - 1;
+            m_source.instance_idx = 0;
+
+            // Target index hasn't changed since we only appended
+        }
+
+        ModelInstance *src_inst = src_obj->instances[m_source.instance_idx];
+        ModelInstance *tgt_inst = tgt_obj->instances[m_target.instance_idx];
+
+        // Relief objects: skip immediate CGAL boolean - the slicer handles overlapping
+        // volumes (MODEL_PART for weld, NEGATIVE_VOLUME for subtract) at slice time.
+        // CGAL's EPIC kernel has numerical precision issues with dense heightmap meshes.
+        bool is_relief_src = is_relief_object(src_obj);
+
+        if (volume_type == ModelVolumeType::MODEL_PART && !is_relief_src)
+        {
+            // True weld: boolean union of source meshes into the target's first model part.
+            ModelVolume *tgt_vol = nullptr;
+            for (ModelVolume *v : tgt_obj->volumes)
             {
-                tgt_vol = v;
-                break;
+                if (v != nullptr && v->is_model_part())
+                {
+                    tgt_vol = v;
+                    break;
+                }
+            }
+
+            if (tgt_vol == nullptr)
+            {
+                auto *notif = wxGetApp().plater()->get_notification_manager();
+                notif->push_notification(NotificationType::BooleanOperationFailed,
+                                         NotificationManager::NotificationLevel::WarningNotificationLevel,
+                                         std::string("Target object has no solid part to weld into."));
+                wxEndBusyCursor();
+                return;
+            }
+
+            {
+                Transform3d tgt_world = tgt_inst->get_matrix() * tgt_vol->get_matrix();
+                Transform3d tgt_world_inv = tgt_world.inverse();
+
+                for (const ModelVolume *src_vol : src_obj->volumes)
+                {
+                    if (src_vol == nullptr || !src_vol->is_model_part())
+                        continue;
+
+                    Transform3d src_to_tgt_local = tgt_world_inv * src_inst->get_matrix() * src_vol->get_matrix();
+
+                    TriangleMesh src_mesh = src_vol->mesh();
+                    src_mesh.transform(src_to_tgt_local, true);
+
+                    try
+                    {
+                        if (MeshBoolean::cgal::does_self_intersect(src_mesh))
+                            MeshBoolean::self_union(src_mesh);
+
+                        TriangleMesh tgt_mesh = tgt_vol->mesh();
+                        if (MeshBoolean::cgal::does_self_intersect(tgt_mesh))
+                            MeshBoolean::self_union(tgt_mesh);
+
+                        MeshBoolean::cgal::plus(tgt_mesh, src_mesh);
+
+                        tgt_vol->set_mesh(std::move(tgt_mesh));
+                        tgt_vol->calculate_convex_hull();
+                        tgt_vol->set_new_unique_id();
+                    }
+                    catch (const std::exception &e)
+                    {
+                        BOOST_LOG_TRIVIAL(error) << "Boolean union exception: " << e.what();
+
+                        // Fall back to adding as separate volume
+                        Transform3d relative_trafo = tgt_inst->get_matrix().inverse() * src_inst->get_matrix() *
+                                                     src_vol->get_matrix();
+                        ModelVolume *new_vol = tgt_obj->add_volume(*src_vol, volume_type);
+                        Geometry::Transformation vol_trafo;
+                        vol_trafo.set_matrix(relative_trafo);
+                        new_vol->set_transformation(vol_trafo);
+                        new_vol->name = src_obj->name + " (welded)";
+
+                        auto *notif = wxGetApp().plater()->get_notification_manager();
+                        notif->push_notification(NotificationType::BooleanOperationFailed,
+                                                 NotificationManager::NotificationLevel::WarningNotificationLevel,
+                                                 std::string("Boolean union failed: ") + e.what());
+                    }
+                    catch (...)
+                    {
+                        BOOST_LOG_TRIVIAL(error) << "Boolean union: unknown exception";
+
+                        Transform3d relative_trafo = tgt_inst->get_matrix().inverse() * src_inst->get_matrix() *
+                                                     src_vol->get_matrix();
+                        ModelVolume *new_vol = tgt_obj->add_volume(*src_vol, volume_type);
+                        Geometry::Transformation vol_trafo;
+                        vol_trafo.set_matrix(relative_trafo);
+                        new_vol->set_transformation(vol_trafo);
+                        new_vol->name = src_obj->name + " (welded)";
+
+                        auto *notif = wxGetApp().plater()->get_notification_manager();
+                        notif->push_notification(NotificationType::BooleanOperationFailed,
+                                                 NotificationManager::NotificationLevel::WarningNotificationLevel,
+                                                 std::string("Boolean union failed with unknown error."));
+                    }
+                }
             }
         }
-
-        if (tgt_vol != nullptr)
+        else if (volume_type == ModelVolumeType::NEGATIVE_VOLUME && !is_relief_src)
         {
-            Transform3d tgt_world = tgt_inst->get_matrix() * tgt_vol->get_matrix();
-            Transform3d tgt_world_inv = tgt_world.inverse();
+            // Subtract: CGAL boolean difference baked into the target mesh (like weld uses union).
+            // This produces an immediate visible result without relying on async CSG preview.
+            ModelVolume *tgt_vol = nullptr;
+            for (ModelVolume *v : tgt_obj->volumes)
+            {
+                if (v != nullptr && v->is_model_part())
+                {
+                    tgt_vol = v;
+                    break;
+                }
+            }
 
+            if (tgt_vol == nullptr)
+            {
+                auto *notif = wxGetApp().plater()->get_notification_manager();
+                notif->push_notification(NotificationType::BooleanOperationFailed,
+                                         NotificationManager::NotificationLevel::WarningNotificationLevel,
+                                         std::string("Target object has no solid part to subtract from."));
+                wxEndBusyCursor();
+                return;
+            }
+
+            {
+                Transform3d tgt_world = tgt_inst->get_matrix() * tgt_vol->get_matrix();
+                Transform3d tgt_world_inv = tgt_world.inverse();
+
+                for (const ModelVolume *src_vol : src_obj->volumes)
+                {
+                    if (src_vol == nullptr || !src_vol->is_model_part())
+                        continue;
+
+                    Transform3d src_to_tgt_local = tgt_world_inv * src_inst->get_matrix() * src_vol->get_matrix();
+
+                    TriangleMesh src_mesh = src_vol->mesh();
+                    src_mesh.transform(src_to_tgt_local, true);
+
+                    try
+                    {
+                        if (MeshBoolean::cgal::does_self_intersect(src_mesh))
+                            MeshBoolean::self_union(src_mesh);
+
+                        TriangleMesh tgt_mesh = tgt_vol->mesh();
+                        if (MeshBoolean::cgal::does_self_intersect(tgt_mesh))
+                            MeshBoolean::self_union(tgt_mesh);
+
+                        MeshBoolean::cgal::minus(tgt_mesh, src_mesh);
+
+                        tgt_vol->set_mesh(std::move(tgt_mesh));
+                        tgt_vol->calculate_convex_hull();
+                        tgt_vol->set_new_unique_id();
+                    }
+                    catch (const std::exception &e)
+                    {
+                        // Fall back to adding as negative volume (resolved at slice time)
+                        Transform3d relative_trafo = tgt_inst->get_matrix().inverse() * src_inst->get_matrix() *
+                                                     src_vol->get_matrix();
+                        ModelVolume *new_vol = tgt_obj->add_volume(*src_vol, ModelVolumeType::NEGATIVE_VOLUME);
+                        Geometry::Transformation vol_trafo;
+                        vol_trafo.set_matrix(relative_trafo);
+                        new_vol->set_transformation(vol_trafo);
+                        new_vol->name = src_obj->name + " (subtract)";
+
+                        auto *notif = wxGetApp().plater()->get_notification_manager();
+                        notif->push_notification(NotificationType::BooleanOperationFailed,
+                                                 NotificationManager::NotificationLevel::WarningNotificationLevel,
+                                                 std::string("Boolean subtract failed: ") + e.what());
+                    }
+                    catch (...)
+                    {
+                        Transform3d relative_trafo = tgt_inst->get_matrix().inverse() * src_inst->get_matrix() *
+                                                     src_vol->get_matrix();
+                        ModelVolume *new_vol = tgt_obj->add_volume(*src_vol, ModelVolumeType::NEGATIVE_VOLUME);
+                        Geometry::Transformation vol_trafo;
+                        vol_trafo.set_matrix(relative_trafo);
+                        new_vol->set_transformation(vol_trafo);
+                        new_vol->name = src_obj->name + " (subtract)";
+
+                        auto *notif = wxGetApp().plater()->get_notification_manager();
+                        notif->push_notification(NotificationType::BooleanOperationFailed,
+                                                 NotificationManager::NotificationLevel::WarningNotificationLevel,
+                                                 std::string("Boolean subtract failed with unknown error."));
+                    }
+                }
+            }
+        }
+        else
+        {
+            // Relief objects (or CGAL-incompatible cases): add as overlapping volumes (resolved at slice time)
             for (const ModelVolume *src_vol : src_obj->volumes)
             {
                 if (src_vol == nullptr || !src_vol->is_model_part())
                     continue;
 
-                Transform3d src_to_tgt_local = tgt_world_inv * src_inst->get_matrix() * src_vol->get_matrix();
+                Transform3d relative_trafo = tgt_inst->get_matrix().inverse() * src_inst->get_matrix() *
+                                             src_vol->get_matrix();
 
-                TriangleMesh src_mesh = src_vol->mesh();
-                src_mesh.transform(src_to_tgt_local, true);
-
-                // Debug: log mesh stats before boolean
-                auto log_mesh = [](const std::string &label, const TriangleMesh &m)
-                {
-                    auto stats = m.stats();
-                    // Find z range
-                    float zmin = std::numeric_limits<float>::max();
-                    float zmax = std::numeric_limits<float>::lowest();
-                    float min_edge = std::numeric_limits<float>::max();
-                    for (const auto &v : m.its.vertices)
-                    {
-                        zmin = std::min(zmin, v.z());
-                        zmax = std::max(zmax, v.z());
-                    }
-                    // Find shortest edge to detect near-degenerate triangles
-                    for (const auto &f : m.its.indices)
-                    {
-                        for (int e = 0; e < 3; ++e)
-                        {
-                            Vec3f d = m.its.vertices[f[e]] - m.its.vertices[f[(e + 1) % 3]];
-                            float len = d.norm();
-                            if (len > 0.f)
-                                min_edge = std::min(min_edge, len);
-                        }
-                    }
-                    printf("[Align Weld] %s: %d tris, %zu verts, %d open edges, z=[%.4f..%.4f], min_edge=%.6f\n",
-                           label.c_str(), stats.number_of_facets, m.its.vertices.size(), stats.open_edges, zmin, zmax,
-                           min_edge);
-                    fflush(stdout);
-                };
-
-                log_mesh("Source", src_mesh);
-                log_mesh("Target", tgt_vol->mesh());
-
-                // Check for self-intersections
-                bool src_si = MeshBoolean::cgal::does_self_intersect(src_mesh);
-                bool tgt_si = MeshBoolean::cgal::does_self_intersect(tgt_vol->mesh());
-                printf("[Align Weld] Self-intersect: source=%s target=%s\n", src_si ? "YES" : "no",
-                       tgt_si ? "YES" : "no");
-                fflush(stdout);
-
-                try
-                {
-                    // If source self-intersects, try self_union to repair first
-                    if (src_si)
-                    {
-                        printf("[Align Weld] Running self_union on source to fix self-intersections...\n");
-                        fflush(stdout);
-                        MeshBoolean::self_union(src_mesh);
-                        log_mesh("Source (after self_union)", src_mesh);
-                    }
-
-                    TriangleMesh tgt_mesh = tgt_vol->mesh();
-                    MeshBoolean::cgal::plus(tgt_mesh, src_mesh);
-                    printf("[Align Weld] CGAL boolean succeeded\n");
-                    fflush(stdout);
-
-                    log_mesh("Result", tgt_mesh);
-
-                    tgt_vol->set_mesh(std::move(tgt_mesh));
-                    tgt_vol->calculate_convex_hull();
-                    tgt_vol->set_new_unique_id();
-                }
-                catch (const std::exception &e)
-                {
-                    std::string err = std::string("Boolean union exception: ") + e.what();
-                    BOOST_LOG_TRIVIAL(error) << "[Align Weld] " << err;
-                    printf("[Align Weld] %s\n", err.c_str());
-                    fflush(stdout);
-
-                    // Fall back to adding as separate volume
-                    Transform3d relative_trafo = tgt_inst->get_matrix().inverse() * src_inst->get_matrix() *
-                                                 src_vol->get_matrix();
-                    ModelVolume *new_vol = tgt_obj->add_volume(*src_vol, volume_type);
-                    Geometry::Transformation vol_trafo;
-                    vol_trafo.set_matrix(relative_trafo);
-                    new_vol->set_transformation(vol_trafo);
-                    new_vol->name = src_obj->name + " (welded)";
-
-                    auto *notif = wxGetApp().plater()->get_notification_manager();
-                    notif->push_notification(NotificationType::BooleanOperationFailed,
-                                             NotificationManager::NotificationLevel::WarningNotificationLevel,
-                                             std::string("Boolean union failed: ") + e.what());
-                }
-                catch (...)
-                {
-                    BOOST_LOG_TRIVIAL(error) << "[Align Weld] Boolean union: unknown exception";
-                    printf("[Align Weld] Boolean union: unknown exception\n");
-                    fflush(stdout);
-
-                    Transform3d relative_trafo = tgt_inst->get_matrix().inverse() * src_inst->get_matrix() *
-                                                 src_vol->get_matrix();
-                    ModelVolume *new_vol = tgt_obj->add_volume(*src_vol, volume_type);
-                    Geometry::Transformation vol_trafo;
-                    vol_trafo.set_matrix(relative_trafo);
-                    new_vol->set_transformation(vol_trafo);
-                    new_vol->name = src_obj->name + " (welded)";
-
-                    auto *notif = wxGetApp().plater()->get_notification_manager();
-                    notif->push_notification(NotificationType::BooleanOperationFailed,
-                                             NotificationManager::NotificationLevel::WarningNotificationLevel,
-                                             std::string("Boolean union failed with unknown error."));
-                }
+                ModelVolume *new_vol = tgt_obj->add_volume(*src_vol, volume_type);
+                Geometry::Transformation vol_trafo;
+                vol_trafo.set_matrix(relative_trafo);
+                new_vol->set_transformation(vol_trafo);
+                new_vol->name = src_obj->name +
+                                (volume_type == ModelVolumeType::NEGATIVE_VOLUME ? " (subtract)" : " (welded)");
             }
         }
-    }
-    else
-    {
-        // Subtract: add source volumes as negative volumes on the target
-        for (const ModelVolume *src_vol : src_obj->volumes)
-        {
-            if (src_vol == nullptr || !src_vol->is_model_part())
-                continue;
 
-            // Debug: log source mesh stats
-            {
-                auto stats = src_vol->mesh().stats();
-                std::string msg = "Subtract source: " + std::to_string(stats.number_of_facets) + " tris, " +
-                                  std::to_string(src_vol->mesh().its.vertices.size()) + " verts, " +
-                                  std::to_string(stats.open_edges) + " open edges, name=" + src_vol->name;
-                BOOST_LOG_TRIVIAL(info) << "[Align Subtract] " << msg;
-                printf("[Align Subtract] %s\n", msg.c_str());
-                fflush(stdout);
-            }
+        tgt_obj->invalidate_bounding_box();
 
-            Transform3d relative_trafo = tgt_inst->get_matrix().inverse() * src_inst->get_matrix() *
-                                         src_vol->get_matrix();
+        // The source is now always a standalone single-instance object (either it was
+        // originally, or we split it above). Delete the entire object.
+        int src_idx = m_source.object_idx;
+        reset_state();
 
-            ModelVolume *new_vol = tgt_obj->add_volume(*src_vol, volume_type);
+        // Close the gizmo - the flag prevents on_set_state from doing redundant work
+        m_accept_in_progress = true;
+        auto &mng = m_parent.get_gizmos_manager();
+        if (mng.get_current_type() == GLGizmosManager::Align)
+            mng.reset_all_states();
+        m_accept_in_progress = false;
 
-            Geometry::Transformation vol_trafo;
-            vol_trafo.set_matrix(relative_trafo);
-            new_vol->set_transformation(vol_trafo);
-            new_vol->name = src_obj->name + " (subtract)";
+        // Delete source, then invalidate CSG cache so reload_scene sees correct indices
+        model.delete_object(src_idx);
+        if (m_parent.get_csg_preview())
+            m_parent.get_csg_preview()->invalidate_all();
 
-            printf("[Align Subtract] Added as NEGATIVE_VOLUME: %s, preview_its=%s (%zu tris)\n", new_vol->name.c_str(),
-                   new_vol->preview_its ? "YES" : "NO",
-                   new_vol->preview_its ? new_vol->preview_its->indices.size() : 0);
-            fflush(stdout);
-        }
-    }
-
-    tgt_obj->invalidate_bounding_box();
-
-    // The source is now always a standalone single-instance object (either it was
-    // originally, or we split it above). Delete the entire object.
-    int src_idx = m_source.object_idx;
-    reset_state();
-
-    // Close the gizmo - the flag prevents on_set_state from doing redundant work
-    m_accept_in_progress = true;
-    auto &mng = m_parent.get_gizmos_manager();
-    if (mng.get_current_type() == GLGizmosManager::Align)
-        mng.reset_all_states();
-    m_accept_in_progress = false;
-
-    // Delete source, then invalidate CSG cache so reload_scene sees correct indices
-    printf("[Align] Deleting source object at index %d (total objects: %zu)\n", src_idx, model.objects.size());
-    if (src_idx >= 0 && src_idx < static_cast<int>(model.objects.size()))
-        printf("[Align]   Object name: '%s'\n", model.objects[src_idx]->name.c_str());
-    fflush(stdout);
-    model.delete_object(src_idx);
-    printf("[Align] After delete: %zu objects remain\n", model.objects.size());
-    fflush(stdout);
-    if (m_parent.get_csg_preview())
-        m_parent.get_csg_preview()->invalidate_all();
-
-    wxGetApp().plater()->update();
-    wxGetApp().obj_list()->update_after_undo_redo();
-    m_parent.set_as_dirty();
-    // End busy cursor now for weld. For subtract, the CSG preview will run
-    // async and render()'s process_completed() handler ends the cursor.
-    if (volume_type != ModelVolumeType::NEGATIVE_VOLUME)
+        wxGetApp().plater()->update();
+        wxGetApp().obj_list()->update_after_undo_redo();
+        m_parent.set_as_dirty();
         wxEndBusyCursor();
+    }
+    catch (...)
+    {
+        // Safety net: ensure busy cursor is always released
+        if (wxIsBusy())
+            wxEndBusyCursor();
+    }
 }
 
 bool GLGizmoAlign::intersect_target_plane(const Vec2d &mouse_pos, Vec3d &hit_point)
@@ -881,8 +901,10 @@ bool GLGizmoAlign::on_mouse(const wxMouseEvent &mouse_event)
 
     Vec2d mouse_pos(mouse_event.GetX(), mouse_event.GetY());
 
-    // Track mouse movement to update snap point indicators during face selection
-    if (mouse_event.Moving() && (m_align_state == EState::Idle || m_align_state == EState::SourceSelected))
+    // Track mouse movement to update snap point indicators during face selection.
+    // Skip synthetic (0,0) events from VM/RDP mouse drivers that would clear snap state.
+    if (mouse_event.Moving() && (m_align_state == EState::Idle || m_align_state == EState::SourceSelected) &&
+        (mouse_pos.x() != 0.0 || mouse_pos.y() != 0.0))
     {
         update_hover_snap_points(mouse_pos);
         m_parent.set_as_dirty();
@@ -1118,7 +1140,7 @@ void GLGizmoAlign::on_render()
                 else
                 {
                     double zoom = camera.get_zoom();
-                    pixel_size = (zoom > 0.001) ? 1.0 / (zoom * 0.5 * viewport[3]) : 0.01;
+                    pixel_size = (zoom > 0.001) ? 1.0 / zoom : 0.01;
                 }
 
                 // Ring is larger than the diamond (snap zone radius)
@@ -1196,7 +1218,7 @@ void GLGizmoAlign::on_render()
                 else
                 {
                     double zoom = camera.get_zoom();
-                    pixel_size = (zoom > 0.001) ? 1.0 / (zoom * 0.5 * viewport[3]) : 0.01;
+                    pixel_size = (zoom > 0.001) ? 1.0 / zoom : 0.01;
                 }
 
                 double ring_world_size = 12.0 * pixel_size;
@@ -1830,7 +1852,7 @@ void GLGizmoAlign::render_snap_indicator(const Vec3d &position, const Vec3d &nor
 
     // Compute a world-space size that appears as a fixed screen-space size
     const Camera &camera = wxGetApp().plater()->get_camera();
-    auto viewport = camera.get_viewport();
+    const auto &viewport = camera.get_viewport();
     double pixel_size;
     if (camera.get_type() == Camera::EType::Perspective)
     {
@@ -1840,8 +1862,9 @@ void GLGizmoAlign::render_snap_indicator(const Vec3d &position, const Vec3d &nor
     }
     else
     {
+        // Ortho visible height = viewport[3] / zoom, so pixel_size = 1 / zoom
         double zoom = camera.get_zoom();
-        pixel_size = (zoom > 0.001) ? 1.0 / (zoom * 0.5 * viewport[3]) : 0.01;
+        pixel_size = (zoom > 0.001) ? 1.0 / zoom : 0.01;
     }
     double world_size = size * pixel_size;
 
@@ -1859,6 +1882,7 @@ void GLGizmoAlign::render_snap_indicator(const Vec3d &position, const Vec3d &nor
     trafo.linear() = rot * Eigen::Scaling(world_size);
 
     glsafe(::glDisable(GL_DEPTH_TEST));
+    glsafe(::glDisable(GL_CULL_FACE));
     glsafe(::glEnable(GL_BLEND));
     glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
 
@@ -1884,6 +1908,7 @@ void GLGizmoAlign::render_snap_indicator(const Vec3d &position, const Vec3d &nor
     }
 
     glsafe(::glEnable(GL_DEPTH_TEST));
+    glsafe(::glEnable(GL_CULL_FACE));
     glsafe(::glDisable(GL_BLEND));
 }
 

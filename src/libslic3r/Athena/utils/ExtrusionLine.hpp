@@ -67,6 +67,14 @@ struct ExtrusionLine
     bool is_closed;
 
     /*!
+     * Index of the source input polygon this path belongs to. Used by the
+     * stitcher to prevent cross-wall joins on multi-polygon outlines (e.g.,
+     * annular shapes where inner and outer wall segments share the same inset
+     * level). -1 = untagged/wildcard (connects to any group).
+     */
+    int source_poly_id;
+
+    /*!
      * Gets the number of vertices in this polygon.
      * \return The number of vertices in this polygon.
      */
@@ -86,29 +94,11 @@ struct ExtrusionLine
 
     ExtrusionLine(size_t inset_idx, bool is_odd);
     ExtrusionLine(size_t inset_idx, bool is_odd, bool is_closed);
-    ExtrusionLine() : inset_idx(-1), is_odd(true), is_closed(false) {}
-    ExtrusionLine(const ExtrusionLine &other)
-        : inset_idx(other.inset_idx), is_odd(other.is_odd), is_closed(other.is_closed), junctions(other.junctions)
-    {
-    }
-
-    ExtrusionLine &operator=(ExtrusionLine &&other)
-    {
-        junctions = std::move(other.junctions);
-        inset_idx = other.inset_idx;
-        is_odd = other.is_odd;
-        is_closed = other.is_closed;
-        return *this;
-    }
-
-    ExtrusionLine &operator=(const ExtrusionLine &other)
-    {
-        junctions = other.junctions;
-        inset_idx = other.inset_idx;
-        is_odd = other.is_odd;
-        is_closed = other.is_closed;
-        return *this;
-    }
+    ExtrusionLine() : inset_idx(-1), is_odd(true), is_closed(false), source_poly_id(-1) {}
+    ExtrusionLine(const ExtrusionLine &) = default;
+    ExtrusionLine(ExtrusionLine &&) = default;
+    ExtrusionLine &operator=(ExtrusionLine &&) = default;
+    ExtrusionLine &operator=(const ExtrusionLine &) = default;
 
     std::vector<ExtrusionJunction>::const_iterator begin() const { return junctions.begin(); }
     std::vector<ExtrusionJunction>::const_iterator end() const { return junctions.end(); }

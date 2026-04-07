@@ -192,6 +192,32 @@ void AppConfig::set_defaults()
     if (get("seq_top_layer_only").empty())
         set("seq_top_layer_only", "1");
 
+    // Preview legend toggle defaults (0 = hidden, 1 = visible)
+    if (get("preview_travel").empty())
+        set("preview_travel", "0");
+    if (get("preview_wipe").empty())
+        set("preview_wipe", "0");
+    if (get("preview_retractions").empty())
+        set("preview_retractions", "0");
+    if (get("preview_unretractions").empty())
+        set("preview_unretractions", "0");
+    if (get("preview_seams").empty())
+        set("preview_seams", "0");
+    if (get("preview_toolchanges").empty())
+        set("preview_toolchanges", "0");
+    if (get("preview_colorchanges").empty())
+        set("preview_colorchanges", "0");
+    if (get("preview_pauseprints").empty())
+        set("preview_pauseprints", "0");
+    if (get("preview_customgcodes").empty())
+        set("preview_customgcodes", "0");
+    if (get("preview_cog").empty())
+        set("preview_cog", "0");
+    if (get("preview_shells").empty())
+        set("preview_shells", "0");
+    if (get("preview_toolmarker").empty())
+        set("preview_toolmarker", "1");
+
     if (get("use_perspective_camera").empty())
         set("use_perspective_camera", "1");
 

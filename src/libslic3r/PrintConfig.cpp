@@ -4713,6 +4713,20 @@ void PrintConfigDef::init_fff_params()
     def->mode = comExpert;
     def->set_default_value(new ConfigOptionBool(false));
 
+    def = this->add("time_cost", coFloat);
+    def->label = L("Machine hourly rate");
+    def->tooltip = L("Hourly operating cost of this printer. Combined with filament cost to calculate total job cost.");
+    def->sidetext = L("/h");
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.));
+
+    def = this->add("currency_symbol", coString);
+    def->label = L("Currency symbol");
+    def->tooltip = L("Currency symbol displayed with cost estimates (e.g. $, EUR, GBP).");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionString("$"));
+
     def = this->add("variable_layer_height", coBool);
     def->label = L("Enable variable layer height feature");
     def->tooltip = L("Some printers or printer setups may have difficulties printing "

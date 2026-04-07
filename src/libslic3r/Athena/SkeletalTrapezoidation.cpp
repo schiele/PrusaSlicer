@@ -477,14 +477,19 @@ void SkeletalTrapezoidation::constructFromPolygons(const Polygons &polys)
 
         // Copy start to end edge to graph
         assert(Geometry::VoronoiUtils::is_in_range<coord_t>(*starting_voronoi_edge));
+        // Determine which input polygon this cell belongs to
+        int cell_source_poly_id = static_cast<int>(segments[cell.source_index()].poly_idx);
+
         edge_t *prev_edge = nullptr;
         transferEdge(start_source_point,
                      Geometry::VoronoiUtils::to_point(starting_voronoi_edge->vertex1()).cast<coord_t>(),
                      *starting_voronoi_edge, prev_edge, start_source_point, end_source_point, segments);
         node_t *starting_node = vd_node_to_he_node[starting_voronoi_edge->vertex0()];
         starting_node->data.distance_to_boundary = 0;
+        starting_node->data.source_poly_id = cell_source_poly_id;
 
         graph.makeRib(prev_edge, start_source_point, end_source_point);
+        prev_edge->from->data.source_poly_id = cell_source_poly_id; // tag rib boundary node
         for (const VD::edge_type *vd_edge = starting_voronoi_edge->next(); vd_edge != ending_voronoi_edge;
              vd_edge = vd_edge->next())
         {
@@ -495,11 +500,13 @@ void SkeletalTrapezoidation::constructFromPolygons(const Polygons &polys)
             Point v2 = Geometry::VoronoiUtils::to_point(vd_edge->vertex1()).cast<coord_t>();
             transferEdge(v1, v2, *vd_edge, prev_edge, start_source_point, end_source_point, segments);
             graph.makeRib(prev_edge, start_source_point, end_source_point);
+            prev_edge->from->data.source_poly_id = cell_source_poly_id; // tag rib boundary node
         }
 
         transferEdge(Geometry::VoronoiUtils::to_point(ending_voronoi_edge->vertex0()).cast<coord_t>(), end_source_point,
                      *ending_voronoi_edge, prev_edge, start_source_point, end_source_point, segments);
         prev_edge->to->data.distance_to_boundary = 0;
+        prev_edge->to->data.source_poly_id = cell_source_poly_id;
     }
 
 #ifdef ATHENA_DEBUG
@@ -1700,14 +1707,10 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
         // Choose option with less total deviation
         bool split_center_into_loop = false;
 
-        // With perimeter overlap (nominal_spacing < nominal_width), only split the
-        // center bead when it's wide enough for two beads at proper spacing. When
-        // narrow, splitting recreates the overlap problem. When wide (>= 2x spacing),
-        // two beads fit comfortably and produce better quality than one fat bead.
-        // Note: 2x spacing equals the geometric minimum from the loop_width_factor
-        // formula: nominal_spacing * (2 - overlap_pct) = 2 * nominal_spacing.
-        if (beading.left_over > 0 && new_center_width > nominal_width &&
-            (nominal_spacing >= nominal_width || new_center_width >= 2 * nominal_spacing))
+        // Split when the center bead is wider than nominal - let the deviation
+        // comparison decide whether one fat bead or two normal beads is closer
+        // to the target width
+        if (beading.left_over > 0 && new_center_width > nominal_width)
         {
             // For a loop with overlap: width × (2 - overlap%) = expanded_width
             // Therefore: width = expanded_width / (2 - overlap%)
@@ -1715,15 +1718,17 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
             double loop_width_factor = 2.0 - overlap_pct;
             coord_t split_width = (coord_t) ((double) new_center_width / loop_width_factor);
 
-            // Option A: One wide bead deviation
+            // Compare which is closer to nominal width: one fat bead or two split beads.
+            // Bias toward splitting - an over-wide bead prints worse than a slightly
+            // under-wide pair, so two beads win unless one bead is clearly better.
             coord_t one_bead_deviation = new_center_width - nominal_width;
-
-            // Option B: Two beads deviation (total for both beads)
             coord_t per_bead_deviation = (split_width > nominal_width) ? (split_width - nominal_width)
                                                                        : (nominal_width - split_width);
             coord_t two_bead_deviation = per_bead_deviation * 2;
 
-            if (two_bead_deviation < one_bead_deviation)
+            // Split bias: two beads win unless one bead deviates less than HALF
+            // as much as two beads (i.e., one bead must be dramatically better)
+            if (two_bead_deviation < one_bead_deviation * 2)
             {
                 split_center_into_loop = true;
 
@@ -2295,7 +2300,8 @@ std::shared_ptr<SkeletalTrapezoidationJoint::BeadingPropagation> SkeletalTrapezo
 }
 
 void SkeletalTrapezoidation::addToolpathSegment(const ExtrusionJunction &from, const ExtrusionJunction &to, bool is_odd,
-                                                bool force_new_path, bool from_is_3way, bool to_is_3way)
+                                                bool force_new_path, bool from_is_3way, bool to_is_3way,
+                                                int source_poly_id)
 {
     if (from == to)
         return;
@@ -2339,6 +2345,7 @@ void SkeletalTrapezoidation::addToolpathSegment(const ExtrusionJunction &from, c
     else
     {
         generated_toolpaths[inset_idx].emplace_back(inset_idx, is_odd);
+        generated_toolpaths[inset_idx].back().source_poly_id = source_poly_id;
         generated_toolpaths[inset_idx].back().junctions.push_back(from);
         generated_toolpaths[inset_idx].back().junctions.push_back(to);
     }
@@ -2435,6 +2442,11 @@ void SkeletalTrapezoidation::connectJunctions(ptr_vector_t<LineJunctions> &edge_
             }
 
             size_t segment_count = std::min(from_junctions.size(), to_junctions.size());
+
+            // Both boundaries of a quad are always on the same polygon. Use
+            // whichever boundary has a valid tag (some are -1 from inserted ribs).
+            int quad_source_poly = std::max(quad_start->from->data.source_poly_id, quad_end->to->data.source_poly_id);
+
             for (size_t junction_rev_idx = 0; junction_rev_idx < segment_count; junction_rev_idx++)
             {
                 ExtrusionJunction &from = from_junctions[from_junctions.size() - 1 - junction_rev_idx];
@@ -2465,7 +2477,8 @@ void SkeletalTrapezoidation::connectJunctions(ptr_vector_t<LineJunctions> &edge_
                 bool to_is_3way = to_is_odd && quad_end->from->isMultiIntersection();
                 passed_odd_edges.emplace(quad_start->next);
 
-                addToolpathSegment(from, to, is_odd_segment, new_domain_start, from_is_3way, to_is_3way);
+                addToolpathSegment(from, to, is_odd_segment, new_domain_start, from_is_3way, to_is_3way,
+                                   quad_source_poly);
             }
             new_domain_start = false;
         } while (quad_start = quad_start->getNextUnconnected(), quad_start != poly_domain_start);

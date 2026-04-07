@@ -257,6 +257,41 @@ float m_z_offset{0.0f};
 size_t m_extruders_count;
 std::vector<float> m_filament_diameters;
 std::vector<float> m_filament_densities;
+std::vector<float> m_filament_costs;
+float m_time_cost{0.0f};
+std::string m_currency_symbol{"$"};
+
+// Precomputed job cost estimate, populated once at load time
+struct JobEstimate
+{
+    struct ExtruderEstimate
+    {
+        double filament_m{0.0};
+        double filament_g{0.0};
+        double cost{0.0};
+        double wipe_tower_g{0.0}; // waste subset of filament_g
+    };
+    std::map<size_t, ExtruderEstimate> per_extruder;
+    double total_filament_m{0.0};
+    double total_filament_g{0.0};
+    double total_material_cost{0.0};
+    double total_wipe_tower_g{0.0};
+    float time_cost_per_hour{0.0f};
+    bool has_cost_data{false};
+
+    void reset()
+    {
+        per_extruder.clear();
+        total_filament_m = 0.0;
+        total_filament_g = 0.0;
+        total_material_cost = 0.0;
+        total_wipe_tower_g = 0.0;
+        time_cost_per_hour = 0.0f;
+        has_cost_data = false;
+    }
+};
+JobEstimate m_job_estimate;
+
 SequentialView m_sequential_view;
 Shells m_shells;
 COG m_cog;

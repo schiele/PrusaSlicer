@@ -26,12 +26,12 @@ namespace Slic3r::Athena
 {
 
 ExtrusionLine::ExtrusionLine(const size_t inset_idx, const bool is_odd)
-    : inset_idx(inset_idx), is_odd(is_odd), is_closed(false)
+    : inset_idx(inset_idx), is_odd(is_odd), is_closed(false), source_poly_id(-1)
 {
 }
 
 ExtrusionLine::ExtrusionLine(const size_t inset_idx, const bool is_odd, const bool is_closed)
-    : inset_idx(inset_idx), is_odd(is_odd), is_closed(is_closed)
+    : inset_idx(inset_idx), is_odd(is_odd), is_closed(is_closed), source_poly_id(-1)
 {
 }
 

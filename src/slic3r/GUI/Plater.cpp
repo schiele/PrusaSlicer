@@ -261,8 +261,7 @@ bool PlaterDropTarget::OnDropFiles(wxCoord x, wxCoord y, const wxArrayString &fi
         }
     }
     bool res = m_plater.load_files(filenames);
-#ifdef __APPLE__
-    // The modal progress dialog during loading can disrupt the GL canvas state on macOS.
+    // The modal progress dialog during loading can disrupt the GL canvas state.
     // Force a full refresh so the loaded model is visible immediately.
     if (auto *canvas = m_plater.canvas3D())
     {
@@ -271,7 +270,6 @@ bool PlaterDropTarget::OnDropFiles(wxCoord x, wxCoord y, const wxArrayString &fi
         canvas->set_as_dirty();
     }
     m_plater.GetParent()->Layout();
-#endif
     m_mainframe.update_title();
     return res;
 }

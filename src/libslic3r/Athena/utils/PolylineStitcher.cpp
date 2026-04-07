@@ -41,6 +41,10 @@ template<>
 bool PolylineStitcher<VariableWidthLines, ExtrusionLine, ExtrusionJunction>::canConnect(const ExtrusionLine &a,
                                                                                         const ExtrusionLine &b)
 {
+    // source_poly_id is tagged on ExtrusionLines but NOT gated here.
+    // Gating on source_poly_id breaks 0-width contour markers, interlocking
+    // perimeters, and gap-fill that must stitch across polygon boundaries.
+    // Future use requires exempting markers and interlocking paths.
     return a.is_odd == b.is_odd;
 }
 

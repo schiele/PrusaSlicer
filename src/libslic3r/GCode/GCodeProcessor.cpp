@@ -726,6 +726,8 @@ GCodeProcessorResult::GCodeProcessorResult(GCodeProcessorResult &&other) noexcep
     , filament_diameters(std::move(other.filament_diameters))
     , filament_densities(std::move(other.filament_densities))
     , filament_cost(std::move(other.filament_cost))
+    , time_cost(other.time_cost)
+    , currency_symbol(std::move(other.currency_symbol))
     , custom_gcode_per_print_z(std::move(other.custom_gcode_per_print_z))
     , spiral_vase_mode(other.spiral_vase_mode)
     , conflict_result(std::move(other.conflict_result))
@@ -768,6 +770,8 @@ GCodeProcessorResult &GCodeProcessorResult::operator=(GCodeProcessorResult &&oth
         filament_diameters = std::move(other.filament_diameters);
         filament_densities = std::move(other.filament_densities);
         filament_cost = std::move(other.filament_cost);
+        time_cost = other.time_cost;
+        currency_symbol = std::move(other.currency_symbol);
         custom_gcode_per_print_z = std::move(other.custom_gcode_per_print_z);
         spiral_vase_mode = other.spiral_vase_mode;
         conflict_result = std::move(other.conflict_result);
@@ -812,6 +816,8 @@ void GCodeProcessorResult::reset()
     filament_diameters = std::vector<float>(MIN_EXTRUDERS_COUNT, DEFAULT_FILAMENT_DIAMETER);
     filament_densities = std::vector<float>(MIN_EXTRUDERS_COUNT, DEFAULT_FILAMENT_DENSITY);
     filament_cost = std::vector<float>(MIN_EXTRUDERS_COUNT, DEFAULT_FILAMENT_COST);
+    time_cost = 0.0f;
+    currency_symbol = "$";
     custom_gcode_per_print_z = std::vector<CustomGCode::Item>();
     custom_gcode_per_print_z.shrink_to_fit();
     spiral_vase_mode = false;
@@ -980,6 +986,9 @@ void GCodeProcessor::apply_config(const PrintConfig &config)
         m_result.filament_densities[i] = static_cast<float>(config.filament_density.get_at(i));
         m_result.filament_cost[i] = static_cast<float>(config.filament_cost.get_at(i));
     }
+
+    m_result.time_cost = static_cast<float>(config.time_cost.value);
+    m_result.currency_symbol = config.currency_symbol.value;
 
     if ((m_flavor == gcfMarlinLegacy || m_flavor == gcfMarlinFirmware || m_flavor == gcfRepRapFirmware ||
          m_flavor == gcfRapid || m_flavor == gcfKlipper) &&
@@ -1186,6 +1195,14 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig &config)
             m_result.filament_cost.emplace_back(DEFAULT_FILAMENT_COST);
         }
     }
+
+    // Machine hourly rate and currency for job cost estimation
+    const ConfigOptionFloat *time_cost = config.option<ConfigOptionFloat>("time_cost");
+    if (time_cost != nullptr)
+        m_result.time_cost = static_cast<float>(time_cost->value);
+    const ConfigOptionString *currency_symbol = config.option<ConfigOptionString>("currency_symbol");
+    if (currency_symbol != nullptr && !currency_symbol->value.empty())
+        m_result.currency_symbol = currency_symbol->value;
 
     const ConfigOptionPoints *extruder_offset = config.option<ConfigOptionPoints>("extruder_offset");
     if (extruder_offset != nullptr)
@@ -1764,6 +1781,7 @@ void GCodeProcessor::post_process_virtual_file()
         filament_cost[id] = filament_g[id] * double(m_result.filament_cost[id]) * 0.001;
         filament_total_g += filament_g[id];
         filament_total_cost += filament_cost[id];
+        m_result.print_statistics.cost_per_extruder[id] = filament_cost[id];
     }
 
     // Format helpers - mirrors post_process() for identical behavior
@@ -5827,6 +5845,7 @@ void GCodeProcessor::post_process()
         filament_cost[id] = filament_g[id] * double(m_result.filament_cost[id]) * 0.001;
         filament_total_g += filament_g[id];
         filament_total_cost += filament_cost[id];
+        m_result.print_statistics.cost_per_extruder[id] = filament_cost[id];
     }
 
     double total_g_wipe_tower = m_print->print_statistics().total_wipe_tower_filament_weight;
@@ -7170,6 +7189,7 @@ double GCodeProcessor::extract_absolute_position_on_axis(Axis axis, const GCodeR
         filament_cost[id] = filament_g[id] * double(m_result.filament_cost[id]) * 0.001;
         filament_total_g += filament_g[id];
         filament_total_cost += filament_cost[id];
+        m_result.print_statistics.cost_per_extruder[id] = filament_cost[id];
     }
 
     double total_g_wipe_tower = m_print->print_statistics().total_wipe_tower_filament_weight;

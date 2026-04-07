@@ -568,7 +568,7 @@ protected:
      * \param to_is_3way Whether the \p to junction is a splitting junction where two normal wall lines and a gap filler line come together.
      */
     void addToolpathSegment(const ExtrusionJunction &from, const ExtrusionJunction &to, bool is_odd,
-                            bool force_new_path, bool from_is_3way, bool to_is_3way);
+                            bool force_new_path, bool from_is_3way, bool to_is_3way, int source_poly_id = -1);
 
     /*!
      * connect junctions in each quad

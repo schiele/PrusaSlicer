@@ -1441,6 +1441,10 @@ void PrintObject::detect_surfaces_type()
                                   m_print->throw_if_canceled();
                                   LayerRegion *layerm = m_layers[idx_layer]->m_regions[region_id];
                                   layerm->slices_to_fill_surfaces_clipped();
+                                  // Remove narrow fill surface slivers immediately so
+                                  // discover_horizontal_shells() doesn't carve bridge
+                                  // anchors around degenerate geometry
+                                  layerm->remove_narrow_fill_surfaces();
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
                                   layerm->export_region_fill_surfaces_to_svg_debug("1_detect_surfaces_type-final");
 #endif /* SLIC3R_DEBUG_SLICE_PROCESSING */

@@ -761,6 +761,59 @@ int OrcaConfigImporter::parse_and_map_profile(const std::string &json_content, P
                                            << profile_name << ": " << e.what();
             }
         }
+
+        // Resolve acceleration percentages: Orca allows values like "50%" meaning
+        // that percentage of default_acceleration. preFlight needs absolute mm/s^2.
+        if (preset_type == Preset::TYPE_PRINT)
+        {
+            // Orca key -> preFlight key
+            static const std::vector<std::pair<std::string, std::string>> accel_pct_keys = {
+                {"bridge_acceleration", "bridge_acceleration"},
+                {"sparse_infill_acceleration", "infill_acceleration"},
+                {"internal_solid_infill_acceleration", "solid_infill_acceleration"},
+                {"top_surface_acceleration", "top_solid_infill_acceleration"},
+                {"initial_layer_acceleration", "first_layer_acceleration"},
+                {"inner_wall_acceleration", "perimeter_acceleration"},
+                {"outer_wall_acceleration", "external_perimeter_acceleration"},
+                {"travel_acceleration", "travel_acceleration"},
+            };
+
+            double default_accel = 0.0;
+            auto *opt = out_config.option<ConfigOptionFloat>("default_acceleration");
+            if (opt)
+                default_accel = opt->value;
+
+            for (auto &[orca_key, pf_key] : accel_pct_keys)
+            {
+                if (!j.contains(orca_key))
+                    continue;
+
+                std::string raw;
+                if (j[orca_key].is_string())
+                    raw = j[orca_key].get<std::string>();
+                else
+                    continue;
+
+                if (raw.empty() || raw.back() != '%')
+                    continue;
+
+                raw.pop_back(); // strip '%'
+                try
+                {
+                    double pct = std::stod(raw);
+                    double absolute = default_accel * pct / 100.0;
+                    // Round to integer - acceleration values are whole numbers
+                    int accel_int = static_cast<int>(std::round(absolute));
+                    out_config.set_deserialize_strict(pf_key, std::to_string(accel_int));
+                    ++mapped_count;
+                }
+                catch (const std::exception &e)
+                {
+                    BOOST_LOG_TRIVIAL(warning) << "OrcaImporter: Failed to resolve " << orca_key << " percentage in "
+                                               << profile_name << ": " << e.what();
+                }
+            }
+        }
     }
     catch (const nlohmann::json::parse_error &e)
     {

@@ -507,16 +507,12 @@ static BrimAreas top_level_outer_brim_area(const Print &print, const ConstPrintO
                 append(no_brim_area_object,
                        diff_ex(offset(ex_poly.contour, no_brim_offset, JoinType::Square), ex_poly_holes_reversed));
 
-            // For painted ears, each ear is individually clipped against the model by
-            // contour_for_this_ear in make_brim_ears_painted (which uses all contours combined).
-            // No no_brim_area needed for own model - other objects still add their contours.
-            if (!use_painted_brim_ears)
-            {
-                if (has_inner_brim || has_outer_brim)
-                    append(no_brim_area_object,
-                           offset_ex(ExPolygon(ex_poly.contour), brim_separation, JoinType::Square));
-                no_brim_area_object.emplace_back(ex_poly.contour);
-            }
+            // Always add contour to no_brim_area so ears from other instances get clipped.
+            // Painted ears are individually clipped against their own model in make_brim_ears_painted,
+            // but still need global clipping against other instances and objects.
+            if (has_inner_brim || has_outer_brim)
+                append(no_brim_area_object, offset_ex(ExPolygon(ex_poly.contour), brim_separation, JoinType::Square));
+            no_brim_area_object.emplace_back(ex_poly.contour);
         }
 
         for (const PrintInstance &instance : object->instances())

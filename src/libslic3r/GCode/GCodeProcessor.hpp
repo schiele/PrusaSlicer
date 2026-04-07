@@ -166,6 +166,8 @@ struct GCodeProcessorResult
     std::vector<float> filament_diameters;
     std::vector<float> filament_densities;
     std::vector<float> filament_cost;
+    float time_cost{0.0f};
+    std::string currency_symbol{"$"};
 
     PrintEstimatedStatistics print_statistics;
     std::vector<CustomGCode::Item> custom_gcode_per_print_z;
