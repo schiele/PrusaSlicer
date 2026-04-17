@@ -92,13 +92,13 @@ public:
         FuzzySkin,
         CounterboreBridge,
         Align,
-        MmSegmentation,
+        ColorMixing,
         Measure,
         Emboss,
         Svg,
         Simplify,
         BrimEars,
-        Relief, // No toolbar icon - activated via menu
+        Relief,
         Undefined
     };
 

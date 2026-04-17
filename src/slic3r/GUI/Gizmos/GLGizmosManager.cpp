@@ -24,7 +24,6 @@
 #include "slic3r/GUI/Gizmos/GLGizmoFuzzySkin.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoCut.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoSeam.hpp"
-#include "slic3r/GUI/Gizmos/GLGizmoMmuSegmentation.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoSimplify.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoEmboss.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoBrimEars.hpp"
@@ -33,6 +32,7 @@
 #include "slic3r/GUI/Gizmos/GLGizmoAlign.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoRelief.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmoCounterboreBridge.hpp"
+#include "slic3r/GUI/Gizmos/GLGizmoColorMixing.hpp"
 
 #include "libslic3r/format.hpp"
 #include "libslic3r/Model.hpp"
@@ -126,13 +126,13 @@ bool GLGizmosManager::init()
     m_gizmos.emplace_back(new GLGizmoFuzzySkin(m_parent, "fuzzy_skin_painting.svg", 7));
     m_gizmos.emplace_back(new GLGizmoCounterboreBridge(m_parent, "counterbore.svg", 8));
     m_gizmos.emplace_back(new GLGizmoAlign(m_parent, "align.svg", 9));
-    m_gizmos.emplace_back(new GLGizmoMmuSegmentation(m_parent, "mmu_segmentation.svg", 10));
+    m_gizmos.emplace_back(new GLGizmoColorMixing(m_parent, "mmu_segmentation.svg", 10));
     m_gizmos.emplace_back(new GLGizmoMeasure(m_parent, "measure.svg", 11));
     m_gizmos.emplace_back(new GLGizmoEmboss(m_parent));
     m_gizmos.emplace_back(new GLGizmoSVG(m_parent));
     m_gizmos.emplace_back(new GLGizmoSimplify(m_parent));
     m_gizmos.emplace_back(new GLGizmoBrimEars(m_parent, "brim_ears.svg", 12));
-    m_gizmos.emplace_back(new GLGizmoRelief(m_parent)); // No toolbar icon
+    m_gizmos.emplace_back(new GLGizmoRelief(m_parent));
 
     m_common_gizmos_data.reset(new CommonGizmosDataPool(&m_parent));
 
@@ -322,9 +322,6 @@ bool GLGizmosManager::gizmo_event(SLAGizmoEventType action, const Vec2d &mouse_p
     else if (m_current == Seam)
         return dynamic_cast<GLGizmoSeam *>(m_gizmos[Seam].get())
             ->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
-    else if (m_current == MmSegmentation)
-        return dynamic_cast<GLGizmoMmuSegmentation *>(m_gizmos[MmSegmentation].get())
-            ->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
     else if (m_current == Measure)
         return dynamic_cast<GLGizmoMeasure *>(m_gizmos[Measure].get())
             ->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
@@ -336,6 +333,9 @@ bool GLGizmosManager::gizmo_event(SLAGizmoEventType action, const Vec2d &mouse_p
             ->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
     else if (m_current == BrimEars)
         return dynamic_cast<GLGizmoBrimEars *>(m_gizmos[BrimEars].get())
+            ->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
+    else if (m_current == ColorMixing)
+        return dynamic_cast<GLGizmoColorMixing *>(m_gizmos[ColorMixing].get())
             ->gizmo_event(action, mouse_position, shift_down, alt_down, control_down);
     else
         return false;
@@ -418,8 +418,8 @@ bool GLGizmosManager::on_mouse_wheel(const wxMouseEvent &evt)
 {
     bool processed = false;
 
-    if (m_current == FdmSupports || m_current == Seam || m_current == MmSegmentation || m_current == FuzzySkin ||
-        m_current == BrimEars)
+    if (m_current == FdmSupports || m_current == Seam || m_current == ColorMixing || m_current == FuzzySkin ||
+        m_current == BrimEars || m_current == CounterboreBridge)
     {
         float rot = (float) evt.GetWheelRotation() / (float) evt.GetWheelDelta();
         if (gizmo_event((rot > 0.f ? SLAGizmoEventType::MouseWheelUp : SLAGizmoEventType::MouseWheelDown),
@@ -613,8 +613,7 @@ bool GLGizmosManager::on_char(wxKeyEvent &evt)
         case 'r':
         case 'R':
         {
-            if ((m_current == FdmSupports || m_current == Seam || m_current == MmSegmentation ||
-                 m_current == FuzzySkin) &&
+            if ((m_current == FdmSupports || m_current == Seam || m_current == ColorMixing || m_current == FuzzySkin) &&
                 gizmo_event(SLAGizmoEventType::ResetClippingPlane))
                 processed = true;
 

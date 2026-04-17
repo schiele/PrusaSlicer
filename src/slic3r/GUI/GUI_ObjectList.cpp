@@ -2123,11 +2123,17 @@ void ObjectList::del_info_item(const int obj_idx, InfoItemType type)
         }
         break;
 
-    case InfoItemType::MmSegmentation:
+    case InfoItemType::ColorMixing:
         cnv->get_gizmos_manager().reset_all_states();
-        Plater::TakeSnapshot(plater, _L("Remove Multi Material painting"));
+        Plater::TakeSnapshot(plater, _L("Remove color mixing painting"));
         for (ModelVolume *mv : (*m_objects)[obj_idx]->volumes)
+        {
+            // Clear both legacy MMU paint and the active color-mixing paint+recipes so the
+            // badge disappears regardless of which painting era produced the data.
             mv->mm_segmentation_facets.reset();
+            mv->color_mixing_facets.reset();
+            mv->color_mixing_palette.clear();
+        }
         break;
 
     case InfoItemType::FuzzySkin:
@@ -3000,7 +3006,7 @@ void ObjectList::part_selection_changed()
                     }
                     case InfoItemType::CustomSupports:
                     case InfoItemType::CustomSeam:
-                    case InfoItemType::MmSegmentation:
+                    case InfoItemType::ColorMixing:
                     case InfoItemType::FuzzySkin:
                     {
                         GLGizmosManager::EType gizmo_type = info_type == InfoItemType::CustomSupports
@@ -3009,7 +3015,7 @@ void ObjectList::part_selection_changed()
                                                                 ? GLGizmosManager::EType::Seam
                                                             : info_type == InfoItemType::FuzzySkin
                                                                 ? GLGizmosManager::EType::FuzzySkin
-                                                                : GLGizmosManager::EType::MmSegmentation;
+                                                                : GLGizmosManager::EType::ColorMixing;
                         if (gizmos_mgr.get_current_type() != gizmo_type)
                             gizmos_mgr.open_gizmo(gizmo_type);
                         break;
@@ -3203,9 +3209,9 @@ void ObjectList::update_info_items(size_t obj_idx, wxDataViewItemArray *selectio
     wxDataViewItem item_obj = m_objects_model->GetItemById(obj_idx);
     assert(item_obj.IsOk());
 
-    for (InfoItemType type : {InfoItemType::CustomSupports, InfoItemType::CustomSeam, InfoItemType::CutConnectors,
-                              InfoItemType::MmSegmentation, InfoItemType::FuzzySkin, InfoItemType::Sinking,
-                              InfoItemType::VariableLayerHeight})
+    for (InfoItemType type :
+         {InfoItemType::CustomSupports, InfoItemType::CustomSeam, InfoItemType::CutConnectors,
+          InfoItemType::ColorMixing, InfoItemType::FuzzySkin, InfoItemType::Sinking, InfoItemType::VariableLayerHeight})
     {
         wxDataViewItem item = m_objects_model->GetInfoItemByType(item_obj, type);
         bool shows = item.IsOk();
@@ -3215,17 +3221,21 @@ void ObjectList::update_info_items(size_t obj_idx, wxDataViewItemArray *selectio
         {
         case InfoItemType::CustomSupports:
         case InfoItemType::CustomSeam:
-        case InfoItemType::MmSegmentation:
+        case InfoItemType::ColorMixing:
         case InfoItemType::FuzzySkin:
             should_show = printer_technology() == ptFFF &&
                           std::any_of(model_object->volumes.begin(), model_object->volumes.end(),
                                       [type](const ModelVolume *mv)
                                       {
+                                          // ColorMixing badge fires on either active color-mixing
+                                          // paint OR legacy MMU paint -- so old 3MFs still surface
+                                          // a badge the user can clear.
                                           return !(type == InfoItemType::CustomSupports ? mv->supported_facets.empty()
                                                    : type == InfoItemType::CustomSeam   ? mv->seam_facets.empty()
                                                    : type == InfoItemType::FuzzySkin
                                                        ? mv->fuzzy_skin_facets.empty()
-                                                       : mv->mm_segmentation_facets.empty());
+                                                       : (mv->color_mixing_facets.empty() &&
+                                                          mv->mm_segmentation_facets.empty()));
                                       });
             break;
 

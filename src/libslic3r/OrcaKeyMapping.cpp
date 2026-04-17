@@ -486,7 +486,7 @@ void OrcaKeyMapper::build_filament_mappings()
         ORCA_ONLY("pellet_flow_coefficient"),
         ORCA_ONLY("filament_stamping_distance"),
         ORCA_ONLY("filament_stamping_loading_speed"),
-        ORCA_ONLY("dont_slow_down_outer_wall"),
+        DIRECT("dont_slow_down_outer_wall"),
         ORCA_ONLY("internal_bridge_fan_speed"),
     };
 }

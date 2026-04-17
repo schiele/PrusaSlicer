@@ -671,15 +671,16 @@ std::vector<ExtruderExtrusions> get_extrusions(
             }
         }
 
-        // Extrude brim with the extruder of the 1st region.
-        // Chain brim entities by nearest-neighbor from current position (skirt end, wipe tower, etc.)
+        // Extrude brim in the order produced by make_brim/make_inner_brim.
+        // Brim loops must print in concentric order (each loop sticks to the previous one).
+        // Re-chaining by nearest-neighbor would scramble this order, causing loops to print
+        // out of sequence with nothing to adhere to.
         if (get_brim)
         {
-            const Point *brim_start = previous_position.has_value() ? &*previous_position : nullptr;
-            for (const auto &[entity_idx, flipped] : chain_extrusion_entities(print.brim().entities, brim_start))
+            for (size_t entity_idx = 0; entity_idx < print.brim().entities.size(); ++entity_idx)
             {
                 const ExtrusionEntity *entity = print.brim().entities[entity_idx];
-                bool reverse{flipped};
+                bool reverse{false};
                 bool is_loop{false};
                 if (auto loop = dynamic_cast<const ExtrusionLoop *>(entity))
                 {

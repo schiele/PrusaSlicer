@@ -18,6 +18,7 @@
 #include "Exception.hpp"
 
 #include "Geometry/ConvexHull.hpp"
+#include "MixedColorPalette.hpp"
 #include "MTUtils.hpp"
 #include "TriangleMeshSlicer.hpp"
 #include "TriangleSelector.hpp"
@@ -1167,6 +1168,8 @@ void ModelVolume::reset_extra_facets()
     this->mm_segmentation_facets.reset();
     this->fuzzy_skin_facets.reset();
     this->counterbore_bridge_facets.reset();
+    this->color_mixing_facets.reset();
+    this->color_mixing_palette.clear();
 }
 
 // Support for non-uniform scaling of instances. If an instance is rotated by angles, which are not multiples of ninety degrees,
@@ -1548,6 +1551,7 @@ void ModelVolume::assign_new_unique_ids_recursive()
     mm_segmentation_facets.set_new_unique_id();
     fuzzy_skin_facets.set_new_unique_id();
     counterbore_bridge_facets.set_new_unique_id();
+    color_mixing_facets.set_new_unique_id();
 }
 
 void ModelVolume::rotate(double angle, Axis axis)
@@ -2031,6 +2035,19 @@ bool model_counterbore_bridge_data_changed(const ModelObject &mo, const ModelObj
         { return mv_old.counterbore_bridge_facets.timestamp_matches(mv_new.counterbore_bridge_facets); });
 }
 
+bool model_color_mixing_data_changed(const ModelObject &mo, const ModelObject &mo_new)
+{
+    // Changes in either the painted facets OR the per-volume recipe table must invalidate
+    // the slice: a recipe edit (even without new paint strokes) alters the resolved colors.
+    return model_property_changed(
+        mo, mo_new, [](const ModelVolumeType t) { return t == ModelVolumeType::MODEL_PART; },
+        [](const ModelVolume &mv_old, const ModelVolume &mv_new)
+        {
+            return mv_old.color_mixing_facets.timestamp_matches(mv_new.color_mixing_facets) &&
+                   mv_old.color_mixing_palette == mv_new.color_mixing_palette;
+        });
+}
+
 bool model_brim_points_data_changed(const ModelObject &mo, const ModelObject &mo_new)
 {
     if (mo.brim_points.size() != mo_new.brim_points.size())
@@ -2135,6 +2152,63 @@ void check_model_ids_equal(const Model &model1, const Model &model2)
 }
 
 #endif /* NDEBUG */
+
+void ensure_color_mixing_recipes_for_used_states(const MixedColorPalette &palette, ModelVolume &mv)
+{
+    const auto &used = mv.color_mixing_facets.get_data().used_states;
+    size_t max_used = 0;
+    std::vector<size_t> actually_used;
+    for (size_t s = 1; s < used.size(); ++s)
+        if (used[s])
+        {
+            max_used = s;
+            actually_used.push_back(s);
+        }
+    if (max_used == 0)
+        return;
+
+    // Defensive cap; deserialization already enforces MAX_PAINTED_STATE. Refusing to balloon
+    // the recipe table here protects against in-memory bugs that bypass the bitstream path.
+    if (max_used > MAX_PAINTED_STATE)
+        max_used = MAX_PAINTED_STATE;
+
+    const size_t old_size = mv.color_mixing_palette.size();
+
+    // Grow the recipe table if new states push past the existing size.
+    if (max_used > old_size)
+        mv.color_mixing_palette.resize(max_used);
+
+    // Sync every CURRENTLY-USED state's recipe to the current palette's predicted_color.
+    // Historically we only filled new slots ("preserve painted intent across filament swaps")
+    // but that interacts badly with palette shape changes (dedup, filament count changes):
+    // stale recipes from a previous session at early indices stay even when the user paints
+    // new regions, producing colors in the 3D view / slicer that don't match what the gizmo
+    // shows. Syncing on paint-commit keeps recipe.rgb aligned with what the user just clicked.
+    // Existing recipes for states that ARE still in used_states get refreshed; recipes past
+    // max_used (slots that no triangle references) are left alone so resize doesn't drop them.
+    // Locked recipes (extruder_lock >= 0) are preserved as-is.
+    auto rgb_from_predicted = [](const ColorRGB &c) -> uint32_t
+    {
+        return ((uint32_t) (std::clamp(c.r(), 0.f, 1.f) * 255.f + 0.5f) << 16) |
+               ((uint32_t) (std::clamp(c.g(), 0.f, 1.f) * 255.f + 0.5f) << 8) |
+               ((uint32_t) (std::clamp(c.b(), 0.f, 1.f) * 255.f + 0.5f));
+    };
+    for (size_t s : actually_used)
+    {
+        const size_t i = s - 1;
+        if (i >= mv.color_mixing_palette.size())
+            continue;
+        ColorMixingRecipe &rec = mv.color_mixing_palette[i];
+        if (rec.is_locked())
+            continue;
+        uint32_t new_rgb = 0;
+        if (i < palette.colors().size())
+            new_rgb = rgb_from_predicted(palette.colors()[i].predicted_color);
+        if (rec.rgb == new_rgb)
+            continue;
+        rec.rgb = new_rgb;
+    }
+}
 
 } // namespace Slic3r
 

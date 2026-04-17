@@ -28,6 +28,8 @@
 #include <mutex>
 #include <stack>
 
+#include "slic3r/Utils/TD1SSensor.hpp"
+
 class wxMenuItem;
 class wxMenuBar;
 class wxTopLevelWindow;
@@ -201,6 +203,8 @@ private:
     bool m_startup_update_shown{false};      // preFlight: first update-available check shows full dialog
     std::unique_ptr<wxSingleInstanceChecker> m_single_instance_checker;
     std::unique_ptr<Downloader> m_downloader;
+
+    TD1SSensor m_td1s_sensor; // TD1S filament color/TD sensor monitor
 
     std::string m_instance_hash_string;
     size_t m_instance_hash_int;

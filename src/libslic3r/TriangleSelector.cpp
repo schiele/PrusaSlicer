@@ -1301,6 +1301,13 @@ void TriangleSelector::set_facet(int facet_idx, TriangleStateType state)
     m_triangles[facet_idx].set_state(state);
 }
 
+void TriangleSelector::remap_states(const std::function<TriangleStateType(TriangleStateType)> &remap_fn)
+{
+    for (auto &tr : m_triangles)
+        if (tr.valid() && !tr.is_split())
+            tr.set_state(remap_fn(tr.get_state()));
+}
+
 // called by select_patch()->select_triangle()...select_triangle()
 // to decide which sides of the triangle to split and to actually split it calling set_division() and perform_split().
 void TriangleSelector::split_triangle(int facet_idx, const Vec3i &neighbors)
@@ -1781,7 +1788,7 @@ typename IndexedTriangleSetType<facet_info>::type TriangleSelector::get_facets(
 
             if constexpr (facet_info == AdditionalMeshInfo::Color)
             {
-                out.colors.emplace_back(static_cast<uint8_t>(tr.get_state()));
+                out.colors.emplace_back(static_cast<uint16_t>(tr.get_state()));
             }
         }
     }
@@ -1835,7 +1842,7 @@ typename IndexedTriangleSetType<facet_info>::type TriangleSelector::get_facets_s
         }
     }
 
-    std::vector<uint8_t> out_colors;
+    std::vector<uint16_t> out_colors;
     for (int itriangle = 0; itriangle < m_orig_size_indices; ++itriangle)
         this->get_facets_strict_recursive<facet_info>(m_triangles[itriangle], m_neighbors[itriangle], facet_filter,
                                                       out.indices, out_colors);
@@ -1875,7 +1882,7 @@ template<AdditionalMeshInfo facet_info>
 void TriangleSelector::get_facets_strict_recursive(const Triangle &tr, const Vec3i &neighbors,
                                                    const std::function<bool(const Triangle &)> &facet_filter,
                                                    std::vector<stl_triangle_vertex_indices> &out_triangles,
-                                                   std::vector<uint8_t> &out_colors) const
+                                                   std::vector<uint16_t> &out_colors) const
 {
     if (tr.is_split())
     {
@@ -1886,16 +1893,16 @@ void TriangleSelector::get_facets_strict_recursive(const Triangle &tr, const Vec
     }
     else if (facet_filter(tr))
     {
-        const uint8_t facet_color = static_cast<uint8_t>(tr.get_state());
+        const uint16_t facet_color = static_cast<uint16_t>(tr.get_state());
         this->get_facets_split_by_tjoints<facet_info>({tr.verts_idxs[0], tr.verts_idxs[1], tr.verts_idxs[2]}, neighbors,
                                                       facet_color, out_triangles, out_colors);
     }
 }
 
 template<AdditionalMeshInfo facet_info>
-void TriangleSelector::get_facets_split_by_tjoints(const Vec3i &vertices, const Vec3i &neighbors, const uint8_t color,
+void TriangleSelector::get_facets_split_by_tjoints(const Vec3i &vertices, const Vec3i &neighbors, const uint16_t color,
                                                    std::vector<stl_triangle_vertex_indices> &out_triangles,
-                                                   std::vector<uint8_t> &out_colors) const
+                                                   std::vector<uint16_t> &out_colors) const
 {
     // Export this triangle, but first collect the T-joint vertices along its edges.
     Vec3i midpoints(this->triangle_midpoint(neighbors(0), vertices(1), vertices(0)),
@@ -2089,19 +2096,28 @@ TriangleSelector::TriangleSplittingData TriangleSelector::serialize() const
             {
                 // In case this is leaf, we better save information about its state.
                 int n = int(tr.get_state());
-                if (n < static_cast<int>(TriangleStateType::Count))
-                    data.used_states[n] = true;
+                // Grow used_states if needed for extended color mixing states
+                if (n >= (int) data.used_states.size())
+                    data.used_states.resize(n + 1, false);
+                data.used_states[n] = true;
 
                 if (n >= 3)
                 {
-                    assert(n <= 16);
                     if (n <= 16)
                     {
-                        // Store "11" plus 4 bits of (n-3).
+                        // Store "11" plus 4 bits of (n-3). Encoding for states 3-16.
                         data.bitstream.insert(data.bitstream.end(), {true, true});
-                        n -= 3;
+                        int v = n - 3;
                         for (size_t bit_idx = 0; bit_idx < 4; ++bit_idx)
-                            data.bitstream.push_back(n & (uint64_t(0b0001) << bit_idx));
+                            data.bitstream.push_back(v & (uint64_t(0b0001) << bit_idx));
+                    }
+                    else
+                    {
+                        // Extended encoding for states 17+: "11" + nibble 0xF + 16-bit value
+                        data.bitstream.insert(data.bitstream.end(), {true, true});
+                        data.bitstream.insert(data.bitstream.end(), {true, true, true, true}); // escape nibble = 15
+                        for (size_t bit_idx = 0; bit_idx < 16; ++bit_idx)
+                            data.bitstream.push_back(n & (1 << bit_idx));
                     }
                 }
                 else
@@ -2164,8 +2180,11 @@ void TriangleSelector::deserialize(const TriangleSplittingData &data, bool needs
     {
         assert(triangle_id < int(m_triangles.size()));
         assert(ibit < int(data.bitstream.size()));
-        auto next_nibble = [&data, &ibit = ibit]()
+        const int bitstream_size = int(data.bitstream.size());
+        auto next_nibble = [&data, &ibit = ibit, bitstream_size]() -> int
         {
+            if (ibit + 4 > bitstream_size)
+                return -1; // Signal truncated data
             int n = 0;
             for (int i = 0; i < 4; ++i)
                 n |= data.bitstream[ibit++] << i;
@@ -2177,12 +2196,50 @@ void TriangleSelector::deserialize(const TriangleSplittingData &data, bool needs
         {
             // Read next triangle info.
             int code = next_nibble();
+            if (code < 0)
+                break; // Truncated bitstream
             int num_of_split_sides = code & 0b11;
             int num_of_children = num_of_split_sides == 0 ? 0 : num_of_split_sides + 1;
             bool is_split = num_of_children != 0;
-            // Only valid if not is_split. Value of the second nibble was subtracted by 3, so it is added back.
-            auto state = is_split ? TriangleStateType::NONE
-                                  : TriangleStateType((code & 0b1100) == 0b1100 ? next_nibble() + 3 : code >> 2);
+            // Only valid if not is_split. Second nibble was subtracted by 3, so add back.
+            // Sentinel 15 escapes to a 16-bit extended value (color mixing states 17+).
+            TriangleStateType state = TriangleStateType::NONE;
+            if (!is_split)
+            {
+                if ((code & 0b1100) == 0b1100)
+                {
+                    int second = next_nibble();
+                    if (second < 0)
+                        break; // Truncated bitstream
+                    if (second == 15 && ibit + 16 <= bitstream_size)
+                    {
+                        // Extended encoding: next 16 bits are the raw state value
+                        int val = 0;
+                        for (int bit = 0; bit < 16; ++bit)
+                            val |= (data.bitstream[ibit++] ? 1 : 0) << bit;
+                        // Cap to defend against corrupt/hostile bitstreams. A legitimate file
+                        // never needs state values this large; values past the cap collapse to
+                        // NONE so the triangle is treated as unpainted rather than triggering
+                        // a 65k-entry recipe-table allocation downstream.
+                        if (val > (int) MAX_PAINTED_STATE)
+                            state = TriangleStateType::NONE;
+                        else
+                            state = TriangleStateType(val);
+                    }
+                    else if (second == 15)
+                    {
+                        break; // Truncated extended encoding
+                    }
+                    else
+                    {
+                        state = TriangleStateType(second + 3);
+                    }
+                }
+                else
+                {
+                    state = TriangleStateType(code >> 2);
+                }
+            }
             // Only valid if is_split.
             int special_side = code >> 2;
 
@@ -2260,25 +2317,64 @@ void TriangleSelector::TriangleSplittingData::update_used_states(const size_t bi
         return;
 
     size_t nibble_idx = bitstream_start_idx;
+    const size_t bitstream_size = this->bitstream.size();
 
-    auto read_next_nibble = [&data_bitstream = std::as_const(this->bitstream), &nibble_idx]() -> uint8_t
+    auto read_next_nibble = [&data_bitstream = std::as_const(this->bitstream), &nibble_idx, bitstream_size]() -> int
     {
-        assert(nibble_idx + 3 < data_bitstream.size());
+        if (nibble_idx + 4 > bitstream_size)
+            return -1; // Signal truncated data
         uint8_t code = 0;
         for (size_t bit_idx = 0; bit_idx < 4; ++bit_idx)
             code |= data_bitstream[nibble_idx++] << bit_idx;
         return code;
     };
 
-    while (nibble_idx < this->bitstream.size())
+    while (nibble_idx + 4 <= bitstream_size)
     {
-        const uint8_t code = read_next_nibble();
+        const int code = read_next_nibble();
+        if (code < 0)
+            break; // Truncated
 
         if (const bool is_split = (code & 0b11) != 0; is_split)
             continue;
 
-        const uint8_t facet_state = (code & 0b1100) == 0b1100 ? read_next_nibble() + 3 : code >> 2;
-        assert(facet_state < this->used_states.size());
+        uint16_t facet_state;
+        if ((code & 0b1100) == 0b1100)
+        {
+            int second = read_next_nibble();
+            if (second < 0)
+                break; // Truncated
+            if (second == 15 && nibble_idx + 16 <= bitstream_size)
+            {
+                // Extended encoding: next 16 bits are the full state value (color mixing)
+                int val = 0;
+                for (int bit = 0; bit < 16; ++bit)
+                    val |= (this->bitstream[nibble_idx++] ? 1 : 0) << bit;
+                facet_state = (uint16_t) val;
+            }
+            else if (second == 15)
+            {
+                break; // Truncated extended encoding
+            }
+            else
+            {
+                facet_state = second + 3;
+            }
+        }
+        else
+        {
+            facet_state = code >> 2;
+        }
+
+        // Cap state values defensively: a legitimate file never needs anything this high,
+        // and an attacker-controlled 16-bit value would resize used_states to 65k entries
+        // and cascade through to a 65k-entry recipe-table allocation in the gizmo / slicer.
+        if (facet_state > MAX_PAINTED_STATE)
+            continue;
+
+        // Grow used_states if needed for extended color mixing states
+        if (facet_state >= this->used_states.size())
+            this->used_states.resize(facet_state + 1, false);
         if (facet_state >= this->used_states.size())
             continue;
 
@@ -2298,24 +2394,58 @@ bool TriangleSelector::has_facets(const TriangleSplittingData &data, const Trian
     {
         int ibit = triangle_id_and_ibit.bitstream_start_idx;
         assert(ibit < int(data.bitstream.size()));
-        auto next_nibble = [&data, &ibit = ibit]()
+        const int bitstream_size = int(data.bitstream.size());
+        auto next_nibble = [&data, &ibit = ibit, bitstream_size]() -> int
         {
+            if (ibit + 4 > bitstream_size)
+                return -1; // Signal truncated data
             int n = 0;
             for (int i = 0; i < 4; ++i)
                 n |= data.bitstream[ibit++] << i;
             return n;
         };
-        // < 0 -> negative of a number of children
-        // >= 0 -> state
-        auto num_children_or_state = [&next_nibble]() -> int
+        // Return values:
+        //   TRUNCATED  -> bitstream ran out mid-read; caller must abandon this triangle.
+        //   <= -2      -> node is split; child count = -value (so -2/-3/-4 = 1/2/3 children).
+        //   >= 0       -> leaf state value.
+        // -1 is reserved as the truncation sentinel and never overlaps the split encoding,
+        // which only ever produces -2..-4.
+        constexpr int TRUNCATED = -1;
+        auto num_children_or_state = [&next_nibble, &data, &ibit, bitstream_size]() -> int
         {
             int code = next_nibble();
+            if (code < 0)
+                return TRUNCATED;
             int num_of_split_sides = code & 0b11;
-            return num_of_split_sides == 0 ? ((code & 0b1100) == 0b1100 ? next_nibble() + 3 : code >> 2)
-                                           : -num_of_split_sides - 1;
+            if (num_of_split_sides != 0)
+                return -num_of_split_sides - 1;
+            if ((code & 0b1100) == 0b1100)
+            {
+                int second = next_nibble();
+                if (second < 0)
+                    return TRUNCATED;
+                if (second == 15 && ibit + 16 <= bitstream_size)
+                {
+                    // Extended encoding: 16 bits for state value
+                    int val = 0;
+                    for (int bit = 0; bit < 16; ++bit)
+                        val |= (data.bitstream[ibit++] ? 1 : 0) << bit;
+                    return val;
+                }
+                else if (second == 15)
+                {
+                    return TRUNCATED;
+                }
+                return second + 3;
+            }
+            return code >> 2;
         };
 
         int state = num_children_or_state();
+        if (state == TRUNCATED)
+            // Bitstream truncated before this triangle's root nibble. Other triangles may
+            // still have valid data at their own bitstream_start_idx, so skip rather than abort.
+            continue;
         if (state < 0)
         {
             // Root is split.
@@ -2326,6 +2456,9 @@ bool TriangleSelector::has_facets(const TriangleSplittingData &data, const Trian
                 if (--parents_children.back() >= 0)
                 {
                     int state = num_children_or_state();
+                    if (state == TRUNCATED)
+                        // Bitstream ran out partway through this subtree; can't recurse further.
+                        break;
                     if (state < 0)
                         // Child is split.
                         parents_children.emplace_back(-state);

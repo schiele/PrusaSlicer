@@ -30,7 +30,6 @@ namespace Slic3r::GUI
 enum class SLAGizmoEventType : unsigned char;
 class ClippingPlane;
 struct Camera;
-class GLGizmoMmuSegmentation;
 class Selection;
 
 enum class PainterGizmoType
@@ -39,7 +38,8 @@ enum class PainterGizmoType
     SEAM,
     MM_SEGMENTATION,
     FUZZY_SKIN,
-    COUNTERBORE_BRIDGE
+    COUNTERBORE_BRIDGE,
+    COLOR_MIXING
 };
 
 class TriangleSelectorGUI : public TriangleSelector
@@ -91,10 +91,13 @@ protected:
 class GLGizmoPainterBase : public GLGizmoBase
 {
 private:
-    ObjectID m_old_mo_id;
-    size_t m_old_volumes_size = 0;
     void on_render() override {}
 
+protected:
+    ObjectID m_old_mo_id;
+    size_t m_old_volumes_size = 0;
+
+private:
 public:
     GLGizmoPainterBase(GLCanvas3D &parent, const std::string &icon_filename, unsigned int sprite_id);
     ~GLGizmoPainterBase() override;
@@ -208,25 +211,9 @@ protected:
 
     TriangleSelector::ClippingPlane get_clipping_plane_in_volume_coordinates(const Transform3d &trafo) const;
 
-private:
-    std::vector<std::vector<ProjectedMousePosition>> get_projected_mouse_positions(
-        const Vec2d &mouse_position, double resolution, const std::vector<Transform3d> &trafo_matrices) const;
-
-    bool is_mesh_point_clipped(const Vec3d &point, const Transform3d &trafo) const;
-    void update_raycast_cache(const Vec2d &mouse_position, const Camera &camera,
-                              const std::vector<Transform3d> &trafo_matrices) const;
-
-    static std::shared_ptr<GLModel> s_sphere;
-
-    bool m_schedule_update = false;
-    Vec2d m_last_mouse_click = Vec2d::Zero();
-
-    Button m_button_down = Button::None;
-    EState m_old_state = Off; // to be able to see that the gizmo has just been closed (see on_set_state)
-
-    // Following cache holds result of a raycast query. The queries are asked
-    // during rendering the sphere cursor and painting, this saves repeated
-    // raycasts when the mouse position is the same as before.
+    // Raycast helpers accessible to subclasses that need hit information (e.g. eyedropper).
+    // Cache holds the result of the most recent query; reused during cursor rendering and
+    // painting to avoid repeat raycasts on the same pixel.
     struct RaycastResult
     {
         Vec2d mouse_position;
@@ -235,6 +222,23 @@ private:
         size_t facet;
     };
     mutable RaycastResult m_rr = {Vec2d::Zero(), -1, Vec3f::Zero(), 0};
+
+    void update_raycast_cache(const Vec2d &mouse_position, const Camera &camera,
+                              const std::vector<Transform3d> &trafo_matrices) const;
+
+private:
+    std::vector<std::vector<ProjectedMousePosition>> get_projected_mouse_positions(
+        const Vec2d &mouse_position, double resolution, const std::vector<Transform3d> &trafo_matrices) const;
+
+    bool is_mesh_point_clipped(const Vec3d &point, const Transform3d &trafo) const;
+
+    static std::shared_ptr<GLModel> s_sphere;
+
+    bool m_schedule_update = false;
+    Vec2d m_last_mouse_click = Vec2d::Zero();
+
+    Button m_button_down = Button::None;
+    EState m_old_state = Off; // to be able to see that the gizmo has just been closed (see on_set_state)
 
     // Line drawing state
     bool m_line_start_set = false;            // True when first click is done
@@ -273,8 +277,6 @@ protected:
     bool wants_enter_leave_snapshots() const override { return true; }
 
     virtual wxString handle_snapshot_action_name(bool control_down, Button button_down) const = 0;
-
-    friend class ::Slic3r::GUI::GLGizmoMmuSegmentation;
 };
 
 } // namespace Slic3r::GUI

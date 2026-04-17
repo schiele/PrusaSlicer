@@ -24,7 +24,7 @@
 #include "Camera.hpp"
 #include "Theme.hpp"
 
-#include "Gizmos/GLGizmoMmuSegmentation.hpp"
+#include "Gizmos/TriangleSelectorMmGui.hpp"
 
 #include "libslic3r/BuildVolume.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
@@ -763,7 +763,9 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
                                         ? GUI::wxGetApp().get_shader("dashed_thick_lines")
                                         : GUI::wxGetApp().get_shader("flat");
 #endif // SLIC3R_OPENGL_ES
-    GLShaderProgram *mmu_painted_shader = GUI::wxGetApp().get_shader("mm_gouraud");
+    GLShaderProgram *mmu_painted_shader = GUI::wxGetApp().get_shader("mm_color_preview");
+    if (!mmu_painted_shader)
+        mmu_painted_shader = GUI::wxGetApp().get_shader("mm_gouraud"); // fallback
     if (curr_shader == nullptr || sink_shader == nullptr || edges_shader == nullptr || mmu_painted_shader == nullptr)
         return;
 
@@ -790,9 +792,11 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
     const std::vector<ColorRGBA> extruders_colors = GUI::wxGetApp().plater()->get_extruder_colors_from_plater_config();
     const bool is_render_as_mmu_painted_enabled = !model_objects.empty() && !extruders_colors.empty();
 
-    if (m_mm_paint_cache.extruders_colors != extruders_colors)
+    const size_t extruder_count = GUI::wxGetApp().extruders_edited_cnt();
+    if (m_mm_paint_cache.extruders_colors != extruders_colors || m_mm_paint_cache.extruder_count != extruder_count)
     {
         m_mm_paint_cache.extruders_colors = extruders_colors;
+        m_mm_paint_cache.extruder_count = extruder_count;
         m_mm_paint_cache.volume_data.clear();
     }
     auto time_now = std::chrono::system_clock::now();
@@ -807,10 +811,13 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
         const Matrix3d view_normal_matrix = view_matrix.linear() * world_matrix_inv_transp;
         const int obj_idx = volume.first->object_idx();
         const int vol_idx = volume.first->volume_idx();
+        const bool has_painted_facets = obj_idx >= 0 && vol_idx >= 0 &&
+                                        (!model_objects[obj_idx]->volumes[vol_idx]->mm_segmentation_facets.empty() ||
+                                         (!model_objects[obj_idx]->volumes[vol_idx]->color_mixing_facets.empty() &&
+                                          !model_objects[obj_idx]->volumes[vol_idx]->color_mixing_palette.empty()));
         const bool render_as_mmu_painted =
             is_render_as_mmu_painted_enabled && !volume.first->selected && !volume.first->is_outside &&
-            volume.first->hover == GLVolume::HS_None && !volume.first->is_wipe_tower() && obj_idx >= 0 &&
-            vol_idx >= 0 && !model_objects[obj_idx]->volumes[vol_idx]->mm_segmentation_facets.empty() &&
+            volume.first->hover == GLVolume::HS_None && !volume.first->is_wipe_tower() && has_painted_facets &&
             type != GLVolumeCollection::ERenderType::Transparent; // to filter out shells (not very nice)
         volume.first->set_render_color(true);
 
@@ -855,29 +862,67 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
             const size_t extruder_idx = ModelVolume::get_extruder_color_idx(model_volume,
                                                                             GUI::wxGetApp().extruders_edited_cnt());
 
-            // This block retrieves the painted geometry from the cache or adds it to it.
+            // color_mixing wins over mm_segmentation when both are present: active CMYK
+            // painting reflects the user's current intent, while mm_segmentation is the
+            // legacy path carried forward from older 3MFs. The per-volume color_mixing
+            // palette holds already-resolved RGB per state, so we can render without
+            // consulting the runtime MixedColorPalette.
+            const bool use_color_mixing = !model_volume.color_mixing_facets.empty() &&
+                                          !model_volume.color_mixing_palette.empty();
+
+            // Cache key includes both paint timestamps plus the color mixing palette contents
+            // -- a recipe edit invalidates render geometry even when facet timestamps don't move.
+            const uint64_t mm_ts = model_volume.mm_segmentation_facets.timestamp();
+            const uint64_t cm_ts = model_volume.color_mixing_facets.timestamp();
+
             ObjectID vol_id = model_volume.id();
             auto it = m_mm_paint_cache.volume_data.find(vol_id);
-            GUI::TriangleSelectorMmGui *ts = nullptr;
-            uint64_t timestamp = model_volume.mm_segmentation_facets.timestamp();
-            if (it == m_mm_paint_cache.volume_data.end() || it->second.extruder_id != extruder_idx ||
-                timestamp != it->second.mm_timestamp)
+            const bool cache_miss = it == m_mm_paint_cache.volume_data.end() ||
+                                    it->second.extruder_id != extruder_idx || it->second.mm_timestamp != mm_ts ||
+                                    it->second.cm_timestamp != cm_ts ||
+                                    it->second.cm_palette != model_volume.color_mixing_palette;
+            if (cache_miss)
             {
-                auto ts_uptr =
-                    std::make_unique<GUI::TriangleSelectorMmGui>(model_volume.mesh(), m_mm_paint_cache.extruders_colors,
-                                                                 m_mm_paint_cache.extruders_colors[extruder_idx]);
-                ts = ts_uptr.get();
-                ts->deserialize(model_volume.mm_segmentation_facets.get_data(), true);
-                ts->request_update_render_data();
-                m_mm_paint_cache.volume_data[vol_id] = MMPaintCachePerVolume{extruder_idx, std::move(ts_uptr),
-                                                                             std::chrono::system_clock::now(),
-                                                                             timestamp};
+                // Build the entry in-place in the map so the TriangleSelectorMmGui's
+                // reference into render_palette stays valid for the entry's lifetime.
+                MMPaintCachePerVolume &entry = m_mm_paint_cache.volume_data[vol_id];
+                entry.triangle_selector_mm.reset();
+                entry.extruder_id = extruder_idx;
+                entry.time_used = std::chrono::system_clock::now();
+                entry.mm_timestamp = mm_ts;
+                entry.cm_timestamp = cm_ts;
+                entry.cm_palette = model_volume.color_mixing_palette;
+
+                if (use_color_mixing)
+                {
+                    entry.render_palette.clear();
+                    entry.render_palette.reserve(model_volume.color_mixing_palette.size());
+                    for (const ColorMixingRecipe &r : model_volume.color_mixing_palette)
+                        entry.render_palette.emplace_back(float((r.rgb >> 16) & 0xFF) / 255.f,
+                                                          float((r.rgb >> 8) & 0xFF) / 255.f,
+                                                          float(r.rgb & 0xFF) / 255.f, 1.0f);
+                }
+                else
+                    entry.render_palette = m_mm_paint_cache.extruders_colors;
+
+                const ColorRGBA default_color = extruder_idx < m_mm_paint_cache.extruders_colors.size()
+                                                    ? m_mm_paint_cache.extruders_colors[extruder_idx]
+                                                    : ColorRGBA::GRAY();
+
+                entry.triangle_selector_mm = std::make_unique<GUI::TriangleSelectorMmGui>(model_volume.mesh(),
+                                                                                          entry.render_palette,
+                                                                                          default_color);
+                if (use_color_mixing)
+                    entry.triangle_selector_mm->deserialize(model_volume.color_mixing_facets.get_data(), true);
+                else
+                    entry.triangle_selector_mm->deserialize(model_volume.mm_segmentation_facets.get_data(), true);
+                entry.triangle_selector_mm->request_update_render_data();
+                it = m_mm_paint_cache.volume_data.find(vol_id);
             }
             else
-            {
-                ts = it->second.triangle_selector_mm.get();
                 it->second.time_used = time_now;
-            }
+
+            GUI::TriangleSelectorMmGui *ts = it->second.triangle_selector_mm.get();
 
             ts->render(nullptr, world_matrix);
 

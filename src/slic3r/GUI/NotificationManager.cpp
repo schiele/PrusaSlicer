@@ -1999,9 +1999,9 @@ void NotificationManager::UpdatedItemsInfoNotification::add_type(InfoItemType ty
                            (*it).second) +
                     "\n";
             break;
-        case InfoItemType::MmSegmentation:
-            text += format(_L_PLURAL("%1$d object was loaded with multimaterial painting.",
-                                     "%1$d objects were loaded with multimaterial painting.", (*it).second),
+        case InfoItemType::ColorMixing:
+            text += format(_L_PLURAL("%1$d object was loaded with color mixing painting.",
+                                     "%1$d objects were loaded with color mixing painting.", (*it).second),
                            (*it).second) +
                     "\n";
             break;

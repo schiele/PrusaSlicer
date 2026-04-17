@@ -108,8 +108,6 @@ enum class NotificationType
     DesktopIntegrationFail,
     UndoDesktopIntegrationSuccess,
     UndoDesktopIntegrationFail,
-    // Notification that a printer has more extruders than are supported by MM Gizmo/segmentation.
-    MmSegmentationExceededExtrudersLimit,
     // Did you know Notification appearing on startup with arrows to change hint
     DidYouKnowHint,
     // Shows when  ObjectList::update_info_items finds information that should be stressed to the user

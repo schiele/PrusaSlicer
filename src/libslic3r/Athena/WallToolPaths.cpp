@@ -18,6 +18,7 @@
 #include "libslic3r/Geometry.hpp"
 #include "utils/PolylineStitcher.hpp"
 #include "libslic3r/ClipperUtils.hpp"
+#include "libslic3r/Fill/FillBase.hpp" // FILL_DEBUG flag + dbg_fill_print()
 #include "libslic3r/Athena/BeadingStrategy/BeadingStrategy.hpp"
 #include "libslic3r/Athena/BeadingStrategy/BeadingStrategyFactory.hpp"
 #include "libslic3r/Athena/utils/ExtrusionJunction.hpp"
@@ -1082,51 +1083,166 @@ const std::vector<VariableWidthLines> &WallToolPaths::getToolPaths()
     return toolpaths;
 }
 
+// ===================== WTP CLASSIFY DEBUG =====================
+// Log per-inset width distribution and the is_contour decision made by
+// separateOutInnerContour. Flags "MIXED" insets - those that contain a blend of
+// zero-width marker junctions and non-zero real-bead junctions - which defeat
+// the single-junction classifier and can slip degenerate 0-width markers into
+// the g-code as visible extrusion.
+static void dbg_wtp_classify(double z, int layer_id, const std::vector<VariableWidthLines> &toolpaths,
+                             size_t inset_count)
+{
+    if (!FILL_DEBUG)
+        return;
+    dbg_fill_print("z=%.3f [PERIM] WTP_CLASSIFY layer=%d inset_count=%zu toolpaths=%zu\n", z, layer_id, inset_count,
+                   toolpaths.size());
+    for (size_t inset_idx = 0; inset_idx < toolpaths.size(); ++inset_idx)
+    {
+        const VariableWidthLines &inset = toolpaths[inset_idx];
+        if (inset.empty())
+            continue;
+        // Predict the current classifier's decision (mirrors the live logic below).
+        bool predicted_is_contour = false;
+        for (const ExtrusionLine &line : inset)
+        {
+            if (line.empty())
+                continue;
+            predicted_is_contour = (line.junctions.front().w == 0);
+        }
+        // Count zero-width vs non-zero junctions across the whole inset to detect mixed insets.
+        size_t zero_junctions = 0, nonzero_junctions = 0, total_junctions = 0;
+        size_t mixed_lines = 0;
+        for (const ExtrusionLine &line : inset)
+        {
+            bool line_has_zero = false, line_has_nonzero = false;
+            for (const ExtrusionJunction &j : line.junctions)
+            {
+                if (j.w == 0)
+                {
+                    ++zero_junctions;
+                    line_has_zero = true;
+                }
+                else
+                {
+                    ++nonzero_junctions;
+                    line_has_nonzero = true;
+                }
+                ++total_junctions;
+            }
+            if (line_has_zero && line_has_nonzero)
+                ++mixed_lines;
+        }
+        const bool inset_mixed = (zero_junctions > 0 && nonzero_junctions > 0);
+        dbg_fill_print("z=%.3f [PERIM]   WTP_INSET idx=%zu lines=%zu zero_j=%zu nz_j=%zu mixed_lines=%zu "
+                       "inset_mixed=%d predicted_is_contour=%d\n",
+                       z, inset_idx, inset.size(), zero_junctions, nonzero_junctions, mixed_lines, inset_mixed ? 1 : 0,
+                       predicted_is_contour ? 1 : 0);
+        for (size_t li = 0; li < inset.size(); ++li)
+        {
+            const ExtrusionLine &line = inset[li];
+            if (line.junctions.empty())
+            {
+                dbg_fill_print("z=%.3f [PERIM]     WTP_LINE  [%zu] EMPTY\n", z, li);
+                continue;
+            }
+            coord_t min_w = line.junctions.front().w, max_w = min_w;
+            Point pmin = line.junctions.front().p, pmax = pmin;
+            size_t line_zero = 0;
+            for (const ExtrusionJunction &j : line.junctions)
+            {
+                min_w = std::min(min_w, j.w);
+                max_w = std::max(max_w, j.w);
+                pmin.x() = std::min(pmin.x(), j.p.x());
+                pmin.y() = std::min(pmin.y(), j.p.y());
+                pmax.x() = std::max(pmax.x(), j.p.x());
+                pmax.y() = std::max(pmax.y(), j.p.y());
+                if (j.w == 0)
+                    ++line_zero;
+            }
+            dbg_fill_print("z=%.3f [PERIM]     WTP_LINE  [%zu] is_odd=%d is_closed=%d pts=%zu first_w=%.4fmm "
+                           "w=%.4f-%.4fmm zero_j=%zu bbox=(%.2f,%.2f)-(%.2f,%.2f)\n",
+                           z, li, (int) line.is_odd, (int) line.is_closed, line.junctions.size(),
+                           unscaled<double>(line.junctions.front().w), unscaled<double>(min_w), unscaled<double>(max_w),
+                           line_zero, unscaled<double>(pmin.x()), unscaled<double>(pmin.y()),
+                           unscaled<double>(pmax.x()), unscaled<double>(pmax.y()));
+        }
+    }
+}
+// ===================== END WTP CLASSIFY DEBUG =====================
+
 void WallToolPaths::separateOutInnerContour()
 {
-    //We'll remove all 0-width paths from the original toolpaths and store them separately as polygons.
+    dbg_wtp_classify(debug_print_z, debug_layer_id, toolpaths, inset_count);
+
+    // Classify each line as marker (all junctions w==0), bead (all junctions w>0), or mixed.
+    // Markers contribute to inner_contour. Beads stay in toolpaths. Mixed lines are malformed
+    // (a marker was stitched to a real bead despite the stitcher gate, or upstream produced
+    // a line with in-tolerance width transitions crossing the zero boundary) and would emit
+    // the bead portions as visible extrusion across empty space if kept; drop them.
     std::vector<VariableWidthLines> actual_toolpaths;
-    actual_toolpaths.reserve(toolpaths.size()); //A bit too much, but the correct order of magnitude.
-    std::vector<VariableWidthLines> contour_paths;
-    contour_paths.reserve(toolpaths.size() / inset_count);
+    actual_toolpaths.reserve(toolpaths.size());
     inner_contour.clear();
+
+    size_t stripped_mixed_lines = 0;
     for (const VariableWidthLines &inset : toolpaths)
     {
         if (inset.empty())
             continue;
-        bool is_contour = false;
+
+        VariableWidthLines kept_lines;
+        kept_lines.reserve(inset.size());
+
         for (const ExtrusionLine &line : inset)
         {
-            for (const ExtrusionJunction &j : line)
+            if (line.junctions.empty())
+                continue;
+
+            bool has_zero = false, has_nonzero = false;
+            for (const ExtrusionJunction &j : line.junctions)
             {
                 if (j.w == 0)
-                    is_contour = true;
+                    has_zero = true;
                 else
-                    is_contour = false;
-                break;
+                    has_nonzero = true;
+                if (has_zero && has_nonzero)
+                    break;
+            }
+
+            if (has_zero && !has_nonzero)
+            {
+                // Pure marker line. Only closed even markers become the inner contour.
+                if (!line.is_odd && line.is_closed)
+                    inner_contour.emplace_back(line.toPolygon());
+                // Non-closed markers and odd markers contribute nothing and are dropped.
+            }
+            else if (!has_zero && has_nonzero)
+            {
+                // Pure real-bead line. Keep for downstream g-code emission.
+                kept_lines.emplace_back(line);
+            }
+            else
+            {
+                // Mixed line: widths are malformed (a marker was fused with a real bead)
+                // but the junction positions still trace a valid skeleton centerline.
+                // Drop it from actual_toolpaths (so the bead portions aren't emitted as
+                // extrusion across empty space) yet contribute its closed polygon to
+                // inner_contour so the infill zone is preserved.
+                if (!line.is_odd && line.is_closed)
+                    inner_contour.emplace_back(line.toPolygon());
+                ++stripped_mixed_lines;
             }
         }
 
-        if (is_contour)
-        {
-#ifdef DEBUG
-            for (const ExtrusionLine &line : inset)
-                for (const ExtrusionJunction &j : line)
-                    assert(j.w == 0);
-#endif // DEBUG
-            for (const ExtrusionLine &line : inset)
-            {
-                if (line.is_odd)
-                    continue;            // odd lines don't contribute to the contour
-                else if (line.is_closed) // sometimes an very small even polygonal wall is not stitched into a polygon
-                    inner_contour.emplace_back(line.toPolygon());
-            }
-        }
-        else
-        {
-            actual_toolpaths.emplace_back(inset);
-        }
+        if (!kept_lines.empty())
+            actual_toolpaths.emplace_back(std::move(kept_lines));
     }
+
+    if (FILL_DEBUG && stripped_mixed_lines > 0)
+    {
+        dbg_fill_print("z=%.3f [PERIM] WTP_CLASSIFY layer=%d stripped_mixed_lines=%zu\n", debug_print_z, debug_layer_id,
+                       stripped_mixed_lines);
+    }
+
     if (!actual_toolpaths.empty())
         toolpaths = std::move(actual_toolpaths); // Filtered out the 0-width paths.
     else

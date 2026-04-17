@@ -15,6 +15,9 @@
 #include "I18N.hpp"
 #include "format.hpp"
 #include "libslic3r/AppConfig.hpp"
+#include "libslic3r/Utils.hpp"
+#include "libslic3r/CpuAffinity.hpp"
+#include "libslic3r/NvidiaProfile.hpp"
 #include <wx/notebook.h>
 #include "Notebook.hpp"
 #include "ButtonsDescription.hpp"
@@ -72,6 +75,14 @@ static const t_config_enum_values s_keys_map_NotifyReleaseMode = {
 };
 
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NotifyReleaseMode)
+
+static const t_config_enum_values s_keys_map_CpuMaxThreadsMode = {
+    {"0", CpuMaxThreadsAuto}, {"1", CpuMaxThreadsT1},   {"2", CpuMaxThreadsT2},   {"4", CpuMaxThreadsT4},
+    {"6", CpuMaxThreadsT6},   {"8", CpuMaxThreadsT8},   {"12", CpuMaxThreadsT12}, {"16", CpuMaxThreadsT16},
+    {"24", CpuMaxThreadsT24}, {"32", CpuMaxThreadsT32},
+};
+
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(CpuMaxThreadsMode)
 
 namespace GUI
 {
@@ -664,6 +675,165 @@ void PreferencesDialog::build()
         // create_downloader_path_sizer();
         create_settings_font_widget();
 
+        // CPU tab: thread cap (stability trade) plus P-core preference on hybrid Intel (can also improve
+        // slicing speed by avoiding E-cores stalling parallel synchronization points).
+        m_optgroup_cpu = create_options_tab(L("CPU"), tabs);
+        // Write through directly to AppConfig + live-apply on each change. This matches the pattern
+        // used by "use_custom_toolbar_size" in the GUI tab and bypasses the m_values staging map, which
+        // for whatever reason was not persisting these two keys in practice.
+        m_optgroup_cpu->on_change = [](t_config_option_key opt_key, boost::any value)
+        {
+            auto *app_config = get_app_config();
+            if (opt_key == "cpu_max_slicing_threads")
+            {
+                int val_int = boost::any_cast<int>(value);
+                for (const auto &item : s_keys_map_CpuMaxThreadsMode)
+                {
+                    if (item.second == val_int)
+                    {
+                        app_config->set(opt_key, item.first);
+                        int max_threads = atoi(item.first.c_str());
+                        if (max_threads > 0)
+                        {
+                            Slic3r::thread_count = static_cast<std::size_t>(max_threads);
+                            Slic3r::enforce_thread_count(static_cast<std::size_t>(max_threads));
+                        }
+                        else
+                        {
+                            Slic3r::thread_count.reset();
+                            Slic3r::enforce_thread_count(0);
+                        }
+                        return;
+                    }
+                }
+                return;
+            }
+            if (opt_key == "cpu_pcores_only")
+            {
+                const bool on = boost::any_cast<bool>(value);
+                app_config->set(opt_key, on ? "1" : "0");
+                if (on)
+                    Slic3r::apply_pcore_only_affinity();
+                else
+                    Slic3r::restore_full_cpu_affinity();
+                return;
+            }
+            if (opt_key == "cpu_nvidia_disable_threaded_opt")
+            {
+                const bool on = boost::any_cast<bool>(value);
+                app_config->set(opt_key, on ? "1" : "0");
+                // Writes the NVIDIA per-app profile setting; takes effect on the next preFlight launch.
+                // If the driver refuses or silently ignores the write, users can follow the manual
+                // instructions printed directly below the checkbox.
+                (void) Slic3r::set_nvidia_threaded_optimization(on);
+                return;
+            }
+        };
+
+        {
+            // Resolve the stored AppConfig value to an enum id. If the stored string does not match
+            // any dropdown entry (custom CLI value, corrupted config), fall back to Auto.
+            const std::string current = app_config->get("cpu_max_slicing_threads");
+            auto it = s_keys_map_CpuMaxThreadsMode.find(current);
+            CpuMaxThreadsMode current_mode = it != s_keys_map_CpuMaxThreadsMode.end()
+                                                 ? static_cast<CpuMaxThreadsMode>(it->second)
+                                                 : CpuMaxThreadsAuto;
+            append_enum_option<CpuMaxThreadsMode>(m_optgroup_cpu, "cpu_max_slicing_threads",
+                                                  L("Maximum slicing threads"),
+                                                  L("Limits the number of parallel worker threads used during slicing. "
+                                                    "Auto uses all available cores. Lower values trade slicing speed "
+                                                    "for stability on CPUs that crash under heavy parallel load."),
+                                                  new ConfigOptionEnum<CpuMaxThreadsMode>(current_mode),
+                                                  {{"0", L("Auto")},
+                                                   {"1", "1"},
+                                                   {"2", "2"},
+                                                   {"4", "4"},
+                                                   {"6", "6"},
+                                                   {"8", "8"},
+                                                   {"12", "12"},
+                                                   {"16", "16"},
+                                                   {"24", "24"},
+                                                   {"32", "32"}});
+        }
+
+#ifdef SLIC3R_CPU_AFFINITY_SUPPORTED
+        const bool hybrid = Slic3r::has_hybrid_cpu_topology();
+        append_bool_option(m_optgroup_cpu, "cpu_pcores_only",
+                           hybrid ? L("Prefer Performance cores")
+                                  : L("Prefer Performance cores (not available: no hybrid cores detected)"),
+                           L("On Intel hybrid CPUs (12th gen and later), restricts preFlight to the Performance cores "
+                             "only. This can improve slicing speed by avoiding the slower Efficient cores at parallel "
+                             "synchronization points, and also helps on CPUs that crash under heavy mixed-core load."),
+                           app_config->get_bool("cpu_pcores_only"));
+#endif // SLIC3R_CPU_AFFINITY_SUPPORTED
+
+        // NVIDIA GPU: optional per-app driver profile fix. Only shown when an NVIDIA driver is
+        // actually present on the machine, so AMD/Intel users don't see an irrelevant option.
+        const bool has_nvidia = Slic3r::nvidia_driver_available();
+        if (has_nvidia)
+        {
+            m_optgroup_cpu->append_separator();
+            // Pass the real factory default (false) as def_val so the tooltip advertises the correct
+            // default value. The saved state is restored below via set_value after activate.
+            append_bool_option(m_optgroup_cpu, "cpu_nvidia_disable_threaded_opt",
+                               L("Disable NVIDIA OpenGL Threaded Optimization"),
+                               L("Writes a per-application NVIDIA driver profile for preFlight.exe that turns off "
+                                 "OpenGL Threaded Optimization. This is the other common cause of slicing crashes "
+                                 "on Windows. Takes effect on the next preFlight launch. Unchecking restores the "
+                                 "driver default."),
+                               false);
+
+            Line nvidia_instructions{"", ""};
+            nvidia_instructions.full_width = 1;
+            nvidia_instructions.widget = [](wxWindow *parent)
+            {
+                auto *sizer = new wxBoxSizer(wxHORIZONTAL);
+                auto *text = new wxStaticText(
+                    parent, wxID_ANY,
+                    _L("If the automatic fix above does not take effect, apply it manually:\n"
+                       "1. Open NVIDIA Control Panel.\n"
+                       "2. Go to 3D Settings \u2192 Manage 3D Settings \u2192 Program Settings.\n"
+                       "3. Select preFlight from the program list (click Add and browse to preFlight.exe if "
+                       "missing).\n"
+                       "4. Set Threaded Optimization to Off and click Apply.\n"
+                       "5. Relaunch preFlight."));
+                text->Wrap(55 * wxGetApp().em_unit());
+                sizer->Add(text, 1, wxEXPAND | wxLEFT | wxRIGHT, wxGetApp().em_unit());
+                return sizer;
+            };
+            m_optgroup_cpu->append_line(nvidia_instructions);
+        }
+
+        activate_options_tab(m_optgroup_cpu);
+
+        // Re-enable change events on the enum dropdown. Choice::set_selection() (called during BUILD)
+        // sets m_disable_change_event = true and never clears it, so without this call the dropdown's
+        // on_change never fires. This mirrors the explicit set_value pattern notify_release uses.
+        {
+            const std::string current = app_config->get("cpu_max_slicing_threads");
+            auto it = s_keys_map_CpuMaxThreadsMode.find(current);
+            int val_int = it != s_keys_map_CpuMaxThreadsMode.end() ? it->second : CpuMaxThreadsAuto;
+            if (Field *field = m_optgroup_cpu->get_field("cpu_max_slicing_threads"))
+                field->set_value(boost::any(val_int), false);
+        }
+
+        // Restore the NVIDIA checkbox's displayed state from AppConfig. The option was registered
+        // with factory-default false so the tooltip advertises the correct default value; we update
+        // the actual checkbox here without firing on_change.
+        if (has_nvidia)
+        {
+            if (Field *field = m_optgroup_cpu->get_field("cpu_nvidia_disable_threaded_opt"))
+                field->set_value(boost::any(app_config->get_bool("cpu_nvidia_disable_threaded_opt")), false);
+        }
+
+#ifdef SLIC3R_CPU_AFFINITY_SUPPORTED
+        if (!Slic3r::has_hybrid_cpu_topology())
+        {
+            if (Field *field = m_optgroup_cpu->get_field("cpu_pcores_only"))
+                field->toggle(false);
+        }
+#endif // SLIC3R_CPU_AFFINITY_SUPPORTED
+
 #if ENABLE_ENVIRONMENT_MAP
         // Add "Render" tab
         m_optgroup_render = create_options_tab(L("Render"), tabs);
@@ -753,15 +923,15 @@ std::vector<ConfigOptionsGroup *> PreferencesDialog::optgroups()
 {
     std::vector<ConfigOptionsGroup *> out;
     out.reserve(4);
-    for (ConfigOptionsGroup *opt :
-         {m_optgroup_general.get(), m_optgroup_camera.get(), m_optgroup_gui.get(), m_optgroup_other.get()
+    for (ConfigOptionsGroup *opt : {m_optgroup_general.get(), m_optgroup_camera.get(), m_optgroup_gui.get(),
+                                    m_optgroup_other.get(), m_optgroup_cpu.get()
 #ifdef _WIN32
-                                                                                       ,
-          m_optgroup_dark_mode.get()
+                                                                ,
+                                    m_optgroup_dark_mode.get()
 #endif // _WIN32
 #if ENABLE_ENVIRONMENT_MAP
-              ,
-          m_optgroup_render.get()
+                                        ,
+                                    m_optgroup_render.get()
 #endif // ENABLE_ENVIRONMENT_MAP
          })
         if (opt)
@@ -843,6 +1013,8 @@ void PreferencesDialog::accept(wxEvent &)
 
     for (std::map<std::string, std::string>::iterator it = m_values.begin(); it != m_values.end(); ++it)
         app_config->set(it->first, it->second);
+
+    // CPU tab writes through to AppConfig from its own on_change handler, so nothing to commit here.
 
     // Label colors and mode palette are hardcoded
 

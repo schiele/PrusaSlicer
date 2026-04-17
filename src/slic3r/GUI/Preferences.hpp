@@ -28,6 +28,24 @@ class wxRadioButton;
 namespace Slic3r
 {
 
+// Enum backing the "Maximum slicing threads" dropdown in Preferences > CPU. Keys stored in AppConfig
+// are numeric strings ("0", "8", ...), so startup code can still read the value with atoi without
+// knowing about the enum. "0" / Auto means "no cap; use all available cores".
+enum CpuMaxThreadsMode
+{
+    CpuMaxThreadsAuto,
+    CpuMaxThreadsT1,
+    CpuMaxThreadsT2,
+    CpuMaxThreadsT4,
+    CpuMaxThreadsT6,
+    CpuMaxThreadsT8,
+    CpuMaxThreadsT12,
+    CpuMaxThreadsT16,
+    CpuMaxThreadsT24,
+    CpuMaxThreadsT32,
+    CpuMaxThreadsCount,
+};
+
 enum NotifyReleaseMode
 {
     NotifyReleaseAll,
@@ -53,6 +71,7 @@ class PreferencesDialog : public DPIDialog
     std::shared_ptr<ConfigOptionsGroup> m_optgroup_camera;
     std::shared_ptr<ConfigOptionsGroup> m_optgroup_gui;
     std::shared_ptr<ConfigOptionsGroup> m_optgroup_other;
+    std::shared_ptr<ConfigOptionsGroup> m_optgroup_cpu;
 #ifdef _WIN32
     std::shared_ptr<ConfigOptionsGroup> m_optgroup_dark_mode;
 #endif //_WIN32

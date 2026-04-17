@@ -45,7 +45,7 @@ struct indexed_triangle_set_with_color
 {
     std::vector<stl_triangle_vertex_indices> indices;
     std::vector<stl_vertex> vertices;
-    std::vector<uint8_t> colors;
+    std::vector<uint16_t> colors;
 };
 
 enum class AdditionalMeshInfo

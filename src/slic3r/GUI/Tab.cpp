@@ -1803,6 +1803,8 @@ void TabPrint::build()
     auto optgroup = page->new_optgroup_for_sidebar(L("Layer height"));
     optgroup->append_single_option_line("layer_height", category_path + "layer-height");
     optgroup->append_single_option_line("first_layer_height", category_path + "first-layer-height");
+    optgroup->append_single_option_line("color_mixing_base_layers", category_path + "color-mixing-base-layers");
+    optgroup->append_single_option_line("color_mixing_base_extruder", category_path + "color-mixing-base-extruder");
 
     optgroup = page->new_optgroup_for_sidebar(L("Vertical shells"));
     optgroup->append_single_option_line("perimeters", category_path + "perimeters");
@@ -2916,6 +2918,7 @@ void TabFilament::build()
     auto page = add_options_page(L("Filament"), "spool");
     auto optgroup = page->new_optgroup_for_sidebar(L("Filament"));
     optgroup->append_single_option_line("filament_colour");
+    optgroup->append_single_option_line("filament_transmission_distance");
     optgroup->append_single_option_line("filament_diameter");
     optgroup->append_single_option_line("extrusion_multiplier");
     optgroup->append_single_option_line("filament_density");
@@ -3012,6 +3015,7 @@ void TabFilament::build()
     optgroup = page->new_optgroup_for_sidebar(L("Cooling thresholds"), 25);
     optgroup->append_single_option_line("fan_below_layer_time", category_path + "cooling-thresholds");
     optgroup->append_single_option_line("slowdown_below_layer_time", category_path + "cooling-thresholds");
+    optgroup->append_single_option_line("dont_slow_down_outer_wall", category_path + "cooling-thresholds");
     optgroup->append_single_option_line("min_print_speed", category_path + "cooling-thresholds");
 
     page = add_options_page(L("Advanced"), "wrench");
@@ -3205,7 +3209,7 @@ void TabFilament::toggle_options()
         bool fan_always_on = cooling || m_config->opt_bool("fan_always_on", 0);
 
         for (auto el : {"max_fan_speed", "fan_below_layer_time", "slowdown_below_layer_time", "min_print_speed",
-                        "cooling_slowdown_logic"})
+                        "cooling_slowdown_logic", "dont_slow_down_outer_wall"})
             toggle_option(el, cooling);
 
         for (auto el : {"min_fan_speed", "full_fan_speed_layer"})

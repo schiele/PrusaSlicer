@@ -327,6 +327,17 @@ enum SeamPosition
     spRear
 };
 
+// Which filament to use for the first N layers when color mixing is active.
+// Bottom face of the print is visually exposed (glass beds, flipped prints) and color-mixing
+// dither produces visible striping there before the cycle has had room to converge. Picking a
+// dedicated base filament keeps the bed-adhesion layers uniform and hides the dither.
+enum ColorMixingBaseExtruder
+{
+    cmbeDarkest,       // auto-pick the darkest loaded filament (hides dither artifacts best)
+    cmbeLightest,      // auto-pick the brightest loaded filament
+    cmbeVolumeDefault, // use whatever extruder the volume is assigned to
+};
+
 enum SeamNotchType
 {
     sntRegular,
@@ -918,9 +929,11 @@ PRINT_CONFIG_CLASS_DEFINE(
 
     ((ConfigOptionFloat, brim_separation))((ConfigOptionEnum<BrimType>, brim_type))((ConfigOptionFloat, brim_width))(
         (ConfigOptionFloat, brim_ears_max_angle))((ConfigOptionFloat, brim_ears_detection_length))(
-        (ConfigOptionBool, dont_support_bridges))((ConfigOptionFloat, elefant_foot_compensation))(
-        (ConfigOptionFloatOrPercent, extrusion_width))((ConfigOptionFloat, first_layer_acceleration_over_raft))(
-        (ConfigOptionFloatOrPercent, first_layer_speed_over_raft))
+        (ConfigOptionEnum<ColorMixingBaseExtruder>, color_mixing_base_extruder))(
+        (ConfigOptionInt, color_mixing_base_layers))((ConfigOptionBool, dont_support_bridges))(
+        (ConfigOptionFloat, elefant_foot_compensation))((ConfigOptionFloatOrPercent, extrusion_width))(
+        (ConfigOptionFloat, first_layer_acceleration_over_raft))((ConfigOptionFloatOrPercent,
+                                                                  first_layer_speed_over_raft))
     // ((ConfigOptionBool,                infill_only_where_needed))
     // Force the generation of solid shells between adjacent materials/volumes.
     ((ConfigOptionBool, interface_shells))((ConfigOptionFloat, layer_height))((ConfigOptionFloat,
@@ -1178,15 +1191,16 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
         (ConfigOptionBools, fan_always_on))((ConfigOptionInts, fan_below_layer_time))(
         (ConfigOptionInts, fan_spinup_time))((ConfigOptionEnums<FanSpinupResponseType>, fan_spinup_response_type))(
         (ConfigOptionBools, fan_spinup_bridge_infill))((ConfigOptionBools, fan_spinup_overhang_perimeter))(
-        (ConfigOptionStrings, filament_colour))((ConfigOptionStrings, filament_notes))(
-        (ConfigOptionFloat, first_layer_acceleration))((ConfigOptionInts, first_layer_bed_temperature))(
-        (ConfigOptionFloatOrPercent, first_layer_extrusion_width))((ConfigOptionFloatOrPercent, first_layer_height))(
-        (ConfigOptionFloatOrPercent, first_layer_speed))((ConfigOptionFloatOrPercent, first_layer_infill_speed))(
-        (ConfigOptionFloatOrPercent, first_layer_travel_speed))((ConfigOptionInts, first_layer_temperature))(
-        (ConfigOptionIntsNullable, idle_temperature))((ConfigOptionInts, full_fan_speed_layer))(
-        (ConfigOptionFloat, infill_acceleration))((ConfigOptionBool, infill_first))((ConfigOptionInts, max_fan_speed))(
-        (ConfigOptionFloats, max_layer_height))((ConfigOptionInts, min_fan_speed))(
-        (ConfigOptionFloats, min_layer_height))((ConfigOptionFloat, max_print_height))(
+        (ConfigOptionStrings, filament_colour))((ConfigOptionFloats, filament_transmission_distance))(
+        (ConfigOptionStrings, filament_notes))((ConfigOptionFloat, first_layer_acceleration))(
+        (ConfigOptionInts, first_layer_bed_temperature))((ConfigOptionFloatOrPercent, first_layer_extrusion_width))(
+        (ConfigOptionFloatOrPercent, first_layer_height))((ConfigOptionFloatOrPercent, first_layer_speed))(
+        (ConfigOptionFloatOrPercent, first_layer_infill_speed))((ConfigOptionFloatOrPercent, first_layer_travel_speed))(
+        (ConfigOptionInts, first_layer_temperature))((ConfigOptionIntsNullable, idle_temperature))(
+        (ConfigOptionInts, full_fan_speed_layer))((ConfigOptionFloat, infill_acceleration))(
+        (ConfigOptionBool, infill_first))((ConfigOptionInts, max_fan_speed))((ConfigOptionFloats, max_layer_height))(
+        (ConfigOptionInts, min_fan_speed))((ConfigOptionFloats, min_layer_height))((ConfigOptionFloat,
+                                                                                    max_print_height))(
         (ConfigOptionFloats, min_print_speed))((ConfigOptionFloat, min_skirt_length))((ConfigOptionString, notes))(
         (ConfigOptionString, custom_parameters_print))((ConfigOptionFloats, nozzle_diameter))(
         (ConfigOptionFloats, print_nozzle_diameters))((ConfigOptionBools, print_high_flow_nozzle))(
@@ -1197,7 +1211,8 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
         (ConfigOptionFloat, gcode_resolution))((ConfigOptionFloats, retract_before_travel))(
         (ConfigOptionBools, retract_layer_change))((ConfigOptionFloat, skirt_distance))(
         (ConfigOptionInt, skirt_height))((ConfigOptionInt, skirts))((ConfigOptionInts, slowdown_below_layer_time))(
-        (ConfigOptionFloat, solid_infill_acceleration))((ConfigOptionBool, spiral_vase))(
+        (ConfigOptionBools, dont_slow_down_outer_wall))((ConfigOptionFloat,
+                                                         solid_infill_acceleration))((ConfigOptionBool, spiral_vase))(
         (ConfigOptionInt, standby_temperature_delta))((ConfigOptionInts, temperature))((ConfigOptionInt, threads))(
         (ConfigOptionString, thumbnails))((ConfigOptionEnum<GCodeThumbnailsFormat>,
                                            thumbnails_format))((ConfigOptionFloat, top_solid_infill_acceleration))(

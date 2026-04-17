@@ -60,7 +60,7 @@ enum class InfoItemType
     CustomSupports,
     CustomSeam,
     CutConnectors,
-    MmSegmentation,
+    ColorMixing,
     FuzzySkin,
     Sinking,
     VariableLayerHeight

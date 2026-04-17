@@ -82,8 +82,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/Gizmos/GLGizmoSimplify.hpp
     GUI/Gizmos/GLGizmoSVG.cpp
     GUI/Gizmos/GLGizmoSVG.hpp
-    GUI/Gizmos/GLGizmoMmuSegmentation.cpp
-    GUI/Gizmos/GLGizmoMmuSegmentation.hpp
+    GUI/Gizmos/TriangleSelectorMmGui.cpp
+    GUI/Gizmos/TriangleSelectorMmGui.hpp
     GUI/Gizmos/GLGizmoMeasure.cpp
     GUI/Gizmos/GLGizmoMeasure.hpp
     GUI/Gizmos/GLGizmoAlign.cpp
@@ -92,6 +92,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/Gizmos/GLGizmoRelief.hpp
     GUI/Gizmos/GLGizmoCounterboreBridge.cpp
     GUI/Gizmos/GLGizmoCounterboreBridge.hpp
+    GUI/Gizmos/GLGizmoColorMixing.cpp
+    GUI/Gizmos/GLGizmoColorMixing.hpp
     GUI/CSGPreviewManager.cpp
     GUI/CSGPreviewManager.hpp
     GUI/LibVGCode/LibVGCodeWrapper.hpp
@@ -233,6 +235,10 @@ set(SLIC3R_GUI_SOURCES
     Utils/ASCIIFolding.hpp
     Utils/Serial.cpp
     Utils/Serial.hpp
+    Utils/TD1SSensor.cpp
+    Utils/TD1SSensor.hpp
+    GUI/TD1SDialog.cpp
+    GUI/TD1SDialog.hpp
     GUI/ConfigWizard.cpp
     GUI/ConfigWizard.hpp
     GUI/ConfigWizard_private.hpp

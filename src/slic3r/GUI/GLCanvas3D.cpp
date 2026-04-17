@@ -101,7 +101,7 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 #endif
 #include <imgui/imgui_internal.h>
-#include <slic3r/GUI/Gizmos/GLGizmoMmuSegmentation.hpp>
+#include <slic3r/GUI/Gizmos/TriangleSelectorMmGui.hpp>
 
 extern std::vector<GLuint> s_th_tex_id;
 
@@ -1495,7 +1495,7 @@ void GLCanvas3D::toggle_model_objects_visibility(bool visible, const ModelObject
                     {
                         vol->force_neutral_color = true;
                     }
-                    else if (gizmo_type == GLGizmosManager::MmSegmentation)
+                    else if (gizmo_type == GLGizmosManager::ColorMixing)
                         vol->is_active = false;
                     else
                         vol->force_native_color = true;
@@ -2419,6 +2419,9 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
         return;
 
     _set_current();
+
+    // Flush MMU paint render cache so colors are rebuilt from current config
+    m_volumes.flush_mm_paint_cache();
 
     m_hover_volume_idxs.clear();
 
@@ -3688,12 +3691,11 @@ void GLCanvas3D::on_key(wxKeyEvent &evt)
     }
 
     const GLGizmosManager::EType gizmo_type = m_gizmos.get_current_type();
-    if (keyCode == WXK_ALT &&
-        (gizmo_type == GLGizmosManager::FdmSupports || gizmo_type == GLGizmosManager::Seam ||
-         gizmo_type == GLGizmosManager::MmSegmentation || gizmo_type == GLGizmosManager::FuzzySkin ||
-         gizmo_type == GLGizmosManager::CounterboreBridge))
+    if (keyCode == WXK_ALT && (gizmo_type == GLGizmosManager::FdmSupports || gizmo_type == GLGizmosManager::Seam ||
+                               gizmo_type == GLGizmosManager::ColorMixing || gizmo_type == GLGizmosManager::FuzzySkin ||
+                               gizmo_type == GLGizmosManager::CounterboreBridge))
     {
-        // Prevents focusing on the menu bar when ALT is pressed in painting gizmos (FdmSupports, Seam, MmSegmentation, and FuzzySkin).
+        // Prevents focusing on the menu bar when ALT is pressed in painting gizmos.
         evt.Skip(false);
     }
     else if (keyCode != WXK_TAB && keyCode != WXK_LEFT && keyCode != WXK_UP && keyCode != WXK_RIGHT &&
@@ -3935,9 +3937,9 @@ void GLCanvas3D::on_mouse(wxMouseEvent &evt)
 #endif /* SLIC3R_DEBUG_MOUSE_EVENTS */
         m_dirty = true;
         // Let Moving events through to gizmos that need them for hover tracking
-        // (MmSegmentation for seed fill, Align for snap point indicators)
+        // (ColorMixing for seed fill, Align for snap point indicators)
         if (!m_mouse.dragging && m_tooltip.is_empty() &&
-            ((m_gizmos.get_current_type() != GLGizmosManager::MmSegmentation &&
+            ((m_gizmos.get_current_type() != GLGizmosManager::ColorMixing &&
               m_gizmos.get_current_type() != GLGizmosManager::Align) ||
              !evt.Moving()))
             return;
@@ -4148,7 +4150,7 @@ void GLCanvas3D::on_mouse(wxMouseEvent &evt)
                     m_gizmos.get_current_type() != GLGizmosManager::Seam &&
                     m_gizmos.get_current_type() != GLGizmosManager::Cut &&
                     m_gizmos.get_current_type() != GLGizmosManager::Measure &&
-                    m_gizmos.get_current_type() != GLGizmosManager::MmSegmentation &&
+                    m_gizmos.get_current_type() != GLGizmosManager::ColorMixing &&
                     m_gizmos.get_current_type() != GLGizmosManager::FuzzySkin &&
                     m_gizmos.get_current_type() != GLGizmosManager::CounterboreBridge)
                 {
@@ -5378,14 +5380,42 @@ void GLCanvas3D::_render_thumbnail_internal(ThumbnailData &thumbnail_data, const
 
     const Transform3d &projection_matrix = camera.get_projection_matrix();
 
+    // Build a per-volume painted palette for any real object volume. State 0 always renders
+    // as default_color; state s (1-based) looks up palette[s-1]. Covers three cases:
+    //   - unpainted volume: empty palette, every triangle is state 0 -> default color
+    //   - MMU painted: palette = extruder filament colors, state == extruder index
+    //   - color mixing painted: palette = per-volume recipe rgb (already resolved)
+    // If both paint types are present, color_mixing wins (active gizmo's output).
+    auto build_painted_palette = [&extruders_colors](const ModelVolume &mv) -> std::vector<ColorRGBA>
+    {
+        if (!mv.color_mixing_facets.empty() && !mv.color_mixing_palette.empty())
+        {
+            std::vector<ColorRGBA> palette;
+            palette.reserve(mv.color_mixing_palette.size());
+            for (const ColorMixingRecipe &r : mv.color_mixing_palette)
+            {
+                palette.emplace_back(float((r.rgb >> 16) & 0xFF) / 255.f, float((r.rgb >> 8) & 0xFF) / 255.f,
+                                     float(r.rgb & 0xFF) / 255.f, 1.0f);
+            }
+            return palette;
+        }
+        if (!mv.mm_segmentation_facets.empty())
+            return extruders_colors;
+        return {};
+    };
+
     const int extruders_count = wxGetApp().extruders_edited_cnt();
     for (GLVolume *vol : visible_volumes)
     {
         const int obj_idx = vol->object_idx();
         const int vol_idx = vol->volume_idx();
-        const bool render_as_painted = is_enabled_painted_thumbnail && obj_idx >= 0 && vol_idx >= 0 &&
-                                       !model_objects[obj_idx]->volumes[vol_idx]->mm_segmentation_facets.empty();
-        GLShaderProgram *shader = wxGetApp().get_shader(render_as_painted ? "mm_gouraud" : "gouraud_light");
+        const bool has_model = is_enabled_painted_thumbnail && obj_idx >= 0 && vol_idx >= 0 &&
+                               model_objects[obj_idx]->volumes[vol_idx]->is_model_part();
+
+        // Real object volumes always go through the painted path -- mm_gouraud handles both
+        // unpainted (single-color) and painted cases uniformly. Wipe tower and modifier
+        // volumes (obj_idx < 0 or non-model-part) fall through to vol->render().
+        GLShaderProgram *shader = wxGetApp().get_shader(has_model ? "mm_gouraud" : "gouraud_light");
         if (shader == nullptr)
             continue;
 
@@ -5393,7 +5423,7 @@ void GLCanvas3D::_render_thumbnail_internal(ThumbnailData &thumbnail_data, const
         const std::array<float, 4> clp_data = {0.0f, 0.0f, 1.0f, FLT_MAX};
         const std::array<float, 2> z_range = {-FLT_MAX, FLT_MAX};
         const bool is_left_handed = vol->is_left_handed();
-        if (render_as_painted)
+        if (has_model)
         {
             shader->set_uniform("volume_world_matrix", vol->world_matrix());
             shader->set_uniform("volume_mirrored", is_left_handed);
@@ -5419,14 +5449,22 @@ void GLCanvas3D::_render_thumbnail_internal(ThumbnailData &thumbnail_data, const
         if (is_left_handed)
             glsafe(::glFrontFace(GL_CW));
 
-        if (render_as_painted)
+        if (has_model)
         {
-            const ModelVolume &model_volume = *model_objects[obj_idx]->volumes[vol_idx];
-            const size_t extruder_idx = ModelVolume::get_extruder_color_idx(model_volume, extruders_count);
-            TriangleSelectorMmGui ts(model_volume.mesh(), extruders_colors, extruders_colors[extruder_idx]);
-            ts.deserialize(model_volume.mm_segmentation_facets.get_data(), true);
+            const ModelVolume &mv = *model_objects[obj_idx]->volumes[vol_idx];
+            const size_t extruder_idx = ModelVolume::get_extruder_color_idx(mv, extruders_count);
+            const ColorRGBA default_color = (vol->printable && !vol->is_outside &&
+                                             extruder_idx < extruders_colors.size())
+                                                ? extruders_colors[extruder_idx]
+                                                : ColorRGBA::GRAY();
+            const std::vector<ColorRGBA> palette = build_painted_palette(mv);
+            TriangleSelectorMmGui ts(mv.mesh(), palette, default_color);
+            // Prefer color_mixing_facets when present (active painting wins over legacy MMU).
+            if (!mv.color_mixing_facets.empty() && !mv.color_mixing_palette.empty())
+                ts.deserialize(mv.color_mixing_facets.get_data(), true);
+            else if (!mv.mm_segmentation_facets.empty())
+                ts.deserialize(mv.mm_segmentation_facets.get_data(), true);
             ts.request_update_render_data();
-
             ts.render(nullptr, model_matrix);
         }
         else
@@ -6682,7 +6720,7 @@ void GLCanvas3D::_render_bed(const Transform3d &view_matrix, const Transform3d &
 
     bool show_texture = !bottom || (m_gizmos.get_current_type() != GLGizmosManager::FdmSupports &&
                                     m_gizmos.get_current_type() != GLGizmosManager::Seam &&
-                                    m_gizmos.get_current_type() != GLGizmosManager::MmSegmentation &&
+                                    m_gizmos.get_current_type() != GLGizmosManager::ColorMixing &&
                                     m_gizmos.get_current_type() != GLGizmosManager::FuzzySkin);
 
     m_bed.render(*this, view_matrix, projection_matrix, bottom, scale_factor, show_texture);

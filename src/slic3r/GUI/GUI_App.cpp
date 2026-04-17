@@ -75,6 +75,7 @@
 #include <nanosvg/nanosvgrast.h>
 
 #include "libslic3r/Utils.hpp"
+#include "libslic3r/CpuAffinity.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/Color.hpp"
@@ -92,6 +93,7 @@
 #include "../Utils/PresetUpdaterWrapper.hpp"
 #include "../Utils/PrintHost.hpp"
 #include "../Utils/Process.hpp"
+#include "TD1SDialog.hpp"
 #include "../Utils/MacDarkMode.hpp"
 #include "../Utils/AppUpdater.hpp"
 #include "../Utils/WinRegistry.hpp"
@@ -898,6 +900,17 @@ void GUI_App::post_init()
             }
         });
 
+    // Start TD1S filament sensor monitor
+    if (!is_gcode_viewer())
+    {
+        m_td1s_sensor.start([this](const TD1SReading &reading)
+        {
+            auto *dlg = new TD1SDialog(mainframe, reading.color, reading.td, reading.hex_color);
+            dlg->ShowModal();
+            dlg->Destroy();
+        });
+    }
+
     // Set preFlight version and save to preFlight.ini or preFlightGcodeViewer.ini.
     app_config->set("version", SLIC3R_VERSION);
 
@@ -926,6 +939,9 @@ GUI_App::GUI_App(EAppMode mode)
 
 GUI_App::~GUI_App()
 {
+    // Stop TD1S sensor monitor
+    m_td1s_sensor.stop();
+
     // preFlight: stop periodic version check timer
     if (m_version_check_timer)
     {
@@ -1435,6 +1451,20 @@ bool GUI_App::on_init_inner()
     bool init_sys_menu_enabled = app_config->get_bool("sys_menu_enabled");
     NppDarkMode::InitDarkMode(init_dark_color_mode, init_sys_menu_enabled);
 #endif
+
+    // Apply CPU stability preferences before any slicing work spins up TBB workers.
+    // Thread cap is cross-platform; P-core-only affinity is supported on Windows x86 and Linux x86 only;
+    // apply_pcore_only_affinity() is a safe no-op on unsupported platforms (ARM, macOS).
+    {
+        int max_threads = atoi(app_config->get("cpu_max_slicing_threads").c_str());
+        if (max_threads > 0)
+        {
+            Slic3r::thread_count = static_cast<std::size_t>(max_threads);
+            Slic3r::enforce_thread_count(static_cast<std::size_t>(max_threads));
+        }
+        if (app_config->get_bool("cpu_pcores_only"))
+            Slic3r::apply_pcore_only_affinity();
+    }
     // initialize label colors and fonts
     init_ui_colours();
     init_fonts();

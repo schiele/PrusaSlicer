@@ -20,9 +20,10 @@
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Color.hpp"
+#include "libslic3r/Model.hpp"
 #include "libslic3r/ObjectID.hpp"
 
-#include "slic3r/GUI/Gizmos/GLGizmoMmuSegmentation.hpp"
+#include "slic3r/GUI/Gizmos/TriangleSelectorMmGui.hpp"
 
 #include "GLModel.hpp"
 #include "MeshUtils.hpp"
@@ -515,16 +516,27 @@ private:
         size_t extruder_id;
         std::unique_ptr<GUI::TriangleSelectorMmGui> triangle_selector_mm;
         std::chrono::system_clock::time_point time_used;
-        uint64_t mm_timestamp;
+        uint64_t mm_timestamp = 0;
+        // color_mixing invalidation: paint timestamp plus a copy of the recipe table so an
+        // edit that changes recipes without re-painting still rebuilds the cached geometry.
+        uint64_t cm_timestamp = 0;
+        std::vector<ColorMixingRecipe> cm_palette;
+        // Per-volume render palette (ColorRGBA form). Held here so TriangleSelectorMmGui's
+        // reference into it stays valid for the cache entry's entire lifetime.
+        std::vector<ColorRGBA> render_palette;
     };
     struct MMPaintCache
     {
         std::vector<ColorRGBA> extruders_colors;
+        size_t extruder_count{0};
         std::map<ObjectID, MMPaintCachePerVolume> volume_data;
     };
     mutable MMPaintCache m_mm_paint_cache;
 
 public:
+    // Flush the MMU paint render cache, forcing a full rebuild on next render.
+    // Call after loading a project or when extruder configuration changes.
+    void flush_mm_paint_cache() { m_mm_paint_cache.volume_data.clear(); }
     GLVolumePtrs volumes;
 
     GLVolumeCollection() { set_default_slope_normal_z(); }

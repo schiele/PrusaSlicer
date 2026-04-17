@@ -173,6 +173,17 @@ void AppConfig::set_defaults()
 
         if (get("clear_undo_redo_stack_on_new_project").empty())
             set("clear_undo_redo_stack_on_new_project", "1");
+
+        // CPU stability preferences: 0 = full speed / no restriction.
+        if (get("cpu_max_slicing_threads").empty())
+            set("cpu_max_slicing_threads", "0");
+        if (get("cpu_pcores_only").empty())
+            set("cpu_pcores_only", "0");
+        if (get("cpu_nvidia_disable_threaded_opt").empty())
+            set("cpu_nvidia_disable_threaded_opt", "0");
+        // Drop the superseded key from pre-rename builds.
+        if (!get("cpu_windows_pcores_only").empty())
+            erase("", "cpu_windows_pcores_only");
     }
     else
     {

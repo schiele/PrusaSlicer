@@ -48,6 +48,15 @@
 #include "SVG.hpp"
 #endif
 
+// Inner brim debug logging
+// #define INNER_BRIM_DEBUG
+#ifdef INNER_BRIM_DEBUG
+#include <cstdio>
+#define BRIM_LOG(...) fprintf(stderr, "[BRIM] " __VA_ARGS__)
+#else
+#define BRIM_LOG(...) ((void) 0)
+#endif
+
 namespace Slic3r
 {
 
@@ -206,71 +215,20 @@ static PaintedEarResult make_brim_ears_painted(const PrintObject *object, const 
         Point ear_center(pt_x, pt_y);
         point_round.translate(ear_center);
 
-        // Check if circle intersects ANY holes - if so, generate inner brims
-        Polygons circle_as_polygons{point_round};
-
-        for (const ExPolygon &expoly : bottom_layer_expolygons)
-        {
-            for (const Polygon &hole : expoly.holes)
-            {
-                Polygons hole_intersection = intersection(circle_as_polygons, Polygons{hole});
-                if (hole_intersection.empty())
-                    continue;
-
-                Polygons hole_brim_boundary = offset(hole, -brim_separation, JoinType::Square);
-                if (hole_brim_boundary.empty())
-                    continue;
-
-                if (pt.overlap_percent > 0)
-                {
-                    float hole_offset = scale_(half_perimeter_width) - overlap_distance;
-                    Polygons hole_overlap_boundary = offset(hole, hole_offset, JoinType::Square);
-
-                    ExPolygons full_ear;
-                    if (hole_overlap_boundary.empty())
-                        full_ear = intersection_ex(ExPolygons{ExPolygon(point_round)}, hole_brim_boundary);
-                    else
-                        full_ear = intersection_ex(ExPolygons{ExPolygon(point_round)}, hole_overlap_boundary);
-
-                    append(result.ears, union_ex(full_ear));
-                }
-                else
-                {
-                    Polygons hole_perimeter_inner_edge = offset(hole, scale_(half_perimeter_width), JoinType::Square);
-                    float hole_clip_offset = -overlap_distance;
-
-                    Polygons hole_clip_boundary;
-                    if (hole_perimeter_inner_edge.empty())
-                        hole_clip_boundary = hole_brim_boundary;
-                    else if (std::abs(hole_clip_offset) < 1.0f)
-                        hole_clip_boundary = hole_perimeter_inner_edge;
-                    else
-                        hole_clip_boundary = offset(hole_perimeter_inner_edge, hole_clip_offset, JoinType::Square);
-
-                    ExPolygons clipped = intersection_ex(ExPolygons{ExPolygon(point_round)}, hole_clip_boundary);
-                    append(result.ears, clipped);
-                }
-            }
-        }
-
-        // Outer brim logic
-        bool intersects_outer = false;
-        for (const ExPolygon &expoly : bottom_layer_expolygons)
-        {
-            Polygons outer_intersection = intersection(circle_as_polygons, Polygons{expoly.contour});
-            if (!outer_intersection.empty())
-            {
-                intersects_outer = true;
-                break;
-            }
-        }
-
-        if (!intersects_outer)
-            continue;
-
-        // Each ear is individually clipped at its own overlap level, then all are merged.
-        // contour_for_this_ear already accounts for this ear's specific overlap percentage.
-        ExPolygons clipped_ear = diff_ex(ExPolygons{ExPolygon(point_round)}, contour_for_this_ear);
+        // Unified ear clipping: offset ALL solid boundaries by the overlap-adjusted amount,
+        // then diff the circle against the expanded solid. This handles both outside contours
+        // AND inside holes with a single operation - all boundaries get the same gap/overlap.
+        //
+        // offset_ex(ExPolygons, +delta) expands contours outward and shrinks holes inward.
+        // At 0% overlap: clip_amount = half_perimeter_width → ear starts at perimeter outer edge
+        // At -100%: clip_amount = half_pw + full_pw → 1.5 perimeter widths gap
+        // At +100%: clip_amount = half_pw - full_pw → ear overlaps into perimeter by half pw
+        float clip_amount = scale_(half_perimeter_width) - overlap_distance;
+        ExPolygons clip_solid = offset_ex(bottom_layer_expolygons, clip_amount, JoinType::Square);
+        ExPolygons clipped_ear = diff_ex(ExPolygons{ExPolygon(point_round)}, clip_solid);
+        BRIM_LOG("  ear at (%.2f,%.2f) radius=%.2f overlap=%d%% clip_amount=%.3f clipped=%zu\n",
+                 unscale<double>(ear_center.x()), unscale<double>(ear_center.y()), ear_radius_mm,
+                 (int) pt.overlap_percent, unscale<double>(clip_amount), clipped_ear.size());
         append(result.ears, clipped_ear);
     }
 
@@ -414,6 +372,11 @@ struct BrimAreas
     ExPolygons clippable;    // Painted mouse ear areas (each individually clipped at its own overlap level)
     ExPolygons auto_ears;    // Auto mouse ear areas (btEar) - clipped, with separation from perimeter
     ExPolygons regular_brim; // Regular brim ring areas (btOuterOnly, btOuterAndInner)
+    // Painted ears pre-clipped by make_brim_ears_painted. NOT subject to no_brim_area diff
+    // (which would kill positive overlap). Cross-object clipping applied separately.
+    ExPolygons painted_preclipped;
+    // Cross-object no-brim areas (all objects' solid footprints) for clipping painted ears.
+    ExPolygons cross_object_solid;
 };
 
 static BrimAreas top_level_outer_brim_area(const Print &print, const ConstPrintObjectPtrs &top_level_objects_with_brim,
@@ -426,9 +389,17 @@ static BrimAreas top_level_outer_brim_area(const Print &print, const ConstPrintO
     for (const PrintObject *object : top_level_objects_with_brim)
         top_level_objects_idx.insert(object->id().id);
 
-    ExPolygons brim_area;         // Will become result.clippable (painted standard ears)
+    ExPolygons brim_area;         // Will become result.clippable
     ExPolygons auto_ears_area;    // Will become result.auto_ears (btEar auto ears)
     ExPolygons regular_brim_area; // Will become result.regular_brim
+    // Per-instance painted ears and solid footprints for cross-instance clipping.
+    // Using per-instance (not per-object) so instances of the same object clip against each other.
+    struct InstanceBrim
+    {
+        ExPolygons ears;
+        ExPolygons solid;
+    };
+    std::vector<InstanceBrim> per_instance_brim;
 
     ExPolygons no_brim_area;
     for (size_t print_object_idx = 0; print_object_idx < print.objects().size(); ++print_object_idx)
@@ -463,10 +434,18 @@ static BrimAreas top_level_outer_brim_area(const Print &print, const ConstPrintO
                 Polygons cp{ep.contour};
                 append(all_outer_brim_expolys, offset_ex(cp, brim_separation, JoinType::Square));
             }
+            // Clip against own object geometry (in object-local coordinates).
             PaintedEarResult painted_ears = make_brim_ears_painted(object, print, brim_separation,
                                                                    all_outer_brim_expolys,
                                                                    bottom_layers_expolygons[print_object_idx]);
-            append(brim_area_object, painted_ears.ears);
+            // Store per-instance ears and solid for cross-instance clipping
+            for (const PrintInstance &instance : object->instances())
+            {
+                InstanceBrim ib;
+                append_and_translate(ib.ears, painted_ears.ears, instance);
+                append_and_translate(ib.solid, bottom_layers_expolygons[print_object_idx], instance);
+                per_instance_brim.push_back(std::move(ib));
+            }
         }
 
         for (const ExPolygon &ex_poly : bottom_layers_expolygons[print_object_idx])
@@ -507,12 +486,17 @@ static BrimAreas top_level_outer_brim_area(const Print &print, const ConstPrintO
                 append(no_brim_area_object,
                        diff_ex(offset(ex_poly.contour, no_brim_offset, JoinType::Square), ex_poly_holes_reversed));
 
-            // Always add contour to no_brim_area so ears from other instances get clipped.
-            // Painted ears are individually clipped against their own model in make_brim_ears_painted,
-            // but still need global clipping against other instances and objects.
-            if (has_inner_brim || has_outer_brim)
-                append(no_brim_area_object, offset_ex(ExPolygon(ex_poly.contour), brim_separation, JoinType::Square));
-            no_brim_area_object.emplace_back(ex_poly.contour);
+            // For painted ears: skip no_brim_area entirely. Each ear is individually clipped
+            // by the unified offset_ex/diff_ex in make_brim_ears_painted, which correctly handles
+            // overlap percentages. Adding to no_brim_area would clip away positive overlap.
+            // For all other brim types: add contour to no_brim_area for proper clipping.
+            if (!use_painted_brim_ears)
+            {
+                if (has_inner_brim || has_outer_brim)
+                    append(no_brim_area_object,
+                           offset_ex(ExPolygon(ex_poly.contour), brim_separation, JoinType::Square));
+                no_brim_area_object.emplace_back(ex_poly.contour);
+            }
         }
 
         for (const PrintInstance &instance : object->instances())
@@ -520,7 +504,6 @@ static BrimAreas top_level_outer_brim_area(const Print &print, const ConstPrintO
             append_and_translate(brim_area, brim_area_object, instance);
             append_and_translate(auto_ears_area, auto_ears_area_object, instance);
             append_and_translate(regular_brim_area, regular_brim_area_object, instance);
-
             append_and_translate(no_brim_area, no_brim_area_object, instance);
         }
     }
@@ -535,6 +518,35 @@ static BrimAreas top_level_outer_brim_area(const Print &print, const ConstPrintO
     result.clippable = diff_ex(brim_area, no_brim_area);
     result.auto_ears = diff_ex(auto_ears_area, no_brim_area);
     result.regular_brim = diff_ex(regular_brim_area, no_brim_area);
+
+    // Painted ears: clip each instance's ears against OTHER instances' solid footprints.
+    // Must skip self (j != i) to preserve own-object overlap setting.
+    // O(N^2) for N instances - acceptable for typical counts (1-20).
+    if (!per_instance_brim.empty())
+    {
+        const float full_pw = scale_(1.5f * print.brim_flow().width());
+        ExPolygons all_painted;
+        for (size_t i = 0; i < per_instance_brim.size(); ++i)
+        {
+            if (per_instance_brim[i].ears.empty())
+                continue;
+
+            ExPolygons other_solid;
+            for (size_t j = 0; j < per_instance_brim.size(); ++j)
+                if (j != i)
+                    append(other_solid, per_instance_brim[j].solid);
+
+            ExPolygons ears = union_ex(per_instance_brim[i].ears);
+            if (!other_solid.empty())
+            {
+                ExPolygons cross_clip = offset_ex(other_solid, full_pw, JoinType::Square);
+                ears = diff_ex(ears, cross_clip);
+            }
+            append(all_painted, std::move(ears));
+        }
+        if (!all_painted.empty())
+            result.painted_preclipped = union_ex(all_painted);
+    }
 
     return result;
 }
@@ -607,6 +619,11 @@ static std::vector<bool> has_polygons_nothing_inside(const Print &print,
     };
 
     check_contours(islands_polytree);
+    BRIM_LOG("has_polygons_nothing_inside: %zu islands, %zu marked as nothing_inside\n", has_nothing_inside.size(),
+             std::count(has_nothing_inside.begin(), has_nothing_inside.end(), true));
+    for (size_t i = 0; i < has_nothing_inside.size(); ++i)
+        if (has_nothing_inside[i])
+            BRIM_LOG("  island %zu: nothing_inside=true\n", i);
     return has_nothing_inside;
 }
 
@@ -642,6 +659,9 @@ static std::vector<InnerBrimExPolygons> inner_brim_area(const Print &print,
     ExPolygons no_brim_area;
     Polygons holes_reversed;
 
+    BRIM_LOG("inner_brim_area: %zu objects, no_brim_offset=%.4f\n", print.objects().size(),
+             unscale<double>(no_brim_offset));
+
     // polygon_idx must correspond to idx generated inside has_polygons_nothing_inside()
     size_t polygon_idx = 0;
     for (size_t print_object_idx = 0; print_object_idx < print.objects().size(); ++print_object_idx)
@@ -652,12 +672,24 @@ static std::vector<InnerBrimExPolygons> inner_brim_area(const Print &print,
         const float brim_width = scale_(object->config().brim_width.value);
         const bool top_outer_brim = top_level_objects_idx.find(object->id().id) != top_level_objects_idx.end();
 
+        BRIM_LOG(
+            "  object %zu: brim_type=%d, brim_sep=%.3f, brim_width=%.3f, top_outer=%d, expolys=%zu, instances=%zu\n",
+            print_object_idx, (int) brim_type, unscale<double>(brim_separation), unscale<double>(brim_width),
+            (int) top_outer_brim, bottom_layers_expolygons[print_object_idx].size(), object->instances().size());
+
         ExPolygons brim_area_innermost_object;
         ExPolygons brim_area_object;
         ExPolygons no_brim_area_object;
         Polygons holes_reversed_object;
         for (const ExPolygon &ex_poly : bottom_layers_expolygons[print_object_idx])
         {
+            {
+                auto bb = get_extents(ex_poly);
+                BRIM_LOG("    expolygon: contour pts=%zu, holes=%zu, bbox=[%.2f,%.2f]-[%.2f,%.2f]\n",
+                         ex_poly.contour.points.size(), ex_poly.holes.size(), unscale<double>(bb.min.x()),
+                         unscale<double>(bb.min.y()), unscale<double>(bb.max.x()), unscale<double>(bb.max.y()));
+            }
+
             if (brim_type == BrimType::btOuterOnly || brim_type == BrimType::btOuterAndInner)
             {
                 if (top_outer_brim)
@@ -679,7 +711,14 @@ static std::vector<InnerBrimExPolygons> inner_brim_area(const Print &print,
                     for (const Polygon &hole : ex_poly_holes_reversed)
                     {
                         size_t hole_idx = &hole - &ex_poly_holes_reversed.front();
-                        if (has_nothing_inside[polygon_idx + hole_idx])
+                        bool nothing_inside = has_nothing_inside[polygon_idx + hole_idx];
+                        auto hbb = get_extents(hole);
+                        BRIM_LOG(
+                            "      hole %zu (poly_idx=%zu): pts=%zu, nothing_inside=%d, bbox=[%.2f,%.2f]-[%.2f,%.2f]\n",
+                            hole_idx, polygon_idx + hole_idx, hole.points.size(), (int) nothing_inside,
+                            unscale<double>(hbb.min.x()), unscale<double>(hbb.min.y()), unscale<double>(hbb.max.x()),
+                            unscale<double>(hbb.max.y()));
+                        if (nothing_inside)
                             append(brim_area_innermost_object, shrink_ex({hole}, brim_separation, JoinType::Square));
                         else
                             append(brim_area_object,
@@ -703,6 +742,10 @@ static std::vector<InnerBrimExPolygons> inner_brim_area(const Print &print,
         append(no_brim_area_object,
                offset_ex(bottom_layers_expolygons[print_object_idx], brim_separation, JoinType::Square));
 
+        BRIM_LOG("  object %zu result: innermost=%zu, brim_area=%zu, no_brim_area=%zu, holes_reversed=%zu\n",
+                 print_object_idx, brim_area_innermost_object.size(), brim_area_object.size(),
+                 no_brim_area_object.size(), holes_reversed_object.size());
+
         for (const PrintInstance &instance : object->instances())
         {
             append_and_translate(brim_area_innermost[print_object_idx], brim_area_innermost_object, instance);
@@ -713,6 +756,9 @@ static std::vector<InnerBrimExPolygons> inner_brim_area(const Print &print,
     }
     assert(polygon_idx == has_nothing_inside.size());
 
+    BRIM_LOG("inner_brim_area: total brim_area=%zu, no_brim_area=%zu, holes_reversed=%zu\n", brim_area.size(),
+             no_brim_area.size(), holes_reversed.size());
+
     ExPolygons brim_area_innermost_merged;
     // Append all innermost brim areas.
     std::vector<InnerBrimExPolygons> brim_area_out;
@@ -720,18 +766,41 @@ static std::vector<InnerBrimExPolygons> inner_brim_area(const Print &print,
         if (const double brim_width = print.objects()[print_object_idx]->config().brim_width.value;
             !brim_area_innermost[print_object_idx].empty())
         {
+            BRIM_LOG("  innermost brim for object %zu: %zu expolygons, brim_width=%.2f\n", print_object_idx,
+                     brim_area_innermost[print_object_idx].size(), brim_width);
             append(brim_area_innermost_merged, brim_area_innermost[print_object_idx]);
             brim_area_out.push_back(
                 {std::move(brim_area_innermost[print_object_idx]), InnerBrimType::INNERMOST, brim_width});
         }
 
     // Append all normal brim areas.
+    // Use the max brim_width across all objects for the NORMAL group bound
+    double max_brim_width = 0.;
+    for (const PrintObject *obj : print.objects())
+        max_brim_width = std::max(max_brim_width, obj->config().brim_width.value);
+
     brim_area = union_ex(brim_area);
-    brim_area_out.push_back({diff_ex(intersection_ex(to_polygons(std::move(brim_area)), holes_reversed), no_brim_area),
-                             InnerBrimType::NORMAL});
+    ExPolygons normal_brim = diff_ex(intersection_ex(to_polygons(std::move(brim_area)), holes_reversed), no_brim_area);
+    BRIM_LOG("  normal brim area (after intersect+diff): %zu expolygons, max_brim_width=%.2f\n", normal_brim.size(),
+             max_brim_width);
+    for (size_t i = 0; i < normal_brim.size(); ++i)
+    {
+        auto bb = get_extents(normal_brim[i]);
+        BRIM_LOG("    normal_brim[%zu]: contour pts=%zu, holes=%zu, area=%.4f, bbox=[%.2f,%.2f]-[%.2f,%.2f]\n", i,
+                 normal_brim[i].contour.points.size(), normal_brim[i].holes.size(),
+                 unscale<double>(unscale<double>(normal_brim[i].area())), unscale<double>(bb.min.x()),
+                 unscale<double>(bb.min.y()), unscale<double>(bb.max.x()), unscale<double>(bb.max.y()));
+    }
+    brim_area_out.push_back({std::move(normal_brim), InnerBrimType::NORMAL, max_brim_width});
 
     // Cut out a huge brim areas that overflows into the INNERMOST holes.
     brim_area_out.back().brim_area = diff_ex(brim_area_out.back().brim_area, brim_area_innermost_merged);
+
+    BRIM_LOG("inner_brim_area: returning %zu brim groups\n", brim_area_out.size());
+    for (size_t i = 0; i < brim_area_out.size(); ++i)
+        BRIM_LOG("  group[%zu]: type=%s, expolygons=%zu, brim_width=%.2f\n", i,
+                 brim_area_out[i].type == InnerBrimType::INNERMOST ? "INNERMOST" : "NORMAL",
+                 brim_area_out[i].brim_area.size(), brim_area_out[i].brim_width);
     return brim_area_out;
 }
 
@@ -843,49 +912,190 @@ static Polylines connect_brim_lines(Polylines &&polylines, const Polygons &brim_
     return std::move(polylines);
 }
 
+// Inner brim generation using shrink-from-boundary + clip approach.
+// Mirrors the outer brim's expand-from-boundary algorithm:
+//   Outer: expand islands outward each iteration, shrink by 0.5*spacing for centerline, clip to brim area.
+//   Inner: shrink hole boundaries inward each iteration, expand by 0.5*spacing for centerline, clip to brim area.
+// This produces clean concentric loops that match outer brim loop count.
 static void make_inner_brim(const Print &print, const ConstPrintObjectPtrs &top_level_objects_with_brim,
                             const std::vector<ExPolygons> &bottom_layers_expolygons, ExtrusionEntityCollection &brim)
 {
     assert(print.objects().size() == bottom_layers_expolygons.size());
     const auto scaled_resolution = scaled<double>(print.config().gcode_resolution.value);
     Flow flow = print.brim_flow();
-    std::vector<InnerBrimExPolygons> inner_brims_ex = inner_brim_area(print, top_level_objects_with_brim,
-                                                                      bottom_layers_expolygons,
-                                                                      float(flow.scaled_spacing()));
-    Polygons loops;
-    std::mutex loops_mutex;
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, inner_brims_ex.size()),
-                      [&inner_brims_ex, &flow, &scaled_resolution, &loops,
-                       &loops_mutex](const tbb::blocked_range<size_t> &range)
-                      {
-                          for (size_t brim_idx = range.begin(); brim_idx < range.end(); ++brim_idx)
-                          {
-                              const InnerBrimExPolygons &inner_brim_ex = inner_brims_ex[brim_idx];
-                              auto num_loops = size_t(floor(inner_brim_ex.brim_width / flow.spacing()));
-                              ExPolygons islands_ex = offset_ex(inner_brim_ex.brim_area,
-                                                                -0.5f * float(flow.scaled_spacing()), JoinType::Square);
-                              for (size_t i = 0; (inner_brim_ex.type == InnerBrimType::INNERMOST ? i < num_loops
-                                                                                                 : !islands_ex.empty());
-                                   ++i)
-                              {
-                                  for (ExPolygon &poly_ex : islands_ex)
-                                      poly_ex.douglas_peucker(scaled_resolution);
 
-                                  {
-                                      boost::lock_guard<std::mutex> lock(loops_mutex);
-                                      polygons_append(loops, to_polygons(islands_ex));
-                                  }
-                                  islands_ex = offset_ex(islands_ex, -float(flow.scaled_spacing()), JoinType::Square);
-                              }
-                          }
-                      }); // end of parallel_for
+    // Step 1: Compute inner brim areas = within brim_width of any solid boundary inside a hole.
+    // This covers both hole walls (brim going inward) AND inner feature contours (brim going outward).
+    Polygons all_holes_reversed;
+    ExPolygons all_solid_areas;
+    ExPolygons all_solid_areas_expanded;
+    bool any_inner_brim = false;
+    for (size_t obj_idx = 0; obj_idx < print.objects().size(); ++obj_idx)
+    {
+        const PrintObject *object = print.objects()[obj_idx];
+        const BrimType bt = object->config().brim_type.value;
+        const bool has_inner = (bt == BrimType::btInnerOnly || bt == BrimType::btOuterAndInner ||
+                                bt == BrimType::btEar || bt == BrimType::btPainted);
+        // Check quantized brim_width (not config value) - if brim_width rounds to 0 loops, skip
+        if (!has_inner || size_t(floor(object->config().brim_width.value / flow.spacing())) == 0)
+            continue;
+        any_inner_brim = true;
+        const float brim_sep = scale_(object->config().brim_separation.value);
+        // Quantize brim width to fit whole beads, matching outer brim's floor() behavior.
+        // This prevents Athena from squeezing in an extra compressed loop.
+        const auto num_loops = size_t(floor(object->config().brim_width.value / flow.spacing()));
+        const float brim_width = float(num_loops) * float(flow.scaled_spacing());
 
-    loops = union_pt_chained_outside_in(loops);
-    std::reverse(loops.begin(), loops.end());
-    extrusion_entities_append_loops(brim.entities, std::move(loops),
-                                    ExtrusionAttributes{ExtrusionRole::Skirt,
-                                                        ExtrusionFlow{float(flow.mm3_per_mm()), float(flow.width()),
-                                                                      float(print.skirt_first_layer_height())}});
+        for (const ExPolygon &ex_poly : bottom_layers_expolygons[obj_idx])
+        {
+            Polygons holes = ex_poly.holes;
+            polygons_reverse(holes);
+            ExPolygons solid_sep = offset_ex(ExPolygon(ex_poly), brim_sep, JoinType::Square);
+            ExPolygons solid_exp = offset_ex(ExPolygon(ex_poly), brim_sep + brim_width, JoinType::Square);
+            for (const PrintInstance &instance : object->instances())
+            {
+                append_and_translate(all_holes_reversed, holes, instance);
+                append_and_translate(all_solid_areas, solid_sep, instance);
+                append_and_translate(all_solid_areas_expanded, solid_exp, instance);
+            }
+        }
+    }
+
+    if (!any_inner_brim)
+        return;
+
+    // Check if any object uses ear brim - these need the original inner_brim_area() logic
+    // which properly clips inner brim to ear circles.
+    bool any_ear_brim = false;
+    for (const PrintObject *obj : print.objects())
+    {
+        const BrimType bt = obj->config().brim_type.value;
+        if (bt == BrimType::btEar || bt == BrimType::btPainted)
+            any_ear_brim = true;
+    }
+
+    ExPolygons brim_regions;
+    if (any_ear_brim)
+    {
+        // For ear brim types, use the original inner_brim_area() which properly scopes
+        // inner brim to holes within ear circles.
+        std::vector<InnerBrimExPolygons> inner_brims_ex = inner_brim_area(print, top_level_objects_with_brim,
+                                                                          bottom_layers_expolygons,
+                                                                          float(flow.scaled_spacing()));
+        for (const auto &ib : inner_brims_ex)
+            append(brim_regions, ib.brim_area);
+    }
+    else
+    {
+        // For regular inner brim, compute brim_width rings around all solid boundaries inside holes.
+        // This covers both hole walls AND inner feature contours.
+        ExPolygons brim_band = diff_ex(all_solid_areas_expanded, all_solid_areas);
+        ExPolygons holes_as_ex;
+        for (const Polygon &h : all_holes_reversed)
+            holes_as_ex.emplace_back(ExPolygon(h));
+        brim_regions = union_ex(intersection_ex(brim_band, holes_as_ex));
+    }
+
+    for (const PrintObject *obj : print.objects())
+        BRIM_LOG("  object brim_type=%d, brim_width=%.2f\n", (int) obj->config().brim_type.value,
+                 obj->config().brim_width.value);
+    BRIM_LOG("make_inner_brim: any_ear_brim=%d, brim_regions=%zu\n", (int) any_ear_brim, brim_regions.size());
+    if (brim_regions.empty())
+    {
+        BRIM_LOG("make_inner_brim: no brim regions, returning early\n");
+        return;
+    }
+
+    // Sort regions largest-first so wall-adjacent loops (which adhere to the object)
+    // print before smaller disconnected regions.
+    std::sort(brim_regions.begin(), brim_regions.end(),
+              [](const ExPolygon &a, const ExPolygon &b) { return std::abs(a.area()) > std::abs(b.area()); });
+
+    BRIM_LOG("make_inner_brim: %zu brim regions (brim_width rings around all solid boundaries inside holes)\n",
+             brim_regions.size());
+    for (size_t i = 0; i < brim_regions.size(); ++i)
+    {
+        auto bb = get_extents(brim_regions[i]);
+        BRIM_LOG("  region[%zu]: area=%.2f, holes=%zu, bbox=[%.2f,%.2f]-[%.2f,%.2f]\n", i,
+                 unscale<double>(unscale<double>(std::abs(brim_regions[i].area()))), brim_regions[i].holes.size(),
+                 unscale<double>(bb.min.x()), unscale<double>(bb.min.y()), unscale<double>(bb.max.x()),
+                 unscale<double>(bb.max.y()));
+    }
+
+    const size_t inner_brim_start = brim.entities.size();
+
+    // Step 3: Fill inner brim areas using FillConcentric with Athena.
+    // Same approach as painted mouse ears - Athena handles arbitrary ExPolygon regions,
+    // nested holes, and shared boundaries correctly without manual loop management.
+    assert(!print.objects().empty());
+    if (print.objects().empty())
+        return;
+    const PrintObjectConfig &obj_config = print.objects().front()->config();
+
+    FillConcentric fill_concentric;
+    fill_concentric.spacing = flow.spacing();
+    fill_concentric.overlap = 0;
+    fill_concentric.bounding_width = 0;
+    fill_concentric.loop_clipping = 0;
+    fill_concentric.print_config = &print.config();
+    fill_concentric.print_object_config = &obj_config;
+
+    FillParams fill_params;
+    fill_params.density = 1.0f;
+    fill_params.dont_adjust = false;
+    fill_params.use_advanced_perimeters = true;
+    fill_params.perimeter_generator = PerimeterGeneratorType::Athena;
+    fill_params.layer_height = print.skirt_first_layer_height();
+    fill_params.prefer_clockwise_movements = print.config().prefer_clockwise_movements;
+
+    for (const ExPolygon &brim_area : brim_regions)
+    {
+        // Inset by half-spacing so the first loop doesn't overlap the perimeter
+        ExPolygons inset = offset_ex(ExPolygons{brim_area}, -0.5f * float(flow.scaled_spacing()), JoinType::Square);
+        if (inset.empty())
+            continue;
+
+        for (const ExPolygon &area : inset)
+        {
+            fill_params.start_near = area.contour.points.front();
+            Surface surface(stBottom, area);
+            ThickPolylines thick_polylines = fill_concentric.fill_surface_advanced(&surface, fill_params);
+
+            // Collect this region's loops, then reverse so outermost is first.
+            // Athena generates inside-out; we want outside-in so the GCode export's
+            // nearest-neighbor chaining (which starts near the wall) picks adjacent loops.
+            std::vector<ExtrusionEntity *> region_entities;
+            Flow brim_loop_flow = flow.with_spacing(float(fill_concentric.spacing));
+            // Minimum path length to keep - skip tiny gap-fill fragments that won't adhere
+            const double min_brim_length = flow.scaled_spacing() * 3.0;
+            for (const ThickPolyline &tp : thick_polylines)
+            {
+                ExtrusionMultiPath multi_path = PerimeterGenerator::thick_polyline_to_multi_path(
+                    tp, ExtrusionRole::Skirt, brim_loop_flow, scaled<float>(0.05), float(SCALED_EPSILON));
+                if (!multi_path.empty() && multi_path.length() >= min_brim_length)
+                {
+                    // Use ExtrusionLoop for closed paths (proper seam handling),
+                    // ExtrusionMultiPath for open paths.
+                    // Athena may leave a small gap, so use tolerance instead of exact match.
+                    const double close_tolerance = flow.scaled_spacing() * 0.5;
+                    if ((multi_path.paths.front().first_point() - multi_path.paths.back().last_point())
+                            .cast<double>()
+                            .norm() < close_tolerance)
+                        region_entities.emplace_back(new ExtrusionLoop(std::move(multi_path.paths)));
+                    else
+                        region_entities.emplace_back(new ExtrusionMultiPath(std::move(multi_path)));
+                }
+            }
+            // Athena's output is spatially coherent - each path is adjacent to the previous.
+            // Reversing gives outside-in order while preserving spatial adjacency.
+            BRIM_LOG("  region fill: %zu entities from %zu thick_polylines\n", region_entities.size(),
+                     thick_polylines.size());
+            append(brim.entities, std::move(region_entities));
+        }
+    }
+
+    BRIM_LOG("make_inner_brim: done with Athena concentric fill, brim entities=%zu (%zu inner)\n", brim.entities.size(),
+             brim.entities.size() - inner_brim_start);
 }
 
 // Produce brim lines around those objects, that have the brim enabled.
@@ -955,6 +1165,7 @@ ExtrusionEntityCollection make_brim(const Print &print, PrintTryCancel try_cance
     // Painted ears start at raw boundary - each ear was individually clipped at its own overlap level.
     ExPolygons all_ear_areas = brim_areas.auto_ears;
     append(all_ear_areas, brim_areas.clippable);
+    append(all_ear_areas, brim_areas.painted_preclipped);
     if (!all_ear_areas.empty())
     {
         const size_t auto_ears_count = brim_areas.auto_ears.size();
@@ -1003,7 +1214,7 @@ ExtrusionEntityCollection make_brim(const Print &print, PrintTryCancel try_cance
             try_cancel();
 
             // Auto ears: inset by half-spacing so the first loop doesn't overlap the external perimeter.
-            // Painted ears: use raw boundary as designed.
+            // Painted ears: use raw boundary - the clip boundary already accounts for overlap.
             ExPolygon ear_shape;
             if (is_auto_ear[ordered_idx])
             {
@@ -1031,7 +1242,11 @@ ExtrusionEntityCollection make_brim(const Print &print, PrintTryCancel try_cance
                     tp, ExtrusionRole::Skirt, ear_flow, scaled<float>(0.05), float(SCALED_EPSILON));
                 if (!multi_path.empty())
                 {
-                    if (multi_path.paths.front().first_point() == multi_path.paths.back().last_point())
+                    // Tolerance-based check for closed loops - Athena may leave sub-spacing gaps
+                    const double close_tol = flow.scaled_spacing() * 0.5;
+                    if ((multi_path.paths.front().first_point() - multi_path.paths.back().last_point())
+                            .cast<double>()
+                            .norm() < close_tol)
                         brim.entities.emplace_back(new ExtrusionLoop(std::move(multi_path.paths)));
                     else
                         brim.entities.emplace_back(new ExtrusionMultiPath(std::move(multi_path)));

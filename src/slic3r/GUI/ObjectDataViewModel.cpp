@@ -84,8 +84,8 @@ const std::map<InfoItemType, InfoItemAtributes> INFO_ITEMS{
         {L("Connectors"), "cut_connectors"},
     },
     {
-        InfoItemType::MmSegmentation,
-        {L("Multimaterial painting"), "mmu_segmentation_"},
+        InfoItemType::ColorMixing,
+        {L("Color mixing painting"), "mmu_segmentation_"},
     },
     {
         InfoItemType::Sinking,

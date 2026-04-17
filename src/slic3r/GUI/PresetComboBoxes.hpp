@@ -172,7 +172,6 @@ public:
     ScalableButton *edit_btn{nullptr};
 
     void switch_to_tab();
-    void change_extruder_color();
     void show_add_menu();
     void show_edit_menu();
 

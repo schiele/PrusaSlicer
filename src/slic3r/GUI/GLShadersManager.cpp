@@ -110,10 +110,19 @@ std::pair<bool, std::string> GLShadersManager::init()
     // Since macOS 12 (Monterey), this issue with the opposite direction on Apple's Arm CPU seems to be fixed, and computed
     // triangle normals inside fragment shader have the right direction.
     if (platform_flavor() == PlatformFlavor::OSXOnArm && wxPlatformInfo::Get().GetOSMajorVersion() < 12)
+    {
         valid &= append_shader("mm_gouraud", {prefix + "mm_gouraud.vs", prefix + "mm_gouraud.fs"},
                                {"FLIP_TRIANGLE_NORMALS"sv});
+        // Color preview shader is optional - falls back to mm_gouraud if unavailable
+        append_shader("mm_color_preview", {prefix + "mm_color_preview.vs", prefix + "mm_color_preview.fs"},
+                      {"FLIP_TRIANGLE_NORMALS"sv});
+    }
     else
+    {
         valid &= append_shader("mm_gouraud", {prefix + "mm_gouraud.vs", prefix + "mm_gouraud.fs"});
+        // Color preview shader is optional - falls back to mm_gouraud if unavailable
+        append_shader("mm_color_preview", {prefix + "mm_color_preview.vs", prefix + "mm_color_preview.fs"});
+    }
 
     return {valid, error};
 }

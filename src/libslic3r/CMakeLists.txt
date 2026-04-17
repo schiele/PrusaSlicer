@@ -56,6 +56,13 @@ set(SLIC3R_SOURCES
     ClipperZUtils.hpp
     Color.cpp
     Color.hpp
+    ColorMixer.hpp
+    ColorMixer.cpp
+    ColorDithering.hpp
+    ColorDithering.cpp
+    FilamentOptics.hpp
+    MixedColorPalette.hpp
+    MixedColorPalette.cpp
     Config.cpp
     Config.hpp
     CSGMesh/CSGMesh.hpp
@@ -386,6 +393,10 @@ set(SLIC3R_SOURCES
     Timer.hpp
     Thread.cpp
     Thread.hpp
+    CpuAffinity.cpp
+    CpuAffinity.hpp
+    NvidiaProfile.cpp
+    NvidiaProfile.hpp
     TravelOptimization.cpp
     TravelOptimization.hpp
     TriangleSelector.cpp

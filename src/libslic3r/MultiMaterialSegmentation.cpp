@@ -90,12 +90,12 @@ using ColorLines = std::vector<ColorLine>;
 
 struct ColorChange
 {
-    explicit ColorChange(double t, uint8_t color_next) : t(t), color_next(color_next) {}
+    explicit ColorChange(double t, ColorPolygon::Color color_next) : t(t), color_next(color_next) {}
 
     // Relative position on the line from range <0, 1>
     double t = 0.;
     // Color after (including) t value on the line.
-    uint8_t color_next = 0;
+    ColorPolygon::Color color_next = 0;
 
     friend bool operator<(const ColorChange &lhs, const ColorChange &rhs) { return lhs.t < rhs.t; }
 };
@@ -200,10 +200,10 @@ struct ColorProjectionLineWrapper
 struct ColorPoint
 {
     Point p;
-    uint8_t color_prev;
-    uint8_t color_next;
+    ColorPolygon::Color color_prev;
+    ColorPolygon::Color color_next;
 
-    explicit ColorPoint(const Point &p, uint8_t color_prev, uint8_t color_next)
+    explicit ColorPoint(const Point &p, ColorPolygon::Color color_prev, ColorPolygon::Color color_next)
         : p(p), color_prev(color_prev), color_next(color_next)
     {
     }
@@ -333,12 +333,12 @@ using ColorPoints = std::vector<ColorPoint>;
     {
         for (size_t pt_idx = 1; pt_idx < color_polygon.size(); ++pt_idx)
         {
-            const uint8_t color = color_polygon.colors[pt_idx - 1];
+            const ColorPolygon::Color color = color_polygon.colors[pt_idx - 1];
             svg.draw(Line(color_polygon.points[pt_idx - 1], color_polygon.points[pt_idx]),
                      (color < colors.size() ? colors[color] : default_color), stroke_width);
         }
 
-        const uint8_t color = color_polygon.colors.back();
+        const ColorPolygon::Color color = color_polygon.colors.back();
         svg.draw(Line(color_polygon.points.back(), color_polygon.points.front()),
                  (color < colors.size() ? colors[color] : default_color), stroke_width);
     }
@@ -425,7 +425,7 @@ inline OutputIterator douglas_peucker(ColorPoints::const_iterator begin, ColorPo
         if (max_dist_sq > tolerance_sq || anchor_it->color_next != floater_it->color_prev)
             return false;
 
-        const uint8_t anchor_color = anchor_it->color_next;
+        const ColorPolygon::Color anchor_color = anchor_it->color_next;
         double different_color_length_sq = 0.;
         std::optional<ColorPoint> color_point_prev;
         for (auto cp_it = std::next(anchor_it); cp_it != floater_it; ++cp_it)
@@ -1543,8 +1543,8 @@ ColorPoints color_polygon_to_color_points(const ColorPolygon &color_polygon)
     for (const Point &pt : color_polygon.points)
     {
         const size_t pt_idx = &pt - color_polygon.points.data();
-        const uint8_t color_prev = (pt_idx == 0) ? color_polygon.colors.back() : color_polygon.colors[pt_idx - 1];
-        const uint8_t color_next = color_polygon.colors[pt_idx];
+        const ColorPolygon::Color color_prev = (pt_idx == 0) ? color_polygon.colors.back() : color_polygon.colors[pt_idx - 1];
+        const ColorPolygon::Color color_next = color_polygon.colors[pt_idx];
 
         color_points_out.emplace_back(pt, color_prev, color_next);
     }
@@ -1641,14 +1641,14 @@ void static filter_color_of_small_segments(ColorPoints &color_polygon_points, co
 {
     struct ColorSegment
     {
-        explicit ColorSegment(size_t color_pt_begin_idx, size_t color_pt_end_idx, uint8_t color, double length)
+        explicit ColorSegment(size_t color_pt_begin_idx, size_t color_pt_end_idx, ColorPolygon::Color color, double length)
             : color_pt_begin_idx(color_pt_begin_idx), color_pt_end_idx(color_pt_end_idx), color(color), length(length)
         {
         }
 
         size_t color_pt_begin_idx = 0;
         size_t color_pt_end_idx = 0;
-        uint8_t color = 0;
+        ColorPolygon::Color color = 0;
         double length = 0.;
     };
 
@@ -1724,7 +1724,7 @@ void static filter_color_of_small_segments(ColorPoints &color_polygon_points, co
             continue;
         }
 
-        const uint8_t new_color = color_segments[from_segment_idx].color;
+        const ColorPolygon::Color new_color = color_segments[from_segment_idx].color;
         for (size_t curr_segment_idx = next_segment_idx(from_segment_idx); curr_segment_idx != to_segment_idx;
              curr_segment_idx = next_segment_idx(curr_segment_idx))
         {
@@ -1841,7 +1841,7 @@ static std::vector<ColorProjectionLineWrapper> create_color_projection_lines_map
 }
 
 // Return the color of the first part of the first line of the polygon (after projection).
-static uint8_t get_color_of_first_polygon_line(const ColorProjectionLines &color_polygon_projection_lines)
+static ColorPolygon::Color get_color_of_first_polygon_line(const ColorProjectionLines &color_polygon_projection_lines)
 {
     assert(!color_polygon_projection_lines.empty());
 
@@ -1873,26 +1873,26 @@ static uint8_t get_color_of_first_polygon_line(const ColorProjectionLines &color
 }
 
 // Helper function to find the dominant color in a map.
-static std::optional<uint8_t> get_dominant_color_from_map(const std::unordered_map<uint8_t, double> &area_per_color)
+static std::optional<ColorPolygon::Color> get_dominant_color_from_map(const std::unordered_map<ColorPolygon::Color, double> &area_per_color)
 {
     if (area_per_color.empty())
         return std::nullopt;
 
     return std::max_element(area_per_color.begin(), area_per_color.end(),
-                            [](const std::pair<uint8_t, double> &p1, const std::pair<uint8_t, double> &p2)
+                            [](const std::pair<ColorPolygon::Color, double> &p1, const std::pair<ColorPolygon::Color, double> &p2)
                             { return p1.second < p2.second; })
         ->first;
 }
 
 // Function to find the dominant color over the beginning of the ColorProjectionLine.
-static std::optional<uint8_t> find_dominant_color_from_begin(const ColorProjectionLine &color_line)
+static std::optional<ColorPolygon::Color> find_dominant_color_from_begin(const ColorProjectionLine &color_line)
 {
     assert(!color_line.color_changes.empty());
     const ColorChanges &color_changes = color_line.color_changes;
     const double line_length = (color_line.b - color_line.a).cast<double>().norm();
     const double max_snap_distance = std::min(line_length, 10. * MM_SEGMENTATION_MAX_SNAP_DISTANCE_SCALED);
     bool max_snap_distance_exceeded = false;
-    std::unordered_map<uint8_t, double> area_per_color;
+    std::unordered_map<ColorPolygon::Color, double> area_per_color;
     for (auto curr_it = std::next(color_changes.cbegin()); curr_it != color_changes.cend(); ++curr_it)
     {
         auto prev_it = std::prev(curr_it);
@@ -1918,13 +1918,13 @@ static std::optional<uint8_t> find_dominant_color_from_begin(const ColorProjecti
 }
 
 // Function to find the dominant color over the end of the ColorProjectionLine.
-std::optional<uint8_t> find_dominant_color_from_end(const ColorProjectionLine &color_line)
+std::optional<ColorPolygon::Color> find_dominant_color_from_end(const ColorProjectionLine &color_line)
 {
     const ColorChanges &color_changes = color_line.color_changes;
     const double line_length = (color_line.b - color_line.a).cast<double>().norm();
     const double max_snap_distance = std::min(line_length, 10. * MM_SEGMENTATION_MAX_SNAP_DISTANCE_SCALED);
     double prev_t = 1.;
-    std::unordered_map<uint8_t, double> area_per_color;
+    std::unordered_map<ColorPolygon::Color, double> area_per_color;
     for (auto curr_it = color_changes.crbegin(); curr_it != color_changes.crend(); ++curr_it)
     {
         if (const double endpoint_dist = (1. - curr_it->t) * line_length; endpoint_dist < max_snap_distance)
@@ -1973,7 +1973,7 @@ static void filter_projected_color_points_on_polygon(ColorProjectionLines &color
         {
             snap_candidates.front()->t = 0.;
         }
-        else if (const std::optional<uint8_t> dominant_color_from_begin = find_dominant_color_from_begin(color_line);
+        else if (const std::optional<ColorPolygon::Color> dominant_color_from_begin = find_dominant_color_from_begin(color_line);
                  snap_candidates.size() > 1 && dominant_color_from_begin.has_value())
         {
             ColorChange &first_candidate = *snap_candidates.front();
@@ -2001,7 +2001,7 @@ static void filter_projected_color_points_on_polygon(ColorProjectionLines &color
             }
         }
 
-        if (const std::optional<uint8_t> dominant_color_from_end = find_dominant_color_from_end(color_line);
+        if (const std::optional<ColorPolygon::Color> dominant_color_from_end = find_dominant_color_from_end(color_line);
             !snap_candidates.empty() && dominant_color_from_end.has_value())
         {
             for (ColorChange *snap_candidate : snap_candidates)
@@ -2237,8 +2237,8 @@ static ColorPoints convert_color_polygon_projection_lines_to_color_points(
     ColorPoints color_polygon_points;
     color_polygon_points.reserve(color_polygon_projection_lines.size());
 
-    uint8_t prev_color = get_color_of_first_polygon_line(color_polygon_projection_lines);
-    uint8_t curr_color = prev_color;
+    ColorPolygon::Color prev_color = get_color_of_first_polygon_line(color_polygon_projection_lines);
+    ColorPolygon::Color curr_color = prev_color;
     for (const ColorProjectionLine &color_line : color_polygon_projection_lines)
     {
         if (color_line.color_changes.empty())
@@ -2493,7 +2493,7 @@ static std::vector<ColorPolygons> slice_model_volume_with_color(
         {
             const TriangleMesh &mesh = model_volume.mesh();
             return {mesh.its.indices, mesh.its.vertices,
-                    std::vector<uint8_t>(mesh.its.indices.size(), uint8_t(volume_extruder_id))};
+                    std::vector<uint16_t>(mesh.its.indices.size(), uint16_t(volume_extruder_id))};
         }
 
         return facets_info.facets_annotation.get_all_facets_strict_with_colors(model_volume);
@@ -2525,8 +2525,8 @@ static std::vector<ColorPolygons> slice_model_volume_with_color(
         for (ColorPolygon &color_polygon : color_polygons)
         {
             std::replace_if(
-                color_polygon.colors.begin(), color_polygon.colors.end(), [&num_facets_states](const uint8_t color)
-                { return color >= num_facets_states; }, static_cast<uint8_t>(TriangleStateType::NONE));
+                color_polygon.colors.begin(), color_polygon.colors.end(), [&num_facets_states](const ColorPolygon::Color color)
+                { return color >= num_facets_states; }, static_cast<ColorPolygon::Color>(TriangleStateType::NONE));
         }
     }
 

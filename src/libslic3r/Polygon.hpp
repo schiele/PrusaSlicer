@@ -383,7 +383,7 @@ IntegerOnly<I, Polygons> reserve_polygons(I cap)
 class ColorPolygon : public Polygon
 {
 public:
-    using Color = uint8_t;
+    using Color = uint16_t;
     using Colors = std::vector<Color>;
 
     Colors colors;

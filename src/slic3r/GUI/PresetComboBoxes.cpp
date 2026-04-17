@@ -743,37 +743,6 @@ bool PresetComboBox::selection_is_changed_according_to_physical_printers()
 PlaterPresetComboBox::PlaterPresetComboBox(wxWindow *parent, Preset::Type preset_type)
     : PresetComboBox(parent, preset_type, wxSize(15 * wxGetApp().em_unit(), -1))
 {
-    if (m_type == Preset::TYPE_FILAMENT)
-    {
-        Bind(wxEVT_LEFT_DOWN,
-             [this](wxMouseEvent &event)
-             {
-                 const Filament *selected_filament =
-                     m_preset_bundle->extruders_filaments[m_extruder_idx].get_selected_filament();
-                 // Wide icons are shown if the currently selected preset is not compatible with the current printer,
-                 // and red flag is drown in front of the selected preset.
-                 const bool wide_icons = selected_filament && !selected_filament->is_compatible;
-                 float scale = m_em_unit * 0.1f;
-
-                 int shifl_Left = wide_icons ? int(scale * 16 + 0.5) : 0;
-#if defined(wxBITMAPCOMBOBOX_OWNERDRAWN_BASED)
-                 shifl_Left += int(scale * 4 +
-                                   0.5f); // IMAGE_SPACING_RIGHT = 4 for wxBitmapComboBox -> Space left of image
-#endif
-                 int icon_right_pos = shifl_Left + int(scale * (24 + 4) + 0.5);
-                 int mouse_pos = event.GetLogicalPosition(wxClientDC(this)).x;
-                 if (mouse_pos < shifl_Left || mouse_pos > icon_right_pos)
-                 {
-                     // Let the combo box process the mouse click.
-                     event.Skip();
-                     return;
-                 }
-
-                 // Swallow the mouse click and open the color picker.
-                 change_extruder_color();
-             });
-    }
-
     edit_btn = new ScalableButton(parent, wxID_ANY, "cog");
     edit_btn->SetToolTip(_L("Click to edit preset"));
 
@@ -869,34 +838,6 @@ void PlaterPresetComboBox::switch_to_tab()
     }
 }
 
-void PlaterPresetComboBox::change_extruder_color()
-{
-    // get current color
-    DynamicPrintConfig *cfg = wxGetApp().get_tab(Preset::TYPE_PRINTER)->get_config();
-    auto colors = static_cast<ConfigOptionStrings *>(cfg->option("extruder_colour")->clone());
-    wxColour clr(colors->values[m_extruder_idx]);
-    if (!clr.IsOk())
-        clr = wxColour(0, 0, 0); // Don't set alfa to transparence
-
-    auto data = new wxColourData();
-    data->SetChooseFull(1);
-    data->SetColour(clr);
-
-    wxColourDialog dialog(this, data);
-    dialog.CenterOnParent();
-    if (dialog.ShowModal() == wxID_OK)
-    {
-        colors->values[m_extruder_idx] = dialog.GetColourData().GetColour().GetAsString(wxC2S_HTML_SYNTAX).ToStdString();
-
-        DynamicPrintConfig cfg_new = *cfg;
-        cfg_new.set_key_value("extruder_colour", colors);
-
-        wxGetApp().get_tab(Preset::TYPE_PRINTER)->load_config(cfg_new);
-        this->update();
-        wxGetApp().plater()->on_config_change(cfg_new);
-    }
-}
-
 void PlaterPresetComboBox::show_add_menu()
 {
     wxMenu *menu = new wxMenu();
@@ -923,12 +864,6 @@ void PlaterPresetComboBox::show_edit_menu()
 
     if (m_type == Preset::TYPE_FILAMENT)
     {
-#ifdef __linux__
-        // To edit extruder color from the sidebar
-        append_menu_item(
-            menu, wxID_ANY, _L("Change extruder color"), "", [this](wxCommandEvent &)
-            { this->change_extruder_color(); }, "funnel", menu, []() { return true; }, wxGetApp().plater());
-#endif //__linux__
         append_menu_item(
             menu, wxID_ANY, _L("Show/Hide template presets"), "",
             [](wxCommandEvent &) { wxGetApp().open_preferences("no_templates", "General"); }, "spool", menu,
@@ -997,14 +932,12 @@ void PlaterPresetComboBox::update()
         m_preset_bundle->extruders_filaments[m_extruder_idx >= 0 ? m_extruder_idx : 0];
 
     const Preset *selected_filament_preset = nullptr;
+    // extruder_colour is no longer a user-facing concept -- filament_colour is the single
+    // source of truth throughout the slicer (sidebar swatch, 3D view, gcode preview, gizmo,
+    // thumbnails). Leaving this empty forces the combo to render a single-bar swatch.
     std::string extruder_color;
     if (m_type == Preset::TYPE_FILAMENT)
     {
-        extruder_color = m_preset_bundle->printers.get_edited_preset().config.opt_string("extruder_colour",
-                                                                                         (unsigned int) m_extruder_idx);
-        if (!can_decode_color(extruder_color))
-            // Extruder color is not defined.
-            extruder_color.clear();
         selected_filament_preset = extruder_filaments.get_selected_preset();
         if (selected_filament_preset->is_dirty)
             selected_filament_preset = &m_preset_bundle->filaments.get_edited_preset();

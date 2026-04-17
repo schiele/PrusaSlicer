@@ -14,6 +14,7 @@
 #include <cstdarg>
 #include <stdio.h>
 #include <random>
+#include <memory>
 
 #include "Platform.hpp"
 #include "Time.hpp"
@@ -145,16 +146,25 @@ static struct RunOnInit
     RunOnInit() { set_logging_level(1); }
 } g_RunOnInit;
 
+// preFlight: live-updatable TBB thread cap. Pass count == 0 to release the cap entirely (full speed).
+// Namespace-scope unique_ptr lets us destroy and recreate the limiter when the user changes the preference,
+// which the previous function-local static could not do.
+#ifdef TBB_HAS_GLOBAL_CONTROL
+static std::unique_ptr<tbb::global_control> g_tbb_thread_cap;
+#else
+static std::unique_ptr<tbb::task_scheduler_init> g_tbb_thread_cap;
+#endif
+
 void enforce_thread_count(const std::size_t count)
 {
-    // Disable parallelization to simplify debugging.
 #ifdef TBB_HAS_GLOBAL_CONTROL
-    {
-        static tbb::global_control gc(tbb::global_control::max_allowed_parallelism, count);
-    }
+    g_tbb_thread_cap.reset();
+    if (count > 0)
+        g_tbb_thread_cap = std::make_unique<tbb::global_control>(tbb::global_control::max_allowed_parallelism, count);
 #else  // TBB_HAS_GLOBAL_CONTROL
-    static tbb::task_scheduler_init *tbb_init = new tbb::task_scheduler_init(count);
-    UNUSED(tbb_init);
+    g_tbb_thread_cap.reset();
+    if (count > 0)
+        g_tbb_thread_cap = std::make_unique<tbb::task_scheduler_init>(count);
 #endif // TBB_HAS_GLOBAL_CONTROL
 }
 

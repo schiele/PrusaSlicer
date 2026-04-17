@@ -248,6 +248,12 @@ static const t_config_enum_values s_keys_map_SeamPosition{{"random", spRandom},
 
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(SeamPosition)
 
+static const t_config_enum_values s_keys_map_ColorMixingBaseExtruder{{"darkest", cmbeDarkest},
+                                                                     {"lightest", cmbeLightest},
+                                                                     {"volume_default", cmbeVolumeDefault}};
+
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(ColorMixingBaseExtruder)
+
 static const t_config_enum_values s_keys_map_SeamNotchType{{"regular", sntRegular},
                                                            {"niptuck", sntNipTuck},
                                                            {"nip", sntNip},
@@ -451,6 +457,34 @@ void PrintConfigDef::init_common_params()
     def->sidetext = L("mm");
     def->min = 0;
     def->set_default_value(new ConfigOptionFloat(0.3));
+
+    def = this->add("color_mixing_base_layers", coInt);
+    def->label = L("Color mixing base layers");
+    def->category = L("Layers and Perimeters");
+    def->tooltip = L("Number of initial layers that print with a single filament instead of color-mixed "
+                     "dither. The bottom of a print is exposed (glass beds, flipped prints) and the dither "
+                     "pattern produces visible striping until the cycle has had several layers to converge. "
+                     "Locking the base to one filament also keeps bed adhesion uniform on the most critical "
+                     "layers. Set to 0 to disable and start color mixing immediately on layer 1.");
+    def->min = 0;
+    def->max = 10;
+    def->set_default_value(new ConfigOptionInt(3));
+
+    def = this->add("color_mixing_base_extruder", coEnum);
+    def->label = L("Color mixing base filament");
+    def->category = L("Layers and Perimeters");
+    def->tooltip = L("Which loaded filament to use for the color mixing base layers (see above).\n"
+                     "\u2022 Darkest: auto-pick the darkest loaded filament. Hides any dither artifacts and "
+                     "tends to give the cleanest-looking bottom face.\n"
+                     "\u2022 Lightest: auto-pick the brightest loaded filament. Useful when the bottom of "
+                     "the print should look bright or be barely visible.\n"
+                     "\u2022 Volume default: use whatever filament the volume is otherwise assigned to. Pick "
+                     "this if you want explicit control through the volume's extruder setting.");
+    def->set_enum<ColorMixingBaseExtruder>(
+        std::initializer_list<std::pair<std::string_view, std::string_view>>{{"darkest", L("Darkest available")},
+                                                                             {"lightest", L("Lightest available")},
+                                                                             {"volume_default", L("Volume default")}});
+    def->set_default_value(new ConfigOptionEnum<ColorMixingBaseExtruder>(cmbeDarkest));
 
     def = this->add("max_print_height", coFloat);
     def->label = L("Max print height");
@@ -1520,6 +1554,22 @@ void PrintConfigDef::init_fff_params()
     def->tooltip = L("This is only used in the Slic3r interface as a visual help.");
     def->gui_type = ConfigOptionDef::GUIType::color;
     def->set_default_value(new ConfigOptionStrings{"#29B2B2"});
+
+    def = this->add("filament_transmission_distance", coFloats);
+    def->label = L("Transmission distance");
+    def->tooltip = L("How deep light penetrates this filament before it appears fully opaque, in millimetres. "
+                     "Lower values = more opaque (the filament's color saturates over a thinner stack of layers). "
+                     "Higher values = more translucent (color builds up gradually as more material stacks on top). "
+                     "Color Mixing uses this to predict the blended color of stacked filament layers, so accurate "
+                     "values produce accurate previews. "
+                     "Measure with the preFlight TD1S sensor for precise results, or leave at the 4.0 default if "
+                     "you have not measured -- this works reasonably for most opaque PLA but can be off for "
+                     "translucent, silk, or specialty filaments.");
+    def->sidetext = L("mm");
+    def->min = 0.1;
+    def->max = 20.0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats{4.0});
 
     def = this->add("filament_notes", coStrings);
     def->label = L("Filament notes");
@@ -3823,6 +3873,14 @@ void PrintConfigDef::init_fff_params()
     def->max = 1000;
     def->mode = comExpert;
     def->set_default_value(new ConfigOptionInts{5});
+
+    def = this->add("dont_slow_down_outer_wall", coBools);
+    def->label = L("Don't slow down outer walls");
+    def->tooltip = L("If enabled, outer wall speed will not be reduced to meet the minimum layer time. "
+                     "This prevents wall thickness variation on thin-walled parts where the cooling "
+                     "slowdown would otherwise cause over-extrusion at reduced speeds.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBools{false});
 
     def = this->add("small_perimeter_speed", coFloatOrPercent);
     def->label = L("Small perimeters");

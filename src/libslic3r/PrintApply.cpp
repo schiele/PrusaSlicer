@@ -128,6 +128,9 @@ static inline void model_volume_list_copy_configs(ModelObject &model_object_dst,
         mv_dst.fuzzy_skin_facets.assign(mv_src.fuzzy_skin_facets);
         assert(mv_dst.counterbore_bridge_facets.id() == mv_src.counterbore_bridge_facets.id());
         mv_dst.counterbore_bridge_facets.assign(mv_src.counterbore_bridge_facets);
+        assert(mv_dst.color_mixing_facets.id() == mv_src.color_mixing_facets.id());
+        mv_dst.color_mixing_facets.assign(mv_src.color_mixing_facets);
+        mv_dst.color_mixing_palette = mv_src.color_mixing_palette;
         //FIXME what to do with the materials?
         // mv_dst.m_material_id = mv_src.m_material_id;
         ++i_src;
@@ -1571,7 +1574,8 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                                         model_mmu_segmentation_data_changed(model_object, model_object_new) ||
                                         (model_object_new.is_mm_painted() && num_extruders_changed) ||
                                         model_fuzzy_skin_data_changed(model_object, model_object_new) ||
-                                        model_counterbore_bridge_data_changed(model_object, model_object_new);
+                                        model_counterbore_bridge_data_changed(model_object, model_object_new) ||
+                                        model_color_mixing_data_changed(model_object, model_object_new);
         bool supports_differ = model_volume_list_changed(model_object, model_object_new,
                                                          ModelVolumeType::SUPPORT_BLOCKER) ||
                                model_volume_list_changed(model_object, model_object_new,
@@ -1900,6 +1904,26 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                 {
                     painting_extruders.emplace_back(state_idx);
                 }
+            }
+        }
+
+        // Color mixing: ensure PaintedRegions exist for ALL physical extruders,
+        // since any palette color could resolve to any extruder on any given layer.
+        if (num_extruders > 1)
+        {
+            bool has_cm = false;
+            for (const ModelVolume *mv : print_object.model_object()->volumes)
+                if (mv->is_color_mixing_painted())
+                {
+                    has_cm = true;
+                    break;
+                }
+            if (has_cm)
+            {
+                for (unsigned int ext = 1; ext <= (unsigned int) num_extruders; ++ext)
+                    if (std::find(painting_extruders.begin(), painting_extruders.end(), ext) ==
+                        painting_extruders.end())
+                        painting_extruders.emplace_back(ext);
             }
         }
         if (model_object_status.print_object_regions_status == ModelObjectStatus::PrintObjectRegionsStatus::Valid)

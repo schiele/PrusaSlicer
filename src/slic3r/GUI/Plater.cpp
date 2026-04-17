@@ -708,8 +708,8 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
            "brim_separation", "brim_type", "variable_layer_height", "nozzle_diameter", "single_extruder_multi_material",
            "wipe_tower", "wipe_tower_width", "wipe_tower_brim_width", "wipe_tower_cone_angle",
            "wipe_tower_extra_spacing", "wipe_tower_extra_flow", "wipe_tower_extruder", "extruder_colour",
-           "filament_colour", "material_colour", "max_print_height", "printer_model", "printer_notes",
-           "printer_technology",
+           "filament_colour", "filament_transmission_distance", "material_colour", "max_print_height", "printer_model",
+           "printer_notes", "printer_technology",
            // These values are necessary to construct SlicingParameters by the Canvas3D variable layer height editor.
            "layer_height", "first_layer_height", "min_layer_height", "max_layer_height", "brim_width", "perimeters",
            "perimeter_extruder", "fill_density", "infill_extruder", "top_solid_layers", "support_material",
@@ -7975,6 +7975,13 @@ void Plater::on_config_change(const DynamicPrintConfig &config)
         {
             update_scheduled = true; // update should be scheduled (for update 3DScene)
         }
+        if (opt_key == "filament_transmission_distance")
+        {
+            // TD feeds the color mixing gizmo's palette (Beer-Lambert opacity per layer).
+            // Scheduling an update ensures the 3D scene reload fires, which in turn fires
+            // data_changed on the gizmo and triggers palette_inputs_changed + init_palette.
+            update_scheduled = true;
+        }
 
         p->config->set_key_value(opt_key, config.option(opt_key)->clone());
         if (opt_key == "printer_technology")
@@ -8202,25 +8209,15 @@ std::vector<std::string> Plater::get_extruder_color_strings_from_plater_config(
 {
     if (wxGetApp().is_gcode_viewer() && result != nullptr)
         return result->extruder_colors;
-    else
-    {
-        const Slic3r::DynamicPrintConfig *config = &wxGetApp().preset_bundle->printers.get_edited_preset().config;
-        std::vector<std::string> extruder_colors;
-        if (!config->has("extruder_colour")) // in case of a SLA print
-            return extruder_colors;
 
-        extruder_colors = (config->option<ConfigOptionStrings>("extruder_colour"))->values;
-        if (!wxGetApp().plater())
-            return extruder_colors;
+    // filament_colour is the single source of truth. The legacy extruder_colour override is
+    // intentionally ignored: it caused the sidebar swatch to silently disagree with the 3D
+    // view, gcode preview, thumbnails, and color mixing gizmo. The config option still loads
+    // from 3MFs and printer presets (for compat) but has no visible effect anywhere.
+    if (p && p->config && p->config->has("filament_colour"))
+        return p->config->option<ConfigOptionStrings>("filament_colour")->values;
 
-        const std::vector<std::string> &filament_colours =
-            (p->config->option<ConfigOptionStrings>("filament_colour"))->values;
-        for (size_t i = 0; i < extruder_colors.size(); ++i)
-            if (extruder_colors[i] == "" && i < filament_colours.size())
-                extruder_colors[i] = filament_colours[i];
-
-        return extruder_colors;
-    }
+    return {};
 }
 
 /* Get vector of colors used for rendering of a Preview scene in "Color print" mode

@@ -5113,7 +5113,8 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
             const Layer::RoleIndex &index_below = m_layer->get_role_index_for_layer(m_layer->lower_layer);
             if (index_below.has_bridge_zone())
             {
-                over_bridge_speed_value = obs;
+                // Cap over-bridge speed to respect volumetric flow limits
+                over_bridge_speed_value = cap_speed(obs, m_config, m_writer.extruder()->id(), path_attr);
                 const ExPolygons &zone = index_below.bridge_zone;
                 segment_over_bridge.resize(path.size(), false);
 

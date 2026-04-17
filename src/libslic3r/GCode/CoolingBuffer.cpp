@@ -776,6 +776,8 @@ struct PerExtruderAdjustments
     float slowdown_below_layer_time = 0.f;
     // Minimum print speed allowed for this extruder.
     float min_print_speed = 0.f;
+    // If true, external perimeters are exempt from cooling slowdown.
+    bool dont_slow_down_outer_wall = false;
 
     // Parsed lines.
     std::vector<CoolingLine> lines;
@@ -950,6 +952,7 @@ std::vector<PerExtruderAdjustments> CoolingBuffer::parse_layer_gcode(const std::
         adj.cooling_slowdown_logic = m_config.cooling_slowdown_logic.get_at(extruder_id);
         adj.slowdown_below_layer_time = float(m_config.slowdown_below_layer_time.get_at(extruder_id));
         adj.min_print_speed = float(m_config.min_print_speed.get_at(extruder_id));
+        adj.dont_slow_down_outer_wall = m_config.dont_slow_down_outer_wall.get_at(extruder_id);
         map_extruder_to_per_extruder_adjustment[extruder_id] = i;
     }
 
@@ -1060,8 +1063,12 @@ std::vector<PerExtruderAdjustments> CoolingBuffer::parse_layer_gcode(const std::
                 line.type |= CoolingLine::TYPE_WIPE;
             if (boost::contains(sline, ";_EXTRUDE_SET_SPEED") && !wipe)
             {
-                line.type |= CoolingLine::TYPE_ADJUSTABLE;
-                active_speed_modifier = adjustment->lines.size();
+                // Skip marking external perimeters as adjustable when dont_slow_down_outer_wall is set
+                if (!(external_perimeter && adjustment->dont_slow_down_outer_wall))
+                {
+                    line.type |= CoolingLine::TYPE_ADJUSTABLE;
+                    active_speed_modifier = adjustment->lines.size();
+                }
             }
             if ((line.type & CoolingLine::TYPE_G92) == 0)
             {

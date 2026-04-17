@@ -1223,22 +1223,13 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig &config)
         }
     }
 
-    const ConfigOptionStrings *extruder_colour = config.option<ConfigOptionStrings>("extruder_colour");
-    if (extruder_colour != nullptr)
-    {
-        // takes colors from config
-        m_result.extruder_colors = extruder_colour->values;
-        // try to replace missing values with filament colors
-        const ConfigOptionStrings *filament_colour = config.option<ConfigOptionStrings>("filament_colour");
-        if (filament_colour != nullptr && filament_colour->values.size() == m_result.extruder_colors.size())
-        {
-            for (size_t i = 0; i < m_result.extruder_colors.size(); ++i)
-            {
-                if (m_result.extruder_colors[i].empty())
-                    m_result.extruder_colors[i] = filament_colour->values[i];
-            }
-        }
-    }
+    // filament_colour is the single source of truth for per-extruder color across the UI,
+    // so the gcode viewer agrees with the editor. The legacy extruder_colour option still
+    // gets recorded in the gcode header for 3rd-party tool compatibility but has no visible
+    // effect on preFlight's own display.
+    const ConfigOptionStrings *filament_colour = config.option<ConfigOptionStrings>("filament_colour");
+    if (filament_colour != nullptr)
+        m_result.extruder_colors = filament_colour->values;
 
     if (m_result.extruder_colors.size() < m_result.extruders_count)
     {

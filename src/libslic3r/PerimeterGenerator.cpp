@@ -2887,6 +2887,7 @@ void PerimeterGenerator::process_athena(
                                           params.layer_height, params.object_config, params.print_config,
                                           ext_perimeter_width, perimeter_width, ext_perimeter_spacing2,
                                           perimeter_spacing, 0, params.layer_id, min_bead_width_factor, tw_snap);
+    wall_tool_paths.set_debug_print_z((params.layer != nullptr) ? params.layer->print_z : 0.0);
     Athena::Perimeters perimeters = wall_tool_paths.getToolPaths();
     // Arachne treats widths as "suggestions" and recalculates them. We enforce exact user values.
     // This fixes the core issue where extrusion widths vary from user settings (e.g., 0.5mm -> 0.499mm)

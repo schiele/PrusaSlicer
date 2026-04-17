@@ -139,6 +139,7 @@ static constexpr const char *CUSTOM_SEAM_ATTR = "slic3rpe:custom_seam";
 static constexpr const char *MM_SEGMENTATION_ATTR = "slic3rpe:mmu_segmentation";
 static constexpr const char *FUZZY_SKIN_ATTR = "slic3rpe:fuzzy_skin";
 static constexpr const char *COUNTERBORE_BRIDGE_ATTR = "slic3rpe:counterbore_bridge";
+static constexpr const char *COLOR_MIXING_ATTR = "slic3rpe:color_mixing";
 
 static constexpr const char *KEY_ATTR = "key";
 static constexpr const char *VALUE_ATTR = "value";
@@ -161,6 +162,11 @@ static constexpr const char *SOURCE_OFFSET_Z_KEY = "source_offset_z";
 static constexpr const char *SOURCE_IN_INCHES_KEY = "source_in_inches";
 static constexpr const char *SOURCE_IN_METERS_KEY = "source_in_meters";
 static constexpr const char *SOURCE_IS_BUILTIN_VOLUME_KEY = "source_is_builtin_volume";
+
+// Color mixing palette is serialized as a per-volume metadata entry.
+// Format: "RRGGBB:lock,RRGGBB:lock,..." where lock is an integer
+// (-1 = color-match, 0+ = force that extruder).
+static constexpr const char *COLOR_MIXING_PALETTE_KEY = "color_mixing_palette";
 
 static constexpr const char *MESH_STAT_EDGES_FIXED = "edges_fixed";
 static constexpr const char *MESH_STAT_DEGENERATED_FACETS = "degenerate_facets";
@@ -327,6 +333,76 @@ bool is_valid_object_type(const std::string &type)
 namespace Slic3r
 {
 
+// Serialize a per-volume color mixing palette to a compact string.
+// Format: "RRGGBB:lock,RRGGBB:lock,..." where RRGGBB is 6 hex digits and lock is a signed int
+// (-1 for color-match, >= 0 for a forced extruder). Empty palette returns an empty string.
+static std::string serialize_color_mixing_palette(const std::vector<ColorMixingRecipe> &palette)
+{
+    if (palette.empty())
+        return {};
+    std::string out;
+    out.reserve(palette.size() * 11);
+    for (size_t i = 0; i < palette.size(); ++i)
+    {
+        const ColorMixingRecipe &r = palette[i];
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%06X:%d", (unsigned) (r.rgb & 0xFFFFFFu), (int) r.extruder_lock);
+        if (i > 0)
+            out += ',';
+        out += buf;
+    }
+    return out;
+}
+
+// Parse a color mixing palette string produced by serialize_color_mixing_palette.
+// Strict on the RGB token: exactly 6 hex digits before the colon (rejects oversized values
+// sliding across the colon). Bounded by MAX_PALETTE_ENTRIES against hostile inputs; lock
+// values clamped to [-1, MAX_LOCK_EXTRUDER] so malformed files can't persist bad slots.
+static std::vector<ColorMixingRecipe> parse_color_mixing_palette(const std::string &s)
+{
+    constexpr size_t MAX_PALETTE_ENTRIES = 4096;
+    constexpr int MAX_LOCK_EXTRUDER = 31;
+
+    std::vector<ColorMixingRecipe> palette;
+    if (s.empty())
+        return palette;
+    auto is_hex = [](char c)
+    {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    };
+    size_t pos = 0;
+    while (pos < s.size())
+    {
+        if (palette.size() >= MAX_PALETTE_ENTRIES)
+            break;
+        size_t comma = s.find(',', pos);
+        if (comma == std::string::npos)
+            comma = s.size();
+        size_t colon = s.find(':', pos);
+        if (colon == std::string::npos || colon >= comma)
+            break;
+        if (colon - pos != 6)
+            break;
+        bool valid_hex = true;
+        for (size_t k = pos; k < colon; ++k)
+            if (!is_hex(s[k]))
+            {
+                valid_hex = false;
+                break;
+            }
+        if (!valid_hex)
+            break;
+        unsigned rgb = 0;
+        int lock = -1;
+        // Safe: we just verified exactly 6 hex digits sit at [pos, colon).
+        std::sscanf(s.c_str() + pos, "%6x", &rgb);
+        std::sscanf(s.c_str() + colon + 1, "%d", &lock);
+        palette.emplace_back((uint32_t) (rgb & 0xFFFFFFu), (int8_t) std::clamp(lock, -1, MAX_LOCK_EXTRUDER));
+        pos = comma + 1;
+    }
+    return palette;
+}
+
 // Base class with error messages management
 class _3MF_Base
 {
@@ -370,6 +446,7 @@ class _3MF_Importer : public _3MF_Base
         std::vector<std::string> mm_segmentation;
         std::vector<std::string> fuzzy_skin;
         std::vector<std::string> counterbore_bridge;
+        std::vector<std::string> color_mixing;
 
         bool empty() { return vertices.empty() || triangles.empty(); }
 
@@ -382,6 +459,7 @@ class _3MF_Importer : public _3MF_Base
             mm_segmentation.clear();
             fuzzy_skin.clear();
             counterbore_bridge.clear();
+            color_mixing.clear();
         }
     };
 
@@ -2364,6 +2442,8 @@ bool _3MF_Importer::_handle_start_triangle(const char **attributes, unsigned int
         get_attribute_value_string(attributes, num_attributes, FUZZY_SKIN_ATTR));
     m_curr_object.geometry.counterbore_bridge.push_back(
         get_attribute_value_string(attributes, num_attributes, COUNTERBORE_BRIDGE_ATTR));
+    m_curr_object.geometry.color_mixing.push_back(
+        get_attribute_value_string(attributes, num_attributes, COLOR_MIXING_ATTR));
 
     // Now load MM segmentation data. Unfortunately, BambuStudio has changed the attribute name after they forked us,
     // Try to load both keys for compatibility with different 3MF sources.
@@ -2952,6 +3032,7 @@ bool _3MF_Importer::_generate_volumes(ModelObject &object, const Geometry &geome
         volume->mm_segmentation_facets.reserve(triangles_count);
         volume->fuzzy_skin_facets.reserve(triangles_count);
         volume->counterbore_bridge_facets.reserve(triangles_count);
+        volume->color_mixing_facets.reserve(triangles_count);
         for (size_t i = 0; i < triangles_count; ++i)
         {
             size_t index = volume_data.first_triangle_id + i;
@@ -2965,12 +3046,15 @@ bool _3MF_Importer::_generate_volumes(ModelObject &object, const Geometry &geome
             volume->fuzzy_skin_facets.set_triangle_from_string(i, geometry.fuzzy_skin[index]);
             if (index < geometry.counterbore_bridge.size())
                 volume->counterbore_bridge_facets.set_triangle_from_string(i, geometry.counterbore_bridge[index]);
+            if (index < geometry.color_mixing.size())
+                volume->color_mixing_facets.set_triangle_from_string(i, geometry.color_mixing[index]);
         }
         volume->supported_facets.shrink_to_fit();
         volume->seam_facets.shrink_to_fit();
         volume->mm_segmentation_facets.shrink_to_fit();
         volume->fuzzy_skin_facets.shrink_to_fit();
         volume->counterbore_bridge_facets.shrink_to_fit();
+        volume->color_mixing_facets.shrink_to_fit();
 
         if (auto &es = volume_data.shape_configuration; es.has_value())
             volume->emboss_shape = std::move(es);
@@ -3004,6 +3088,8 @@ bool _3MF_Importer::_generate_volumes(ModelObject &object, const Geometry &geome
                 volume->source.is_converted_from_meters = metadata.value == "1";
             else if (metadata.key == SOURCE_IS_BUILTIN_VOLUME_KEY)
                 volume->source.is_from_builtin_objects = metadata.value == "1";
+            else if (metadata.key == COLOR_MIXING_PALETTE_KEY)
+                volume->color_mixing_palette = parse_color_mixing_palette(metadata.value);
             else
                 volume->config.set_deserialize(metadata.key, metadata.value, config_substitutions);
         }
@@ -3743,6 +3829,16 @@ bool _3MF_Exporter::_add_mesh_to_object_stream(mz_zip_writer_staged_context &con
                 output_buffer += "\"";
             }
 
+            std::string color_mixing_data_string = volume->color_mixing_facets.get_triangle_as_string(i);
+            if (!color_mixing_data_string.empty())
+            {
+                output_buffer += " ";
+                output_buffer += COLOR_MIXING_ATTR;
+                output_buffer += "=\"";
+                output_buffer += color_mixing_data_string;
+                output_buffer += "\"";
+            }
+
             output_buffer += "/>\n";
 
             if (!flush())
@@ -4269,6 +4365,14 @@ bool _3MF_Exporter::_add_model_config_file_to_archive(mz_zip_archive &archive, c
                         stream << prefix << SOURCE_IN_METERS_KEY << "\" " << VALUE_ATTR << "=\"1\"/>\n";
                     if (volume->source.is_from_builtin_objects)
                         stream << prefix << SOURCE_IS_BUILTIN_VOLUME_KEY << "\" " << VALUE_ATTR << "=\"1\"/>\n";
+                }
+
+                // stores volume's color mixing recipe table
+                if (!volume->color_mixing_palette.empty())
+                {
+                    stream << "   <" << METADATA_TAG << " " << TYPE_ATTR << "=\"" << VOLUME_TYPE << "\" " << KEY_ATTR
+                           << "=\"" << COLOR_MIXING_PALETTE_KEY << "\" " << VALUE_ATTR << "=\""
+                           << serialize_color_mixing_palette(volume->color_mixing_palette) << "\"/>\n";
                 }
 
                 // stores volume's config data

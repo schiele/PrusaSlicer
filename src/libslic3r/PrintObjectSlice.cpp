@@ -8,7 +8,9 @@
 #include <oneapi/tbb/parallel_for.h>
 #include <algorithm>
 #include <functional>
+#include <limits>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -21,6 +23,13 @@
 #include "I18N.hpp"
 #include "Layer.hpp"
 #include "MultiMaterialSegmentation.hpp"
+#include "ColorDithering.hpp"
+#include "ColorMixer.hpp"
+#include "FilamentOptics.hpp"
+#include "MixedColorPalette.hpp"
+#include "TriangleSelector.hpp"
+#include <map>
+#include <unordered_map>
 #include "Print.hpp"
 #include "ProgressConfig.hpp"
 #include "ShortestPath.hpp"
@@ -202,8 +211,8 @@ static std::vector<VolumeSlices> slice_volumes_inner(
 
     const size_t num_extruders = print_config.nozzle_diameter.size();
     const bool is_mm_painted = num_extruders > 1 &&
-                               std::any_of(model_volumes.cbegin(), model_volumes.cend(),
-                                           [](const ModelVolume *mv) { return mv->is_mm_painted(); });
+                               std::any_of(model_volumes.cbegin(), model_volumes.cend(), [](const ModelVolume *mv)
+                                           { return mv->is_mm_painted() || mv->is_color_mixing_painted(); });
     const auto extra_offset = is_mm_painted ? 0.f
                                             : std::max(0.f, float(print_object_config.xy_size_compensation.value));
 
@@ -946,6 +955,346 @@ void apply_mm_segmentation(PrintObject &print_object, ThrowOnCancel throw_on_can
     std::vector<std::vector<ExPolygons>> segmentation = multi_material_segmentation_by_painting(print_object,
                                                                                                 throw_on_cancel);
     assert(segmentation.size() == print_object.layer_count());
+
+    // Color mixing: resolve painted color mixing regions to physical extruders per layer
+    // This reads color_mixing_facets, runs segmentation, then merges resolved extruder
+    // assignments into the main segmentation array.
+    {
+        bool has_color_mixing = false;
+        for (const ModelVolume *mv : print_object.model_object()->volumes)
+            if (mv->is_model_part() && mv->is_color_mixing_painted())
+                has_color_mixing = true;
+
+        // Fast-path: with a single extruder there's nothing to mix. Painted data is preserved
+        // in the model but ignored at slice time.
+        if (has_color_mixing && print_object.print()->config().nozzle_diameter.size() <= 1)
+            has_color_mixing = false;
+
+        if (has_color_mixing)
+        {
+            const size_t num_extruders = print_object.print()->config().nozzle_diameter.size();
+
+            // Collect which painting states are actually used across all volumes
+            std::vector<int> used_states_list;
+            for (const ModelVolume *mv : print_object.model_object()->volumes)
+            {
+                if (!mv->is_model_part())
+                    continue;
+                const auto &data = mv->color_mixing_facets.get_data();
+                for (size_t i = 1; i < data.used_states.size(); ++i)
+                    if (data.used_states[i])
+                        if (std::find(used_states_list.begin(), used_states_list.end(), (int) i) ==
+                            used_states_list.end())
+                            used_states_list.push_back((int) i);
+            }
+            std::sort(used_states_list.begin(), used_states_list.end());
+
+            if (!used_states_list.empty())
+            {
+                // Build compact remap: original_state → compact_state (1, 2, 3, ...)
+                // and reverse map: compact_state → original_state
+                std::map<int, int> state_to_compact;
+                std::vector<int> compact_to_state; // index 0 = compact state 1's original
+                for (size_t i = 0; i < used_states_list.size(); ++i)
+                {
+                    state_to_compact[used_states_list[i]] = (int) i + 1; // compact states are 1-based
+                    compact_to_state.push_back(used_states_list[i]);
+                }
+                const size_t num_compact_states = used_states_list.size() + 1; // +1 for NONE at 0
+
+                // Remap painted states to compact 1..N for segmentation. Held in a local
+                // per-volume map rather than mutated onto mv.color_mixing_facets -- that
+                // mutation raced under Print::process's tbb::parallel_for when two
+                // PrintObjects of the same ModelObject sliced concurrently.
+                std::unordered_map<const ModelVolume *, FacetsAnnotation> remapped;
+                for (const ModelVolume *mv : print_object.model_object()->volumes)
+                {
+                    if (!mv->is_model_part() || !mv->is_color_mixing_painted())
+                        continue;
+
+                    TriangleSelector temp_selector(mv->mesh());
+                    temp_selector.deserialize(mv->color_mixing_facets.get_data(), false);
+                    temp_selector.remap_states(
+                        [&state_to_compact](TriangleStateType s) -> TriangleStateType
+                        {
+                            int val = (int) s;
+                            auto it = state_to_compact.find(val);
+                            if (it != state_to_compact.end())
+                                return TriangleStateType(it->second);
+                            return TriangleStateType::NONE;
+                        });
+                    remapped.emplace(mv, FacetsAnnotation::make_transient(temp_selector.serialize()));
+                }
+
+                const float max_width = float(print_object.config().mmu_segmented_region_max_width.value);
+                const float inter_depth = float(print_object.config().mmu_segmented_region_interlocking_depth.value);
+                const bool inter_beam = print_object.config().interlocking_beam.value;
+
+                const auto extract_color_facets = [&remapped](const ModelVolume &mv) -> ModelVolumeFacetsInfo
+                {
+                    auto it = remapped.find(&mv);
+                    if (it != remapped.end())
+                        return {it->second, true, false};
+                    return {mv.color_mixing_facets, mv.is_color_mixing_painted(), false};
+                };
+
+                // Run segmentation with compact state count (like MMU: small number)
+                std::vector<std::vector<ExPolygons>> color_seg =
+                    segmentation_by_painting(print_object, extract_color_facets, num_compact_states, max_width,
+                                             inter_depth, inter_beam, IncludeTopAndBottomLayers::Yes, throw_on_cancel);
+
+                // Build palette from the print's filament colors. Each palette entry's
+                // layer_pattern selects the physical filament for layer L via
+                // pattern[L % pattern.size()]. State value (1-based) maps to palette index
+                // via state - 1. Same logic as the gizmo's init_palette.
+                const auto &nozzle_diams = print_object.print()->config().nozzle_diameter;
+                const auto &filament_colors = print_object.print()->config().filament_colour;
+                const auto &filament_tds = print_object.print()->config().filament_transmission_distance;
+                std::vector<FilamentOptics> optics;
+                for (size_t i = 0; i < nozzle_diams.size() && i < filament_colors.size(); ++i)
+                {
+                    ColorRGB rgb;
+                    if (filament_colors.values[i].size() >= 7) // "#RRGGBB"
+                    {
+                        unsigned int r, g, b;
+                        sscanf(filament_colors.values[i].c_str() + 1, "%02x%02x%02x", &r, &g, &b);
+                        rgb = ColorRGB((float) r / 255.f, (float) g / 255.f, (float) b / 255.f);
+                    }
+                    float td = (i < filament_tds.values.size()) ? (float) filament_tds.values[i] : DEFAULT_FILAMENT_TD;
+                    optics.emplace_back(rgb, td);
+                }
+
+                // Palette cache keyed on (filament colors, TDs, layer height); regenerated
+                // only on divergence. Mutex protects concurrent slicing; the per-slice copy
+                // is cheap. Layer height drives dither-stack opacity so predicted_color
+                // matches what the printer lays down.
+                static std::mutex s_palette_cache_mutex;
+                static uint64_t s_palette_cache_key = 0;
+                static MixedColorPalette s_palette_cache;
+                MixedColorPalette palette;
+                {
+                    const float layer_height = (float) print_object.config().layer_height.value;
+                    const uint64_t key = MixedColorPalette::cache_key(optics, layer_height);
+                    std::lock_guard<std::mutex> lock(s_palette_cache_mutex);
+                    if (key != s_palette_cache_key || s_palette_cache.colors().empty())
+                    {
+                        s_palette_cache.clear();
+                        if (optics.size() >= 2)
+                            s_palette_cache.auto_generate(optics, layer_height, 12, 10);
+                        s_palette_cache_key = key;
+                    }
+                    palette = s_palette_cache;
+                }
+
+                // Defensive: seed recipes from the current palette for any painted volume
+                // that arrives without a recipe table (foreign 3MF, programmatic paint).
+                // Best-effort: find_best_match later snaps each region to the closest
+                // achievable color in the current loadout.
+                for (ModelVolume *mv : print_object.model_object()->volumes)
+                {
+                    if (mv->is_model_part() && mv->is_color_mixing_painted() && mv->color_mixing_palette.empty())
+                        ensure_color_mixing_recipes_for_used_states(palette, *mv);
+                }
+
+                // Find a recipe table to resolve painted state values against. All painted
+                // volumes share the same recipe table contents (the gizmo mirrors the runtime
+                // palette into each), so any painted volume's table is equivalent here.
+                const std::vector<ColorMixingRecipe> *recipes = nullptr;
+                for (const ModelVolume *mv : print_object.model_object()->volumes)
+                {
+                    if (mv->is_model_part() && mv->is_color_mixing_painted() && !mv->color_mixing_palette.empty())
+                    {
+                        recipes = &mv->color_mixing_palette;
+                        break;
+                    }
+                }
+
+                // Helper: pick the closest pure filament to a target rgb. Used as the safety
+                // net when normal palette lookup fails so we never silently fall back to
+                // extruder 0 regardless of what color was painted.
+                auto closest_pure_filament = [&](uint32_t rgb) -> int
+                {
+                    if (optics.empty())
+                        return 0;
+                    ColorRGB target(float((rgb >> 16) & 0xFF) / 255.f, float((rgb >> 8) & 0xFF) / 255.f,
+                                    float(rgb & 0xFF) / 255.f);
+                    int best_idx = 0;
+                    float best_de = std::numeric_limits<float>::infinity();
+                    for (int i = 0; i < (int) optics.size(); ++i)
+                    {
+                        float de = ColorMixing::delta_e(target, optics[i].color);
+                        if (de < best_de)
+                        {
+                            best_de = de;
+                            best_idx = i;
+                        }
+                    }
+                    return best_idx;
+                };
+
+                // Per-state resolution: locked recipes get a constant extruder, color-match
+                // recipes carry a layer_pattern for dithering. fallback_extruder is the closest
+                // pure filament to the recipe rgb -- used if the dither pattern is somehow
+                // empty so we never silently fall back to extruder 0.
+                struct StateResolution
+                {
+                    bool locked = false;
+                    int extruder = 0;
+                    int fallback_extruder = 0;
+                    std::vector<int> pattern; // empty for locked entries
+                };
+                std::map<int, StateResolution> resolution_cache;
+
+                auto resolve_state = [&](int original_state) -> const StateResolution &
+                {
+                    auto it = resolution_cache.find(original_state);
+                    if (it != resolution_cache.end())
+                        return it->second;
+                    StateResolution r;
+                    const int recipe_idx = original_state - 1;
+                    if (recipes && recipe_idx >= 0 && recipe_idx < (int) recipes->size())
+                    {
+                        const ColorMixingRecipe &rec = (*recipes)[recipe_idx];
+                        if (rec.is_locked())
+                        {
+                            r.locked = true;
+                            r.extruder = (int) rec.extruder_lock;
+                            r.fallback_extruder = (int) rec.extruder_lock;
+                        }
+                        else
+                        {
+                            r.fallback_extruder = closest_pure_filament(rec.rgb);
+
+                            // Prefer direct index lookup: the recipe index matches the palette
+                            // entry the user picked (mirror copies them 1:1). Only fall back to
+                            // find_best_match when the entry no longer matches (filaments changed
+                            // since painting). This preserves 3-way blends that would otherwise
+                            // drift to a 2-way with a similar predicted color.
+                            int best = -1;
+                            if (recipe_idx >= 0 && recipe_idx < (int) palette.colors().size())
+                            {
+                                // Check the entry still matches the recipe rgb (same filaments)
+                                const MixedColor &candidate = palette.colors()[recipe_idx];
+                                uint32_t candidate_rgb =
+                                    ((uint32_t) (std::clamp(candidate.predicted_color.r(), 0.f, 1.f) * 255.f + 0.5f)
+                                     << 16) |
+                                    ((uint32_t) (std::clamp(candidate.predicted_color.g(), 0.f, 1.f) * 255.f + 0.5f)
+                                     << 8) |
+                                    ((uint32_t) (std::clamp(candidate.predicted_color.b(), 0.f, 1.f) * 255.f + 0.5f));
+                                // Allow small rounding tolerance (up to 2 LSB per channel)
+                                int dr = std::abs((int) ((rec.rgb >> 16) & 0xFF) -
+                                                  (int) ((candidate_rgb >> 16) & 0xFF));
+                                int dg = std::abs((int) ((rec.rgb >> 8) & 0xFF) - (int) ((candidate_rgb >> 8) & 0xFF));
+                                int db = std::abs((int) (rec.rgb & 0xFF) - (int) (candidate_rgb & 0xFF));
+                                if (dr <= 2 && dg <= 2 && db <= 2)
+                                    best = recipe_idx; // exact match, use the original entry
+                            }
+                            if (best < 0)
+                                best = palette.find_best_match(rec.rgb);
+
+                            if (best >= 0 && best < (int) palette.colors().size())
+                                r.pattern = palette.colors()[best].layer_pattern;
+                        }
+                    }
+                    else if (recipe_idx >= 0 && recipe_idx < (int) palette.colors().size())
+                    {
+                        // No recipe table -- treat the state value as a direct index into the
+                        // runtime palette.
+                        r.pattern = palette.colors()[recipe_idx].layer_pattern;
+                        if (!r.pattern.empty())
+                            r.fallback_extruder = r.pattern.front();
+                    }
+                    auto [ins_it, _] = resolution_cache.emplace(original_state, std::move(r));
+                    return ins_it->second;
+                };
+
+                // Color mixing base layers: for the first N layers, route painted regions to a
+                // single fixed extruder instead of running them through the dither cycle. This
+                // keeps the bottom face of the print uniform (no visible striping where the
+                // dither hasn't converged yet) and avoids constant filament swaps on the
+                // bed-adhesion-critical layers.
+                const int base_layer_count = std::max(0, print_object.config().color_mixing_base_layers.value);
+                const ColorMixingBaseExtruder base_mode = print_object.config().color_mixing_base_extruder.value;
+                int base_extruder = -1; // -1 means "let the region fall through to volume default"
+                if (base_layer_count > 0 && !optics.empty() && base_mode != cmbeVolumeDefault)
+                {
+                    int pick = 0;
+                    float best_lum = (base_mode == cmbeDarkest) ? 999.f : -1.f;
+                    for (int i = 0; i < (int) optics.size(); ++i)
+                    {
+                        const float lum = optics[i].color.r() * 0.299f + optics[i].color.g() * 0.587f +
+                                          optics[i].color.b() * 0.114f;
+                        if ((base_mode == cmbeDarkest && lum < best_lum) ||
+                            (base_mode == cmbeLightest && lum > best_lum))
+                        {
+                            best_lum = lum;
+                            pick = i;
+                        }
+                    }
+                    base_extruder = pick;
+                }
+
+                // Resolve: for each layer, move color mixing ExPolygons to physical extruder buckets
+                for (size_t layer_id = 0; layer_id < color_seg.size() && layer_id < segmentation.size(); ++layer_id)
+                {
+                    auto &color_layer = color_seg[layer_id];
+                    auto &mm_layer = segmentation[layer_id];
+
+                    // Ensure mm_layer has enough extruder buckets
+                    if (mm_layer.size() < num_extruders)
+                        mm_layer.resize(num_extruders);
+
+                    const bool in_base = (int) layer_id < base_layer_count;
+                    // Volume-default mode for base layers: skip placing painted regions into any
+                    // extruder bucket so the slicer's normal pipeline routes them via the volume's
+                    // assigned extruder (the same path unpainted triangles take).
+                    if (in_base && base_mode == cmbeVolumeDefault)
+                        continue;
+
+                    for (size_t idx = 0; idx < color_layer.size(); ++idx)
+                    {
+                        if (color_layer[idx].empty())
+                            continue;
+
+                        // Map compact index back to original state index
+                        int compact_state = (int) idx + 1;
+                        int original_state = 0;
+                        if (compact_state >= 1 && compact_state <= (int) compact_to_state.size())
+                            original_state = compact_to_state[compact_state - 1];
+
+                        int physical_extruder;
+                        if (in_base && base_extruder >= 0)
+                        {
+                            // Darkest/Lightest mode for base layers: route every painted region to
+                            // the single chosen filament regardless of recipe.
+                            physical_extruder = base_extruder;
+                        }
+                        else
+                        {
+                            const StateResolution &r = resolve_state(original_state);
+                            if (r.locked)
+                                physical_extruder = r.extruder;
+                            else if (!r.pattern.empty())
+                            {
+                                DitherConfig config;
+                                physical_extruder = resolve_layer_filament(r.pattern, (int) layer_id, config);
+                            }
+                            else
+                                // No pattern available: snap to the closest pure filament instead of
+                                // silently dropping the region onto extruder 0.
+                                physical_extruder = r.fallback_extruder;
+                        }
+                        physical_extruder = std::clamp(physical_extruder, 0, (int) num_extruders - 1);
+
+                        size_t seg_idx = (size_t) physical_extruder;
+                        if (seg_idx >= mm_layer.size())
+                            mm_layer.resize(seg_idx + 1);
+                        append(mm_layer[seg_idx], std::move(color_layer[idx]));
+                    }
+                }
+            }
+        }
+    }
     tbb::parallel_for(
         tbb::blocked_range<size_t>(0, segmentation.size(), std::max(segmentation.size() / 128, size_t(1))),
         [&print_object, &segmentation, throw_on_cancel](const tbb::blocked_range<size_t> &range)
@@ -1331,8 +1680,12 @@ void PrintObject::slice_volumes()
         m_layers.back()->upper_layer = nullptr;
     m_print->throw_if_canceled();
 
-    // Is any ModelVolume multi-material painted?
-    if (m_print->config().nozzle_diameter.size() > 1 && this->model_object()->is_mm_painted())
+    // Is any ModelVolume multi-material painted or color mixing painted?
+    const bool has_color_mixing_paint = std::any_of(this->model_object()->volumes.cbegin(),
+                                                    this->model_object()->volumes.cend(), [](const ModelVolume *mv)
+                                                    { return mv->is_color_mixing_painted(); });
+    if (m_print->config().nozzle_diameter.size() > 1 &&
+        (this->model_object()->is_mm_painted() || has_color_mixing_paint))
     {
         // If XY Size compensation is also enabled, notify the user that XY Size compensation
         // would not be used because the object is multi-material painted.

@@ -925,21 +925,31 @@ public:
         m_data.bitstream.shrink_to_fit();
     }
 
+    // Build a transient FacetsAnnotation that carries externally-owned triangle data.
+    // The returned object has an invalid ObjectID and must not be stored on a ModelVolume
+    // -- it exists so callers can hand a local TriangleSplittingData to consumers that
+    // require a FacetsAnnotation reference (e.g. segmentation_by_painting).
+    static FacetsAnnotation make_transient(TriangleSelector::TriangleSplittingData data)
+    {
+        FacetsAnnotation fa(-1);
+        fa.m_data = std::move(data);
+        return fa;
+    }
+
+    // Copy/move carry the existing ID forward, so they're safe to expose for standard
+    // container storage (std::pair, unordered_map). The ID-allocating constructors below
+    // stay private -- ModelVolume is still the only path that mints a fresh FacetsAnnotation.
+    FacetsAnnotation(const FacetsAnnotation &rhs) = default;
+    FacetsAnnotation(FacetsAnnotation &&rhs) noexcept = default;
+    FacetsAnnotation &operator=(const FacetsAnnotation &rhs) = default;
+    FacetsAnnotation &operator=(FacetsAnnotation &&rhs) noexcept = default;
+
 private:
-    // Constructors to be only called by derived classes.
     // Default constructor to assign a unique ID.
     explicit FacetsAnnotation() = default;
     // Constructor with ignored int parameter to assign an invalid ID, to be replaced
     // by an existing ID copied from elsewhere.
     explicit FacetsAnnotation(int) : ObjectWithTimestamp(-1) {}
-    // Copy constructor copies the ID.
-    FacetsAnnotation(const FacetsAnnotation &rhs) = default;
-    // Move constructor copies the ID.
-    FacetsAnnotation(FacetsAnnotation &&rhs) = default;
-
-    // called by ModelVolume::assign_copy()
-    FacetsAnnotation &operator=(const FacetsAnnotation &rhs) = default;
-    FacetsAnnotation &operator=(FacetsAnnotation &&rhs) = default;
 
     friend class cereal::access;
     friend class UndoRedo::StackImpl;
@@ -954,6 +964,31 @@ private:
 
     // To access set_new_unique_id() when copy / pasting a ModelVolume.
     friend class ModelVolume;
+};
+
+// A single entry in a ModelVolume's color mixing recipe table.
+// Painted triangles reference recipes by 1-based index (state 0 = unpainted).
+//   rgb           : 24-bit target color for the region.
+//   extruder_lock : -1 = color-match (resolved via find_best_match against current filaments).
+//                   >= 0 = pin to this physical extruder slot regardless of rgb.
+struct ColorMixingRecipe
+{
+    uint32_t rgb = 0;          // 0x00RRGGBB
+    int8_t extruder_lock = -1; // -1 = color-match; >= 0 = force this extruder
+
+    ColorMixingRecipe() = default;
+    ColorMixingRecipe(uint32_t rgb_, int8_t lock_) : rgb(rgb_), extruder_lock(lock_) {}
+
+    bool is_locked() const { return extruder_lock >= 0; }
+
+    bool operator==(const ColorMixingRecipe &o) const { return rgb == o.rgb && extruder_lock == o.extruder_lock; }
+    bool operator!=(const ColorMixingRecipe &o) const { return !(*this == o); }
+
+    template<class Archive>
+    void serialize(Archive &ar)
+    {
+        ar(rgb, extruder_lock);
+    }
 };
 
 // An object STL, or a modifier volume, over which a different set of parameters shall be applied.
@@ -1058,6 +1093,13 @@ public:
 
     // List of mesh facets painted for counterbore bridge.
     FacetsAnnotation counterbore_bridge_facets;
+
+    // List of mesh facets painted for color mixing.
+    // Triangle states in color_mixing_facets are 1-based indices into color_mixing_palette
+    // (state 0 = unpainted). The palette holds per-volume recipes: target RGB + optional
+    // extruder lock. See the ColorMixingRecipe struct above for details.
+    FacetsAnnotation color_mixing_facets;
+    std::vector<ColorMixingRecipe> color_mixing_palette;
 
     // Is set only when volume is Embossed Text type
     // Contain information how to re-create volume
@@ -1168,6 +1210,7 @@ public:
         this->mm_segmentation_facets.set_new_unique_id();
         this->fuzzy_skin_facets.set_new_unique_id();
         this->counterbore_bridge_facets.set_new_unique_id();
+        this->color_mixing_facets.set_new_unique_id();
     }
 
     bool is_fdm_support_painted() const { return !this->supported_facets.empty(); }
@@ -1175,6 +1218,7 @@ public:
     bool is_mm_painted() const { return !this->mm_segmentation_facets.empty(); }
     bool is_fuzzy_skin_painted() const { return !this->fuzzy_skin_facets.empty(); }
     bool is_counterbore_bridge_painted() const { return !this->counterbore_bridge_facets.empty(); }
+    bool is_color_mixing_painted() const { return !this->color_mixing_facets.empty(); }
 
     // Returns 0-based indices of extruders painted by multi-material painting gizmo.
     std::vector<size_t> get_extruders_from_multi_material_painting() const;
@@ -1226,12 +1270,14 @@ private:
         assert(this->mm_segmentation_facets.id().valid());
         assert(this->fuzzy_skin_facets.id().valid());
         assert(this->counterbore_bridge_facets.id().valid());
+        assert(this->color_mixing_facets.id().valid());
         assert(this->id() != this->config.id());
         assert(this->id() != this->supported_facets.id());
         assert(this->id() != this->seam_facets.id());
         assert(this->id() != this->mm_segmentation_facets.id());
         assert(this->id() != this->fuzzy_skin_facets.id());
         assert(this->id() != this->counterbore_bridge_facets.id());
+        assert(this->id() != this->color_mixing_facets.id());
         return true;
     }
 
@@ -1275,6 +1321,8 @@ private:
         , mm_segmentation_facets(other.mm_segmentation_facets)
         , fuzzy_skin_facets(other.fuzzy_skin_facets)
         , counterbore_bridge_facets(other.counterbore_bridge_facets)
+        , color_mixing_facets(other.color_mixing_facets)
+        , color_mixing_palette(other.color_mixing_palette)
         , cut_info(other.cut_info)
         , text_configuration(other.text_configuration)
         , emboss_shape(other.emboss_shape)
@@ -1287,10 +1335,12 @@ private:
         assert(this->mm_segmentation_facets.id().valid());
         assert(this->fuzzy_skin_facets.id().valid());
         assert(this->counterbore_bridge_facets.id().valid());
+        assert(this->color_mixing_facets.id().valid());
         assert(this->id() != this->config.id());
         assert(this->id() != this->supported_facets.id());
         assert(this->id() != this->seam_facets.id());
         assert(this->id() != this->mm_segmentation_facets.id());
+        assert(this->id() != this->color_mixing_facets.id());
         assert(this->id() == other.id());
         assert(this->config.id() == other.config.id());
         assert(this->supported_facets.id() == other.supported_facets.id());
@@ -1298,6 +1348,7 @@ private:
         assert(this->mm_segmentation_facets.id() == other.mm_segmentation_facets.id());
         assert(this->fuzzy_skin_facets.id() == other.fuzzy_skin_facets.id());
         assert(this->counterbore_bridge_facets.id() == other.counterbore_bridge_facets.id());
+        assert(this->color_mixing_facets.id() == other.color_mixing_facets.id());
         this->set_material_id(other.material_id());
     }
     // Providing a new mesh, therefore this volume will get a new unique ID assigned.
@@ -1361,6 +1412,7 @@ private:
         , mm_segmentation_facets(-1)
         , fuzzy_skin_facets(-1)
         , counterbore_bridge_facets(-1)
+        , color_mixing_facets(-1)
         , object(nullptr)
     {
         assert(this->id().invalid());
@@ -1370,6 +1422,7 @@ private:
         assert(this->mm_segmentation_facets.id().invalid());
         assert(this->fuzzy_skin_facets.id().invalid());
         assert(this->counterbore_bridge_facets.id().invalid());
+        assert(this->color_mixing_facets.id().invalid());
     }
     template<class Archive>
     void load(Archive &ar)
@@ -1381,6 +1434,8 @@ private:
         cereal::load_by_value(ar, mm_segmentation_facets);
         cereal::load_by_value(ar, fuzzy_skin_facets);
         cereal::load_by_value(ar, counterbore_bridge_facets);
+        cereal::load_by_value(ar, color_mixing_facets);
+        ar(color_mixing_palette);
         cereal::load_by_value(ar, config);
         cereal::load(ar, text_configuration);
         cereal::load(ar, emboss_shape);
@@ -1405,6 +1460,8 @@ private:
         cereal::save_by_value(ar, mm_segmentation_facets);
         cereal::save_by_value(ar, fuzzy_skin_facets);
         cereal::save_by_value(ar, counterbore_bridge_facets);
+        cereal::save_by_value(ar, color_mixing_facets);
+        ar(color_mixing_palette);
         cereal::save_by_value(ar, config);
         cereal::save(ar, text_configuration);
         cereal::save(ar, emboss_shape);
@@ -1769,6 +1826,7 @@ extern bool model_fuzzy_skin_data_changed(const ModelObject &mo, const ModelObje
 // Test whether the now ModelObject has newer counterbore bridge data than the old one.
 // The function assumes that volumes list is synchronized.
 extern bool model_counterbore_bridge_data_changed(const ModelObject &mo, const ModelObject &mo_new);
+extern bool model_color_mixing_data_changed(const ModelObject &mo, const ModelObject &mo_new);
 
 // Test whether the ModelObject has different brim points than the new one.
 extern bool model_brim_points_data_changed(const ModelObject &mo, const ModelObject &mo_new);
@@ -1787,6 +1845,16 @@ void check_model_ids_equal(const Model &model1, const Model &model2);
 
 static const float SINKING_Z_THRESHOLD = -0.001f;
 static const double SINKING_MIN_Z_THRESHOLD = 0.05;
+
+class MixedColorPalette;
+
+// Grow mv.color_mixing_palette to cover every painted state in color_mixing_facets, then
+// sync each currently-used state's recipe.rgb to the current palette's predicted_color.
+// Locked recipes (extruder_lock >= 0) are preserved; recipes for states no triangle
+// references are left alone so the resize doesn't drop them. State values past
+// MAX_PAINTED_STATE are ignored defensively. Called on paint-commit and on gizmo open for
+// painted volumes with an empty recipe table.
+void ensure_color_mixing_recipes_for_used_states(const MixedColorPalette &palette, ModelVolume &mv);
 
 } // namespace Slic3r
 

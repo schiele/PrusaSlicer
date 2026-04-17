@@ -9,6 +9,7 @@
 // #define PREFLIGHT_TRIANGLE_SELECTOR_DEBUG
 
 #include <assert.h>
+#include <functional>
 #include <stddef.h>
 #include <stdint.h>
 #include <cfloat>
@@ -34,14 +35,9 @@ namespace Slic3r
 {
 class TriangleMesh;
 
-enum class TriangleStateType : int8_t
+enum class TriangleStateType : uint16_t
 {
     // Values 0-4 used for paint-on supports:
-    //   NONE = 0 (no paint)
-    //   ENFORCER = 1 (Snug - blue)
-    //   BLOCKER = 2 (Blocker - red)
-    //   ORGANIC_ENFORCER = 3 (Organic - green)
-    //   GRID_ENFORCER = 4 (Grid - orange)
     NONE = 0,
     ENFORCER = 1,         // Snug support (blue)
     BLOCKER = 2,          // Blocker (red)
@@ -49,7 +45,7 @@ enum class TriangleStateType : int8_t
     GRID_ENFORCER = 4,    // Grid support (orange)
     // For the fuzzy skin, we use just two values (NONE and FUZZY_SKIN).
     FUZZY_SKIN = ENFORCER,
-    // Maximum is 15. The value is serialized in TriangleSelector into 6 bits using a 2 bit prefix code.
+    // Extruder aliases for MMU painting (states 1-15)
     Extruder1 = ENFORCER,
     Extruder2 = BLOCKER,
     Extruder3 = ORGANIC_ENFORCER,
@@ -65,8 +61,14 @@ enum class TriangleStateType : int8_t
     Extruder13,
     Extruder14,
     Extruder15,
+    // Count of original states (16). Color mixing uses states beyond this via extended serialization.
     Count
 };
+
+// Hard cap on triangle state values accepted by deserialization. The 16-bit extended encoding
+// could carry up to 65535, but legitimate use never needs more than a few hundred recipes per
+// volume. Caps recipe-table allocation in ensure_color_mixing_recipes_for_used_states.
+inline constexpr uint16_t MAX_PAINTED_STATE = 4096;
 
 // Following class holds information about selected triangles. It also has power
 // to recursively subdivide the triangles and make the selection finer.
@@ -464,6 +466,10 @@ public:
     // Set facet of the mesh to a given state. Only works for original triangles.
     void set_facet(int facet_idx, TriangleStateType state);
 
+    // Remap all triangle states using a mapping function. Used to compact color mixing
+    // states to a small contiguous range for efficient segmentation.
+    void remap_states(const std::function<TriangleStateType(TriangleStateType)> &remap_fn);
+
     // Clear everything and make the tree empty.
     void reset();
 
@@ -658,12 +664,12 @@ private:
     void get_facets_strict_recursive(const Triangle &tr, const Vec3i &neighbors,
                                      const std::function<bool(const Triangle &)> &facet_filter,
                                      std::vector<stl_triangle_vertex_indices> &out_triangles,
-                                     std::vector<uint8_t> &out_colors) const;
+                                     std::vector<uint16_t> &out_colors) const;
 
     template<AdditionalMeshInfo facet_info>
-    void get_facets_split_by_tjoints(const Vec3i &vertices, const Vec3i &neighbors, uint8_t color,
+    void get_facets_split_by_tjoints(const Vec3i &vertices, const Vec3i &neighbors, uint16_t color,
                                      std::vector<stl_triangle_vertex_indices> &out_triangles,
-                                     std::vector<uint8_t> &out_colors) const;
+                                     std::vector<uint16_t> &out_colors) const;
 
     void get_seed_fill_contour_recursive(int facet_idx, const Vec3i &neighbors, const Vec3i &neighbors_propagated,
                                          std::vector<Vec2i> &edges_out) const;

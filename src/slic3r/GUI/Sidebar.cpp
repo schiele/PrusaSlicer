@@ -1551,6 +1551,8 @@ wxPanel *PrintSettingsPanel::BuildLayersContent()
         auto *layer_group = CreateFlatStaticBoxSizer(content, _L("Layer height"));
         CreateSettingRow(content, layer_group, "layer_height", _L("Layer height"));
         CreateSettingRow(content, layer_group, "first_layer_height", _L("First layer height"));
+        CreateSettingRow(content, layer_group, "color_mixing_base_layers", _L("Color mixing base layers"));
+        CreateSettingRow(content, layer_group, "color_mixing_base_extruder", _L("Color mixing base filament"));
         sizer->Add(layer_group, 0, wxEXPAND | wxALL, em / 4);
     }
 
@@ -6408,10 +6410,11 @@ bool FilamentSettingsPanel::IsTabVisible(int tab_index) const
     switch (tab_index)
     {
     case TAB_FILAMENT:
-        return has_any_visible_setting(
-            {"filament_colour", "filament_diameter", "extrusion_multiplier", "filament_density", "filament_cost",
-             "filament_spool_weight", "idle_temperature", "first_layer_temperature", "temperature",
-             "first_layer_bed_temperature", "bed_temperature", "chamber_temperature", "chamber_minimal_temperature"});
+        return has_any_visible_setting({"filament_colour", "filament_transmission_distance", "filament_diameter",
+                                        "extrusion_multiplier", "filament_density", "filament_cost",
+                                        "filament_spool_weight", "idle_temperature", "first_layer_temperature",
+                                        "temperature", "first_layer_bed_temperature", "bed_temperature",
+                                        "chamber_temperature", "chamber_minimal_temperature"});
 
     case TAB_COOLING:
         return has_any_visible_setting({"fan_always_on",
@@ -6445,6 +6448,7 @@ bool FilamentSettingsPanel::IsTabVisible(int tab_index) const
                                         "fan_spinup_overhang_perimeter",
                                         "fan_below_layer_time",
                                         "slowdown_below_layer_time",
+                                        "dont_slow_down_outer_wall",
                                         "min_print_speed"});
 
     case TAB_ADVANCED:
@@ -6532,6 +6536,7 @@ wxPanel *FilamentSettingsPanel::BuildFilamentContent()
     {
         auto *filament_group = CreateFlatStaticBoxSizer(content, _L("Filament"));
         CreateSettingRow(content, filament_group, "filament_colour", _L("Color"));
+        CreateSettingRow(content, filament_group, "filament_transmission_distance", _L("Transmission distance"));
         CreateSettingRow(content, filament_group, "filament_diameter", _L("Diameter"));
         CreateSettingRow(content, filament_group, "extrusion_multiplier", _L("Extrusion multiplier"));
         CreateSettingRow(content, filament_group, "filament_density", _L("Density"));
@@ -6633,6 +6638,7 @@ wxPanel *FilamentSettingsPanel::BuildCoolingContent()
         auto *threshold_group = CreateFlatStaticBoxSizer(content, _L("Cooling thresholds"));
         CreateSettingRow(content, threshold_group, "fan_below_layer_time", _L("Fan below layer time"));
         CreateSettingRow(content, threshold_group, "slowdown_below_layer_time", _L("Slowdown below layer time"));
+        CreateSettingRow(content, threshold_group, "dont_slow_down_outer_wall", _L("Don't slow down outer walls"));
         CreateSettingRow(content, threshold_group, "min_print_speed", _L("Min print speed"));
         sizer->Add(threshold_group, 0, wxEXPAND | wxALL, em / 4);
     }
