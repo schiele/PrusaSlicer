@@ -1051,10 +1051,35 @@ void WallToolPaths::removeSmallLines(std::vector<VariableWidthLines> &toolpaths)
             for (const ExtrusionJunction &j : line)
                 min_width = std::min(min_width, j.w);
             if (line.is_odd && !line.is_closed && shorterThan(line, min_width / 2))
-            { // remove line
+            { // remove odd open thin-wall fragment too short to print
                 line = std::move(inset.back());
                 inset.erase(--inset.end());
                 line_idx--; // reconsider the current position
+                continue;
+            }
+            // Drop open even-paired lines whose bbox fits inside their own bead width.
+            // These are orphans PolylineStitcher couldn't close into a loop. Their entire
+            // extrusion footprint overlaps adjacent perimeters, so they emit as visible
+            // specks on top of bead that's already there. Closed loops are exempt - small
+            // closed perimeters are valid (e.g. tiny holes / circular features).
+            if (!line.is_odd && !line.is_closed && !line.junctions.empty())
+            {
+                Point pmin = line.junctions.front().p, pmax = pmin;
+                for (const ExtrusionJunction &j : line.junctions)
+                {
+                    pmin.x() = std::min(pmin.x(), j.p.x());
+                    pmin.y() = std::min(pmin.y(), j.p.y());
+                    pmax.x() = std::max(pmax.x(), j.p.x());
+                    pmax.y() = std::max(pmax.y(), j.p.y());
+                }
+                const coord_t bb_max_dim = std::max(pmax.x() - pmin.x(), pmax.y() - pmin.y());
+                if (bb_max_dim < min_width)
+                {
+                    line = std::move(inset.back());
+                    inset.erase(--inset.end());
+                    line_idx--;
+                    continue;
+                }
             }
         }
     }

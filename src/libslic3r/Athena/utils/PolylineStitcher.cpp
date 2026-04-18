@@ -41,30 +41,22 @@ template<>
 bool PolylineStitcher<VariableWidthLines, ExtrusionLine, ExtrusionJunction>::canConnect(const ExtrusionLine &a,
                                                                                         const ExtrusionLine &b)
 {
-    if (a.is_odd != b.is_odd)
-        return false;
-
-    // Don't stitch a 0-width marker line to a real-bead line. LimitedBeadingStrategy
-    // inserts 0-width "fake" walls as infill-boundary markers that must remain pure
-    // so separateOutInnerContour can identify them as contours. Mixing markers with
-    // real beads produces a closed loop whose non-zero junctions get emitted as
-    // extrusion across empty space (issue #105).
-    auto is_marker = [](const ExtrusionLine &line) -> bool
-    {
-        if (line.junctions.empty())
-            return false;
-        for (const ExtrusionJunction &j : line.junctions)
-            if (j.w != 0)
-                return false;
-        return true;
-    };
-    if (is_marker(a) != is_marker(b))
-        return false;
-
     // source_poly_id is tagged on ExtrusionLines but NOT gated here. Gating on
-    // source_poly_id breaks interlocking perimeters and gap-fill that must stitch
-    // across polygon boundaries. Future use requires exempting those cases.
-    return true;
+    // source_poly_id breaks 0-width contour markers, interlocking perimeters,
+    // and gap-fill that must stitch across polygon boundaries. Future use requires
+    // exempting markers and interlocking paths.
+    //
+    // We also intentionally allow stitching between pure-marker lines (all junctions
+    // w==0) and real-bead lines (all junctions w>0). When the skeletal trapezoidation
+    // produces fragmented marker output (open polylines on geometry where the depth-N+1
+    // medial axis can't close into polygons), this loose stitching closes them into
+    // mixed-width loops. separateOutInnerContour handles those mixed loops correctly:
+    // it drops them from toolpaths (so the bead portions don't emit as visible extrusion
+    // across empty space - the issue #105 concern) but keeps their closed polygons in
+    // inner_contour to preserve the infill zone. Forbidding marker-bead stitching here
+    // would prevent that closure and cause empty inner_contour on geometry where the
+    // marker pass is fragile (the bucket repro at z=34.90).
+    return a.is_odd == b.is_odd;
 }
 
 template<>

@@ -1,5 +1,46 @@
 # preFlight Changelog
 
+## v0.9.13
+
+### Reissue of v0.9.12 due to regression issue
+- v0.9.12 introduced an Athena regression that dropped infill on geometry where the marker pass produced fragmented (open) output. The defensive PolylineStitcher guard prevented loose stitching that was accidentally compensating for that marker fragility. v0.9.13 reverts the defensive guard.
+
+### CMYK Color Mixing - Preview
+- Added CMYK color mixing gizmo for painting multi-ratio blends across a model using a per-filament palette - replaces the MMU segmentation gizmo in the toolbar while legacy MMU painted 3MFs still load and slice correctly
+- Built the color prediction on Beer-Lambert transmission physics with a per-filament Transmission Distance (TD), so the preview adapts to the actual translucency of the user's spool instead of a fixed pigment-blend approximation
+- Added target-color-driven palette solving - enter a hex color and the optimizer searches pairwise and single-filament candidates across all ratios, scoring each against the target with CIEDE2000 delta-E rather than making the user guess a ratio and eyeball the result
+- Auto-generated palettes now include up to 512 entries (pure filaments, pairwise blends, tints, shades, chromatic+black darks, chromatic+white lights, and triples) so a single scan finds a match for every painted region across a complex model
+- Extended the TriangleSelector to 16-bit state (up to 65,535 recipes per volume, 256x the upstream 8-bit limit) so complex models never run out of paintable palette slots
+- Added TD1S sensor integration that closes the calibration loop end-to-end - measure the spool, write TD into the preset, and both preview rendering and slicer pattern-solving consume the measured value
+- Added filament_transmission_distance to filament settings for accurate color prediction, with TD-aware convergence that scales simulation depth to the palette's max TD
+- Added Alt+click eyedropper in the gizmo to pick the painted state under the cursor into the active brush slot
+- Added color_mixing_base_layers and color_mixing_base_extruder to lock the bottom N layers to a single filament for a uniform bottom face
+- Palette IDs are stable and cached via FNV-1a key over (colors, TDs, layer height); painted intent survives filament swaps because find_best_match re-resolves state against the runtime palette instead of being locked to physical extruder indices
+- Collapsed extruder_colour into filament_colour as the single source of truth across sidebar, 3D view, G-code preview, and stored G-code extruder_colors
+- Serialized color_mixing_facets and color_mixing_palette through ModelVolume save/load so undo/redo and 3MF round-trip preserve painted state
+
+### Preferences (CPU / GPU Stability)
+- Added Maximum slicing threads preference to cap TBB parallelism on unstable CPUs
+- Added Prefer Performance cores preference that restricts the process to P-cores on Intel hybrid CPUs (Windows and Linux x64)
+- Added Disable NVIDIA OpenGL Threaded Optimization toggle that writes a per-app driver profile via NVAPI - shown only when an NVIDIA driver is present, with inline manual instructions as a fallback
+
+### Athena Perimeter Generation
+- Fixed Athena emitting 0-width contour markers as real extrusions that appeared as long straight lines across empty space - LimitedBeadingStrategy marker junctions are now classified per line so pure markers feed only the inner contour
+- Fixed Athena emitting tiny visible specks on top of existing perimeters when an even-paired wall couldn't close into a loop (orphan fragments smaller than their own bead width are now dropped).
+
+### Brim / Mouse Ears
+- Rewrote inner brim generation to compute width-bounded rings around all solid boundaries inside holes, filled with concentric Athena loops and quantized to whole beads to eliminate compressed extra loops
+- Fixed an infinite loop in inner brim where the NORMAL group's brim_width was never set
+- Rewrote painted mouse ear clipping to offset all solid boundaries by the overlap amount and diff from the ear circle in one operation, handling outer contours and inner holes uniformly
+- Fixed painted mouse ears bypassing no_brim_area so per-ear overlap settings are preserved
+- Preserved concentric brim adhesion order so each loop sticks to the previous one instead of being reordered by entity chaining
+
+### Cooling
+- Added "Don't slow down outer walls" per-filament setting that exempts external perimeters from the cooling buffer's minimum-layer-time slowdown, preventing wall thickness taper on thin-walled parts - imports directly from OrcaSlicer profiles
+
+### G-code
+- Fixed over-bridge speed bypassing filament_max_volumetric_speed - the override was injected after cap_speed() had been applied, allowing solid infill above bridges to exceed the volumetric limit
+
 ## v0.9.12
 
 ### CMYK Color Mixing - Preview
