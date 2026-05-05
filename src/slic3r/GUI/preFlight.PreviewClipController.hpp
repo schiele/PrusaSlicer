@@ -17,7 +17,7 @@ namespace GUI
 
 class GLCanvas3D;
 class GCodeViewer;
-class Camera;
+struct Camera;
 
 // Controller for interactive clipping plane in the G-code preview view.
 // Right-click an object in preview -> "Clipping Plane" -> isolates the object

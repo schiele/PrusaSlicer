@@ -154,36 +154,8 @@ VendorProfile VendorProfile::from_ini(const ptree &tree, const boost::filesystem
         res.config_version = std::move(*config_version);
     }
 
-    // Load URLs
-    const auto config_update_url = vendor_section.find("config_update_url");
-    if (config_update_url != vendor_section.not_found())
-    {
-        res.config_update_url = config_update_url->second.data();
-    }
-
-    const auto changelog_url = vendor_section.find("changelog_url");
-    if (changelog_url != vendor_section.not_found())
-    {
-        res.changelog_url = changelog_url->second.data();
-    }
-
-    const auto templates_profile = vendor_section.find("templates_profile");
-    if (templates_profile != vendor_section.not_found())
-    {
-        res.templates_profile = templates_profile->second.data() == "1";
-    }
-
-    const auto repo_id = vendor_section.find("repo_id");
-    if (repo_id != vendor_section.not_found())
-    {
-        res.repo_id = repo_id->second.data();
-    }
-    else
-    {
-        // For backward compatibility assume all profiles without repo_id are from "prod" repo
-        // DK: "No, dont!"
-        res.repo_id = "";
-    }
+    // config_update_url, changelog_url, and repo_id are no longer used -
+    // profiles are served from profiles.preflight3d.com via ProfileServer
 
     const auto repo_prefix = vendor_section.find("repo_prefix");
     if (repo_prefix != vendor_section.not_found())
@@ -250,22 +222,6 @@ VendorProfile VendorProfile::from_ini(const ptree &tree, const boost::filesystem
             {
                 BOOST_LOG_TRIVIAL(error) << boost::format("Vendor bundle: `%1%`: Malformed variants field: `%2%`") %
                                                 id % variants_field;
-            }
-            auto default_materials_field = section.second.get<std::string>("default_materials", "");
-            if (default_materials_field.empty())
-                default_materials_field = section.second.get<std::string>("default_filaments", "");
-            if (Slic3r::unescape_strings_cstyle(default_materials_field, model.default_materials))
-            {
-                Slic3r::sort_remove_duplicates(model.default_materials);
-                if (!model.default_materials.empty() && model.default_materials.front().empty())
-                    // An empty material was inserted into the list of default materials. Remove it.
-                    model.default_materials.erase(model.default_materials.begin());
-            }
-            else
-            {
-                BOOST_LOG_TRIVIAL(error) << boost::format(
-                                                "Vendor bundle: `%1%`: Malformed default_materials field: `%2%`") %
-                                                id % default_materials_field;
             }
             model.bed_model = section.second.get<std::string>("bed_model", "");
             model.bed_texture = section.second.get<std::string>("bed_texture", "");
@@ -356,7 +312,8 @@ void Preset::normalize(DynamicPrintConfig &config)
         const auto &defaults = FullPrintConfig::defaults();
         for (const std::string &key : Preset::filament_options())
         {
-            if (key == "compatible_prints" || key == "compatible_printers")
+            if (key == "compatible_prints" || key == "compatible_printers" ||
+                PresetCollection::is_independent_from_extruder_number_option(key))
                 continue;
             auto *opt = config.option(key, false);
             /*assert(opt != nullptr);
@@ -436,9 +393,7 @@ std::string Preset::label() const
 bool is_compatible_with_print(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_print,
                               const PresetWithVendorProfile &active_printer)
 {
-    // templates_profile vendor profiles should be decided as same vendor profiles
-    if (preset.vendor != nullptr && preset.vendor != active_printer.vendor && !preset.vendor->templates_profile)
-        // The current profile has a vendor assigned and it is different from the active print's vendor.
+    if (preset.vendor != nullptr && preset.vendor != active_printer.vendor)
         return false;
     auto &condition = preset.preset.compatible_prints_condition();
     auto *compatible_prints = dynamic_cast<const ConfigOptionStrings *>(
@@ -466,9 +421,7 @@ bool is_compatible_with_print(const PresetWithVendorProfile &preset, const Prese
 bool is_compatible_with_printer(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer,
                                 const DynamicPrintConfig *extra_config)
 {
-    // templates_profile vendor profiles should be decided as same vendor profiles
-    if (preset.vendor != nullptr && preset.vendor != active_printer.vendor && !preset.vendor->templates_profile)
-        // The current profile has a vendor assigned and it is different from the active print's vendor.
+    if (preset.vendor != nullptr && preset.vendor != active_printer.vendor)
         return false;
     auto &condition = preset.preset.compatible_printers_condition();
     auto *compatible_printers = dynamic_cast<const ConfigOptionStrings *>(
@@ -520,16 +473,16 @@ void Preset::set_visible_from_appconfig(const AppConfig &app_config)
             return;
         is_visible = app_config.get_variant(vendor->id, model, variant);
     }
-    else if (type == TYPE_FILAMENT || type == TYPE_SLA_MATERIAL)
+    else if (type == TYPE_FILAMENT)
     {
-        const std::string &section_name = (type == TYPE_FILAMENT) ? AppConfig::SECTION_FILAMENTS
-                                                                  : AppConfig::SECTION_MATERIALS;
-        if (type == TYPE_FILAMENT && app_config.get_bool("no_templates") && vendor && vendor->templates_profile)
-            is_visible = false;
-        else if (app_config.has_section(section_name))
+        // preFlight: all filament presets are always visible
+        is_visible = true;
+    }
+    else if (type == TYPE_SLA_MATERIAL)
+    {
+        const std::string &section_name = AppConfig::SECTION_MATERIALS;
+        if (app_config.has_section(section_name))
         {
-            // Check whether this profile is marked as "installed" in preFlight.ini,
-            // or whether a profile is marked as "installed", which this profile may have been renamed from.
             const std::map<std::string, std::string> &installed = app_config.get_section(section_name);
             auto has = [&installed](const std::string &name)
             {
@@ -618,6 +571,7 @@ static std::vector<std::string> s_Preset_print_options{
     "infill_first",
     "interlock_perimeters_enabled",
     "interlock_perimeter_count",
+    "interlock_regular_perimeters",
     "interlock_solid_layers_top",
     "interlock_solid_layers_bottom",
     "interlock_perimeter_strength",
@@ -740,6 +694,8 @@ static std::vector<std::string> s_Preset_print_options{
     "gcode_label_objects",
     "output_filename_format",
     "post_process",
+    "preprocessing_enabled_print",
+    "preprocessing_scripts_print",
     "gcode_substitutions",
     "perimeter_extruder",
     "infill_extruder",
@@ -846,7 +802,9 @@ static std::vector<std::string> s_Preset_filament_options{
     // Shrinkage compensation
     "filament_shrinkage_compensation_x", "filament_shrinkage_compensation_y", "filament_shrinkage_compensation_z",
     // Seams overrides
-    "filament_seam_gap_distance"};
+    "filament_seam_gap_distance",
+    // Preprocessing
+    "preprocessing_enabled_filament", "preprocessing_scripts_filament"};
 
 static std::vector<std::string> s_Preset_machine_limits_options{
     "machine_max_acceleration_extruding",
@@ -886,7 +844,9 @@ static std::vector<std::string> s_Preset_printer_options{
     "printer_model", "printer_variant", "printer_notes", "cooling_tube_retraction", "cooling_tube_length",
     "high_current_on_filament_swap", "parking_pos_retraction", "extra_loading_move", "multimaterial_purging",
     "max_print_height", "default_print_profile", "inherits", "remaining_times", "silent_mode", "machine_limits_usage",
-    "thumbnails", "thumbnails_format", "nozzle_high_flow", "extruder_clearance_radius", "extruder_clearance_height"};
+    "thumbnails", "thumbnails_format", "nozzle_high_flow", "extruder_clearance_radius", "extruder_clearance_height",
+    // Preprocessing
+    "preprocessing_enabled_printer", "preprocessing_scripts_printer"};
 
 static std::vector<std::string> s_Preset_sla_print_options{
     "layer_height", "faded_layers", "supports_enable", "support_tree_type",
@@ -1070,16 +1030,23 @@ void PresetCollection::load_presets(const std::string &dir_path, const std::stri
             std::string name = dir_entry.path().filename().string();
             // Remove the .ini suffix.
             name.erase(name.size() - 4);
-            if (this->find_preset(name, false))
+            // preFlight: user preset files take priority over vendor bundle presets.
+            // If a preset with the same name was loaded from a vendor bundle, remove it
+            // so the user's version (potentially with custom edits) wins.
+            // Preserve the vendor pointer so bed models/textures still resolve.
+            const VendorProfile *inherited_vendor = nullptr;
             {
-                // This happens when there's is a preset (most likely legacy one) with the same name as a system preset
-                // that's already been loaded from a bundle.
-                BOOST_LOG_TRIVIAL(warning) << "Preset already present, not loading: " << name;
-                continue;
+                auto existing_it = this->find_preset_internal(name);
+                if (existing_it != m_presets.end() && existing_it->name == name)
+                {
+                    inherited_vendor = existing_it->vendor;
+                    m_presets.erase(existing_it);
+                }
             }
             try
             {
                 Preset preset(m_type, name, false);
+                preset.vendor = inherited_vendor;
                 preset.file = dir_entry.path().string();
                 // Load the preset file, apply preset values on top of defaults.
                 try
@@ -1685,7 +1652,6 @@ size_t PresetCollection::update_compatible_internal(const PresetWithVendorProfil
         config.set_key_value("num_extruders",
                              new ConfigOptionInt((int) static_cast<const ConfigOptionFloats *>(opt)->values.size()));
     bool some_compatible = false;
-    std::vector<size_t> indices_of_template_presets;
     for (size_t idx_preset = m_num_default_presets; idx_preset < m_presets.size(); ++idx_preset)
     {
         bool selected = idx_preset == m_idx_selected;
@@ -1707,44 +1673,6 @@ size_t PresetCollection::update_compatible_internal(const PresetWithVendorProfil
             m_idx_selected = size_t(-1);
         if (selected)
             preset_selected.is_compatible = preset_edited.is_compatible;
-        if (preset_edited.vendor && preset_edited.vendor->templates_profile)
-        {
-            if (preset_selected.is_visible)
-                indices_of_template_presets.push_back(idx_preset);
-            else
-            {
-                preset_selected.is_compatible = false;
-                if (selected)
-                    m_idx_selected = size_t(-1);
-            }
-        }
-    }
-    // filter out template profiles where profile with same alias and compability exists
-    if (!indices_of_template_presets.empty())
-    {
-        for (size_t idx_preset = m_num_default_presets; idx_preset < m_presets.size(); ++idx_preset)
-        {
-            if (m_presets[idx_preset].vendor && !m_presets[idx_preset].vendor->templates_profile &&
-                m_presets[idx_preset].is_compatible)
-            {
-                std::string preset_alias = m_presets[idx_preset].alias;
-                for (size_t idx_of_template_in_presets : indices_of_template_presets)
-                {
-                    if (m_presets[idx_of_template_in_presets].alias == preset_alias)
-                    {
-                        // unselect selected template filament if there is non-template alias compatible
-                        if (idx_of_template_in_presets == m_idx_selected &&
-                            (unselect_if_incompatible == PresetSelectCompatibleType::Always ||
-                             unselect_if_incompatible == PresetSelectCompatibleType::OnlyIfWasCompatible))
-                        {
-                            m_idx_selected = size_t(-1);
-                        }
-                        m_presets[idx_of_template_in_presets].is_compatible = false;
-                        break;
-                    }
-                }
-            }
-        }
     }
 
     // Update visibility of the default profiles here if the defaults are suppressed, the current profile is not compatible and we don't want to select another compatible profile.
@@ -1812,6 +1740,9 @@ static const std::set<std::string> independent_from_extruder_number_options = {
     "filament_ramming_parameters",
     "gcode_substitutions",
     "post_process",
+    "preprocessing_scripts_filament",
+    "preprocessing_scripts_print",
+    "preprocessing_scripts_printer",
     // These are print preset options that should be treated as single values, not indexed by extruder
     "print_nozzle_diameters",
     "print_high_flow_nozzle",
@@ -2929,9 +2860,6 @@ size_t ExtruderFilaments::update_compatible_internal(const PresetWithVendorProfi
     }
     PresetWithVendorProfile active_printer_adjusted(printer_preset_adjusted, active_printer.vendor);
 
-    std::vector<size_t> indices_of_template_presets;
-    indices_of_template_presets.reserve(m_extr_filaments.size());
-
     size_t num_default_presets = m_filaments->num_default_presets();
     for (size_t idx_preset = num_default_presets; idx_preset < m_extr_filaments.size(); ++idx_preset)
     {
@@ -2951,43 +2879,6 @@ size_t ExtruderFilaments::update_compatible_internal(const PresetWithVendorProfi
             (unselect_if_incompatible == PresetSelectCompatibleType::Always ||
              (unselect_if_incompatible == PresetSelectCompatibleType::OnlyIfWasCompatible && was_compatible)))
             m_idx_selected = size_t(-1);
-        if (preset->vendor && preset->vendor->templates_profile)
-        {
-            if (preset->is_visible)
-                indices_of_template_presets.push_back(idx_preset);
-            else
-            {
-                extr_filament.is_compatible = false;
-                if (is_selected)
-                    m_idx_selected = size_t(-1);
-            }
-        }
-    }
-
-    // filter out template profiles where profile with same alias and compability exists
-    if (!indices_of_template_presets.empty())
-    {
-        for (size_t idx = num_default_presets; idx < m_extr_filaments.size(); ++idx)
-        {
-            const Filament &filament = m_extr_filaments[idx];
-            const VendorProfile *vendor = filament.preset->vendor;
-            if (vendor && !vendor->templates_profile && filament.is_compatible)
-            {
-                const std::string &preset_alias = filament.preset->alias;
-                for (const auto &template_idx : indices_of_template_presets)
-                {
-                    if (m_extr_filaments[template_idx].preset->alias == preset_alias)
-                    {
-                        m_extr_filaments[template_idx].is_compatible = false;
-                        // unselect selected template filament if there is non-template alias compatible
-                        if (template_idx == m_idx_selected &&
-                            (unselect_if_incompatible != PresetSelectCompatibleType::Never))
-                            m_idx_selected = size_t(-1);
-                        break;
-                    }
-                }
-            }
-        }
     }
 
     return m_idx_selected;
@@ -3021,7 +2912,7 @@ std::string system_printer_bed_model(const Preset &preset)
     {
         out = Slic3r::data_dir() + "/vendor/" + preset.vendor->id + "/" + pm->bed_model;
         if (!boost::filesystem::exists(boost::filesystem::path(out)))
-            out = Slic3r::resources_dir() + "/profiles/" + preset.vendor->id + "/" + pm->bed_model;
+            out.clear();
     }
     return out;
 }
@@ -3034,7 +2925,7 @@ std::string system_printer_bed_texture(const Preset &preset)
     {
         out = Slic3r::data_dir() + "/vendor/" + preset.vendor->id + "/" + pm->bed_texture;
         if (!boost::filesystem::exists(boost::filesystem::path(out)))
-            out = Slic3r::resources_dir() + "/profiles/" + preset.vendor->id + "/" + pm->bed_texture;
+            out.clear();
     }
     return out;
 }
@@ -3044,14 +2935,12 @@ bool vendor_profile_has_all_resources(const VendorProfile &vp)
     namespace fs = boost::filesystem;
 
     std::string vendor_folder = Slic3r::data_dir() + "/vendor/" + vp.id + "/";
-    std::string rsrc_folder = Slic3r::resources_dir() + "/profiles/" + vp.id + "/";
     std::string cache_folder = Slic3r::data_dir() + "/cache/" + vp.id + "/";
     for (const VendorProfile::PrinterModel &model : vp.models)
     {
         for (const std::string &res : {model.bed_texture, model.bed_model, model.thumbnail})
         {
-            if (!res.empty() && !fs::exists(fs::path(vendor_folder + res)) &&
-                !fs::exists(fs::path(rsrc_folder + res)) && !fs::exists(fs::path(cache_folder + res)))
+            if (!res.empty() && !fs::exists(fs::path(vendor_folder + res)) && !fs::exists(fs::path(cache_folder + res)))
                 return false;
         }
     }

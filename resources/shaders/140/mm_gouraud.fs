@@ -2,17 +2,28 @@
 
 #define INTENSITY_CORRECTION 0.6
 
-// normalized values for (-0.6/1.31, 0.6/1.31, 1./1.31)
 const vec3 LIGHT_TOP_DIR = vec3(-0.4574957, 0.4574957, 0.7624929);
 #define LIGHT_TOP_DIFFUSE    (0.8 * INTENSITY_CORRECTION)
-#define LIGHT_TOP_SPECULAR   (0.125 * INTENSITY_CORRECTION)
-#define LIGHT_TOP_SHININESS  20.0
 
-// normalized values for (1./1.43, 0.2/1.43, 1./1.43)
 const vec3 LIGHT_FRONT_DIR = vec3(0.6985074, 0.1397015, 0.6985074);
 #define LIGHT_FRONT_DIFFUSE  (0.3 * INTENSITY_CORRECTION)
 
-#define INTENSITY_AMBIENT    0.3
+#define INTENSITY_AMBIENT    0.25
+#define SPECULAR_INTENSITY   0.35
+#define BLINN_SHININESS      32.0
+#define RIM_POWER            3.0
+#define RIM_INTENSITY        0.18
+
+const vec3 SH_L00  = vec3( 0.38,  0.36,  0.34);
+const vec3 SH_L1m1 = vec3( 0.02,  0.01, -0.01);
+const vec3 SH_L10  = vec3( 0.12,  0.12,  0.14);
+const vec3 SH_L11  = vec3(-0.04, -0.03, -0.02);
+const vec3 SH_L2m2 = vec3(-0.01, -0.01, -0.01);
+const vec3 SH_L2m1 = vec3( 0.03,  0.03,  0.04);
+const vec3 SH_L20  = vec3( 0.06,  0.06,  0.08);
+const vec3 SH_L21  = vec3(-0.01, -0.01, -0.01);
+const vec3 SH_L22  = vec3(-0.02, -0.02, -0.02);
+#define REFLECTION_STRENGTH  0.25
 
 const vec3  ZERO    = vec3(0.0, 0.0, 0.0);
 const float EPSILON = 0.0001;
@@ -44,22 +55,29 @@ void main()
     if (volume_mirrored)
         triangle_normal = -triangle_normal;
 
-    // First transform the normal into camera space and normalize the result.
     vec3 eye_normal = normalize(view_normal_matrix * triangle_normal);
+    vec3 eye_position = (view_model_matrix * model_pos).xyz;
+    vec3 view_dir = normalize(-eye_position);
 
-    // Compute the cos of the angle between the normal and lights direction. The light is directional so the direction is constant for every vertex.
-    // Since these two are normalized the cosine is the dot product. We also need to clamp the result to the [0,1] range.
-    float NdotL = max(dot(eye_normal, LIGHT_TOP_DIR), 0.0);
+    float NdotL_top = max(dot(eye_normal, LIGHT_TOP_DIR), 0.0);
+    float diffuse = INTENSITY_AMBIENT + NdotL_top * LIGHT_TOP_DIFFUSE;
 
-    // x = diffuse, y = specular;
-    vec2 intensity = vec2(0.0);
-    intensity.x = INTENSITY_AMBIENT + NdotL * LIGHT_TOP_DIFFUSE;
-    vec3 position = (view_model_matrix * model_pos).xyz;
-    intensity.y = LIGHT_TOP_SPECULAR * pow(max(dot(-normalize(position), reflect(-LIGHT_TOP_DIR, eye_normal)), 0.0), LIGHT_TOP_SHININESS);
+    vec3 half_top = normalize(LIGHT_TOP_DIR + view_dir);
+    float NdotH_top = max(dot(eye_normal, half_top), 0.0);
+    float specular = SPECULAR_INTENSITY * pow(NdotH_top, BLINN_SHININESS);
 
-    // Perform the same lighting calculation for the 2nd light source (no specular applied).
-    NdotL = max(dot(eye_normal, LIGHT_FRONT_DIR), 0.0);
-    intensity.x += NdotL * LIGHT_FRONT_DIFFUSE;
+    float NdotL_front = max(dot(eye_normal, LIGHT_FRONT_DIR), 0.0);
+    diffuse += NdotL_front * LIGHT_FRONT_DIFFUSE;
 
-    out_color = vec4(vec3(intensity.y) + color * intensity.x, alpha);
+    float rim = pow(max(0.0, 1.0 - dot(view_dir, eye_normal)), RIM_POWER) * RIM_INTENSITY;
+
+    vec3 refl = reflect(-view_dir, eye_normal);
+    vec3 sh_color = SH_L00
+        + SH_L1m1 * refl.y + SH_L10 * refl.z + SH_L11 * refl.x
+        + SH_L2m2 * (refl.x * refl.y) + SH_L2m1 * (refl.y * refl.z)
+        + SH_L20 * (3.0 * refl.z * refl.z - 1.0) + SH_L21 * (refl.x * refl.z)
+        + SH_L22 * (refl.x * refl.x - refl.y * refl.y);
+    vec3 reflection = max(sh_color, vec3(0.0)) * REFLECTION_STRENGTH;
+
+    out_color = vec4(min(vec3(specular + rim) + reflection + color * diffuse, vec3(1.0)), alpha);
 }

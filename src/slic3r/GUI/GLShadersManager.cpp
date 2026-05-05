@@ -26,7 +26,7 @@ using namespace std::literals;
 namespace Slic3r
 {
 
-std::pair<bool, std::string> GLShadersManager::init()
+std::pair<bool, std::string> GLShadersManager::init(bool compile_phong_shaders)
 {
     std::string error;
 
@@ -98,6 +98,26 @@ std::pair<bool, std::string> GLShadersManager::init()
                            {"ENABLE_ENVIRONMENT_MAP"sv}
 #endif // ENABLE_ENVIRONMENT_MAP
     );
+    // Only compile phong shaders when Enhanced lighting is selected.
+    // Shader compilation is GPU-blocking and happens during startup while the
+    // splash screen's DWM compositor surface is active; compiling unnecessary
+    // shaders can trigger NVIDIA TDR. Requires restart to change lighting quality.
+    if (compile_phong_shaders)
+    {
+        try_compile_with_fallback("phong", {prefix + "phong.vs", prefix + "phong.fs"}, "gouraud"
+#if ENABLE_ENVIRONMENT_MAP
+                                  ,
+                                  {"ENABLE_ENVIRONMENT_MAP"sv}
+#endif // ENABLE_ENVIRONMENT_MAP
+        );
+        try_compile_with_fallback("phong_light", {prefix + "phong_light.vs", prefix + "phong_light.fs"},
+                                  "gouraud_light");
+    }
+    else
+    {
+        m_fallback_map["phong"] = "gouraud";
+        m_fallback_map["phong_light"] = "gouraud_light";
+    }
     // used to render variable layers heights in 3d editor
     valid &= append_shader("variable_layer_height",
                            {prefix + "variable_layer_height.vs", prefix + "variable_layer_height.fs"});
@@ -136,7 +156,32 @@ GLShaderProgram *GLShadersManager::get_shader(const std::string &shader_name)
 {
     auto it = std::find_if(m_shaders.begin(), m_shaders.end(), [&shader_name](std::unique_ptr<GLShaderProgram> &p)
                            { return p->get_name() == shader_name; });
-    return (it != m_shaders.end()) ? it->get() : nullptr;
+    if (it != m_shaders.end())
+        return it->get();
+
+    // Check fallback map: if this shader failed to compile, return its fallback
+    auto fb = m_fallback_map.find(shader_name);
+    if (fb != m_fallback_map.end())
+        return get_shader(fb->second);
+
+    return nullptr;
+}
+
+bool GLShadersManager::try_compile_with_fallback(const std::string &name,
+                                                 const GLShaderProgram::ShaderFilenames &filenames,
+                                                 const std::string &fallback_name,
+                                                 const std::initializer_list<std::string_view> &defines)
+{
+    m_shaders.push_back(std::make_unique<GLShaderProgram>());
+    if (m_shaders.back()->init_from_files(name, filenames, defines))
+        return true;
+
+    // Compilation failed - remove the broken shader and map to fallback
+    m_shaders.pop_back();
+    m_fallback_map[name] = fallback_name;
+    BOOST_LOG_TRIVIAL(warning) << "Shader '" << name << "' failed to compile, falling back to '" << fallback_name
+                               << "'";
+    return false;
 }
 
 GLShaderProgram *GLShadersManager::get_current_shader()

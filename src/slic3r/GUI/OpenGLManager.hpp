@@ -136,7 +136,8 @@ public:
     static bool can_multisample() { return s_multisample == EMultisampleState::Enabled; }
     static bool are_framebuffers_supported() { return (s_framebuffers_type != EFramebufferType::Unknown); }
     static EFramebufferType get_framebuffers_type() { return s_framebuffers_type; }
-    static wxGLCanvas *create_wxglcanvas(wxWindow &parent, bool enable_auto_aa_samples);
+    // msaa_samples: -1 = auto (try highest available), 0 = off, 2/4/8/16 = explicit
+    static wxGLCanvas *create_wxglcanvas(wxWindow &parent, int msaa_samples = -1);
     static const GLInfo &get_gl_info() { return s_gl_info; }
     static bool force_power_of_two_textures() { return s_force_power_of_two_textures; }
 };

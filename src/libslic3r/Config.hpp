@@ -642,8 +642,9 @@ public:
             {
                 auto other = static_cast<const ConfigOptionVector<T> *>(opt);
                 if (other->values.empty())
-                    throw ConfigurationError("ConfigOptionVector::set(): Assigning from an empty vector");
-                this->values.emplace_back(other->values.front());
+                    this->values.emplace_back(T());
+                else
+                    this->values.emplace_back(other->values.front());
             }
             else if (opt->type() == this->scalar_type())
                 this->values.emplace_back(static_cast<const ConfigOptionSingle<T> *>(opt)->value);
@@ -656,12 +657,9 @@ public:
     // This function is useful to split values from multiple extrder / filament settings into separate configurations.
     void set_at(const ConfigOption *rhs, size_t i, size_t j) override
     {
-        // It is expected that the vector value has at least one value, which is the default, if not overwritten.
-        assert(!this->values.empty());
         if (this->values.size() <= i)
         {
-            // Resize this vector, fill in the new vector fields with the copy of the first field.
-            T v = this->values.front();
+            T v = this->values.empty() ? T() : this->values.front();
             this->values.resize(i + 1, v);
         }
         if (rhs->type() == this->type())
@@ -669,7 +667,7 @@ public:
             // Assign the first value of the rhs vector.
             auto other = static_cast<const ConfigOptionVector<T> *>(rhs);
             if (other->values.empty())
-                throw ConfigurationError("ConfigOptionVector::set_at(): Assigning from an empty vector");
+                return;
             this->values[i] = other->get_at(j);
         }
         else if (rhs->type() == this->scalar_type())
@@ -705,7 +703,8 @@ public:
                     throw ConfigurationError("ConfigOptionVector::resize(): No default value provided.");
                 if (opt_default->type() != this->type())
                     throw ConfigurationError("ConfigOptionVector::resize(): Extending with an incompatible type.");
-                this->values.resize(n, static_cast<const ConfigOptionVector<T> *>(opt_default)->values.front());
+                const auto &def_vals = static_cast<const ConfigOptionVector<T> *>(opt_default)->values;
+                this->values.resize(n, def_vals.empty() ? T() : def_vals.front());
             }
             else
             {

@@ -460,24 +460,27 @@ static LRESULT CALLBACK UAHMenuSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam,
         {
             // Draw a line at the bottom of the menu bar to cover the light separator line
             MENUBARINFO mbi = {sizeof(mbi)};
-            if (GetMenuBarInfo(hWnd, OBJID_MENU, 0, &mbi))
+            if (GetMenuBarInfo(hWnd, OBJID_MENU, 0, &mbi) && mbi.hMenu != nullptr)
             {
                 RECT rcWindow;
-                GetWindowRect(hWnd, &rcWindow);
-
-                // Convert screen coordinates to window coordinates
-                RECT rc = mbi.rcBar;
-                OffsetRect(&rc, -rcWindow.left, -rcWindow.top);
-
-                int windowWidth = rcWindow.right - rcWindow.left;
-                RECT rcLine = {rc.left, rc.bottom, windowWidth, rc.bottom + 2};
-                HDC hdc = GetWindowDC(hWnd);
-                if (hdc)
+                if (GetWindowRect(hWnd, &rcWindow))
                 {
-                    HBRUSH hBrush = CreateSolidBrush(UIColorsWin::MenuBackground());
-                    FillRect(hdc, &rcLine, hBrush);
-                    DeleteObject(hBrush);
-                    ReleaseDC(hWnd, hdc);
+                    RECT rc = mbi.rcBar;
+                    OffsetRect(&rc, -rcWindow.left, -rcWindow.top);
+
+                    int windowWidth = rcWindow.right - rcWindow.left;
+                    RECT rcLine = {rc.left, rc.bottom, windowWidth, rc.bottom + 2};
+                    HDC hdc = GetWindowDC(hWnd);
+                    if (hdc)
+                    {
+                        HBRUSH hBrush = CreateSolidBrush(UIColorsWin::MenuBackground());
+                        if (hBrush)
+                        {
+                            FillRect(hdc, &rcLine, hBrush);
+                            DeleteObject(hBrush);
+                        }
+                        ReleaseDC(hWnd, hdc);
+                    }
                 }
             }
         }

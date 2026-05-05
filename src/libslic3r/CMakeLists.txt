@@ -79,6 +79,7 @@ set(SLIC3R_SOURCES
     Emboss.cpp
     Emboss.hpp
     EmbossShape.hpp
+    EngineGuard.hpp
     enum_bitmask.hpp
     ExPolygon.cpp
     ExPolygon.hpp
@@ -518,6 +519,13 @@ if (APPLE)
         )
 endif ()
 
+if (SLIC3R_PYTHON_PREPROCESSOR)
+    list(APPEND SLIC3R_SOURCES
+        GCode/PreProcessor.cpp
+        GCode/PreProcessor.hpp
+    )
+endif ()
+
 add_library(libslic3r STATIC ${SLIC3R_SOURCES})
 
 
@@ -585,6 +593,8 @@ endif ()
 encoding_check(libslic3r)
 
 target_compile_definitions(libslic3r PUBLIC -DUSE_TBB -DTBB_USE_CAPTURED_EXCEPTION=0)
+# Engine boundary firewall: libslic3r must never depend on GUI frameworks
+target_compile_definitions(libslic3r PRIVATE SLIC3R_ENGINE_ONLY)
 target_include_directories(libslic3r PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/.. ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(libslic3r PUBLIC ${EXPAT_INCLUDE_DIRS})
 
@@ -616,6 +626,7 @@ target_link_libraries(libslic3r PRIVATE
     fastfloat
     int128
     nlohmann_json::nlohmann_json
+    stb_truetype
 )
 target_link_libraries(libslic3r PUBLIC
     Eigen3::Eigen
@@ -641,6 +652,28 @@ if (TARGET OpenVDB::openvdb)
     target_link_libraries(libslic3r PUBLIC OpenVDB::openvdb)
 endif()
 
+if (SLIC3R_PYTHON_PREPROCESSOR)
+    target_link_libraries(libslic3r PRIVATE pybind11::embed)
+    target_compile_definitions(libslic3r PUBLIC SLIC3R_PYTHON_PREPROCESSOR)
+
+    # Auto-generate preFlight.py type stubs for IDE autocomplete in user scripts
+    set(_pp_config "${CMAKE_CURRENT_SOURCE_DIR}/PrintConfig.hpp")
+    set(_pp_api "${CMAKE_CURRENT_SOURCE_DIR}/GCode/api_stubs.py")
+    set(_pp_script "${CMAKE_SOURCE_DIR}/build_stubs.py")
+    set(_pp_output "${CMAKE_SOURCE_DIR}/resources/preprocessor/preFlight.py")
+    set(_pp_output2 "${CMAKE_SOURCE_DIR}/resources/preprocessor/samples/preFlight.py")
+    add_custom_command(
+        OUTPUT "${_pp_output}" "${_pp_output2}"
+        COMMAND ${Python3_EXECUTABLE} "${_pp_script}" "${_pp_config}" "${_pp_api}"
+                "${CMAKE_SOURCE_DIR}/resources/preprocessor"
+                "${CMAKE_SOURCE_DIR}/resources/preprocessor/samples"
+        DEPENDS "${_pp_config}" "${_pp_api}" "${_pp_script}"
+        COMMENT "Generating preFlight.py type stubs"
+    )
+    add_custom_target(generate_settings_stubs DEPENDS "${_pp_output}" "${_pp_output2}")
+    add_dependencies(libslic3r generate_settings_stubs)
+endif ()
+
 if(WIN32)
     target_link_libraries(libslic3r PUBLIC Psapi.lib)
 endif()
@@ -655,5 +688,28 @@ endif ()
 if (SLIC3R_PCH AND NOT SLIC3R_SYNTAXONLY)
     add_precompiled_header(libslic3r pchheader.hpp FORCEINCLUDE)
 endif ()
+
+# Engine boundary enforcement: fail the build if any libslic3r source includes wx or imgui headers.
+# The PCH-based EngineGuard.hpp catches transitive header violations, but cannot detect per-.cpp
+# includes because the PCH is compiled once. This configure-time check covers that gap.
+file(GLOB_RECURSE _engine_sources "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp" "${CMAKE_CURRENT_SOURCE_DIR}/*.h")
+foreach(_src ${_engine_sources})
+    file(READ "${_src}" _content)
+    # Skip EngineGuard.hpp itself (contains the macro names in #ifdef checks)
+    get_filename_component(_fname "${_src}" NAME)
+    if(_fname STREQUAL "EngineGuard.hpp")
+        continue()
+    endif()
+    # Check for wx includes (uncommented lines only)
+    string(REGEX MATCH "\n[ \t]*#[ \t]*include[ \t]*[<\"]wx/" _wx_match "${_content}")
+    if(_wx_match)
+        message(FATAL_ERROR "Engine boundary violation: ${_src} includes a wxWidgets header. libslic3r must not depend on GUI frameworks.")
+    endif()
+    # Check for imgui includes (uncommented lines only)
+    string(REGEX MATCH "\n[ \t]*#[ \t]*include[ \t]*[<\"]imgui" _imgui_match "${_content}")
+    if(_imgui_match)
+        message(FATAL_ERROR "Engine boundary violation: ${_src} includes an imgui header. libslic3r must not depend on GUI frameworks.")
+    endif()
+endforeach()
 
 # Private build configuration included at root level

@@ -18,6 +18,8 @@
 #include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/Plater.hpp"
 #include "slic3r/GUI/Tab.hpp"
+#include "slic3r/GUI/EventTypes.hpp"
+#include "slic3r/GUI/EventBridge.hpp"
 #include "slic3r/Utils/UndoRedo.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -85,7 +87,7 @@ GLGizmoBrimEars::GLGizmoBrimEars(GLCanvas3D &parent, const std::string &icon_fil
         std::make_shared<const TriangleMesh>(cylinder_geometry.get_as_indexed_triangle_set()));
     m_cylinder.model.init_from(std::move(cylinder_geometry));
 
-    m_always_show_brims = wxGetApp().app_config->get_bool("brim_ears_always_show");
+    m_always_show_brims = m_parent.app_config()->get_bool("brim_ears_always_show");
 }
 
 bool GLGizmoBrimEars::on_init()
@@ -144,7 +146,7 @@ void GLGizmoBrimEars::on_render()
     if (m_state == On && (mo != selection.get_model()->objects[selection.get_object_idx()] ||
                           m_c->selection_info()->get_active_instance() != selection.get_instance_idx()))
     {
-        m_parent.post_event(SimpleEvent(EVT_GLCANVAS_RESETGIZMOS));
+        m_parent.event_poster()->postEvent(CanvasEventType::ResetGizmos);
         return;
     }
 
@@ -175,13 +177,13 @@ void GLGizmoBrimEars::render_points(const Selection &selection, bool use_object_
     if (!has_points)
         return;
 
-    const auto shader = wxGetApp().get_shader("gouraud_light");
+    const auto shader = m_parent.get_shader("gouraud_light");
     if (shader == nullptr)
         return;
     shader->start_using();
     ScopeGuard guard([shader]() { shader->stop_using(); });
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
     const Transform3d &view_matrix = camera.get_view_matrix();
     const GLVolume *vol = selection.get_volume(*selection.get_volume_idxs().begin());
     const Transform3d &instance_scaling_matrix_inverse =
@@ -305,14 +307,14 @@ void GLGizmoBrimEars::on_render_when_inactive()
         return;
 
     // Render the brim points for ALL objects that have them
-    const auto shader = wxGetApp().get_shader("gouraud_light");
+    const auto shader = m_parent.get_shader("gouraud_light");
     if (!shader)
         return;
 
     shader->start_using();
     ScopeGuard guard([shader]() { shader->stop_using(); });
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
     const Transform3d &view_matrix = camera.get_view_matrix();
 
     shader->set_uniform("projection_matrix", camera.get_projection_matrix());
@@ -384,7 +386,7 @@ bool GLGizmoBrimEars::is_mesh_point_clipped(const Vec3d &point) const
 
 bool GLGizmoBrimEars::unproject_on_mesh2(const Vec2d &mouse_pos, std::pair<Vec3f, Vec3f> &pos_and_normal)
 {
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
     double clp_dist = m_c->object_clipper()->get_position();
     const ClippingPlane *clp = m_c->object_clipper()->get_clipping_plane();
     bool mouse_on_object = false;
@@ -425,7 +427,7 @@ bool GLGizmoBrimEars::unproject_on_mesh(const Vec2d &mouse_pos, std::pair<Vec3f,
     if (!m_c->raycaster()->raycaster())
         return false;
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
     const Selection &selection = m_parent.get_selection();
     const GLVolume *volume = selection.get_volume(*selection.get_volume_idxs().begin());
     Geometry::Transformation trafo = volume->get_instance_transformation();
@@ -462,76 +464,56 @@ void GLGizmoBrimEars::data_changed(bool is_serializing)
     set_brim_data();
 }
 
-bool GLGizmoBrimEars::on_mouse(const wxMouseEvent &mouse_event)
+bool GLGizmoBrimEars::on_mouse(const MouseInput &mouse)
 {
-    // wxCoord == int --> wx/types.h
-    Vec2i32 mouse_coord(mouse_event.GetX(), mouse_event.GetY());
+    Vec2i32 mouse_coord((int) mouse.x, (int) mouse.y);
     Vec2d mouse_pos = mouse_coord.cast<double>();
 
-    if (mouse_event.Moving())
-    {
-        gizmo_event(SLAGizmoEventType::Moving, mouse_pos, mouse_event.ShiftDown(), mouse_event.AltDown(), false);
-    }
+    if (mouse.type == MouseEventType::Motion && !mouse.dragging)
+        gizmo_event(SLAGizmoEventType::Moving, mouse_pos, mouse.shift, mouse.alt, false);
 
-    // when control is down we allow scene pan and rotation even when clicking
-    // over some object
-    bool control_down = mouse_event.CmdDown();
+    bool control_down = mouse.cmd;
     bool grabber_contains_mouse = (get_hover_id() != -1);
 
     const Selection &selection = m_parent.get_selection();
     int selected_object_idx = selection.get_object_idx();
-    if (mouse_event.LeftDown())
+    if (mouse.type == MouseEventType::LeftDown)
     {
         if ((!control_down || grabber_contains_mouse) &&
-            gizmo_event(SLAGizmoEventType::LeftDown, mouse_pos, mouse_event.ShiftDown(), mouse_event.AltDown(), false))
-            // the gizmo got the event and took some action, there is no need
-            // to do anything more
+            gizmo_event(SLAGizmoEventType::LeftDown, mouse_pos, mouse.shift, mouse.alt, false))
             return true;
     }
-    else if (mouse_event.RightDown())
+    else if (mouse.type == MouseEventType::RightDown)
     {
         if (!control_down && selected_object_idx != -1 &&
             gizmo_event(SLAGizmoEventType::RightDown, mouse_pos, false, false, false))
-            // event was taken care of
             return true;
     }
-    else if (mouse_event.Dragging())
+    else if (mouse.dragging)
     {
         if (m_parent.get_move_volume_id() != -1)
-            // don't allow dragging objects with the Sla gizmo on
             return true;
-        if (!control_down &&
-            gizmo_event(SLAGizmoEventType::Dragging, mouse_pos, mouse_event.ShiftDown(), mouse_event.AltDown(), false))
+        if (!control_down && gizmo_event(SLAGizmoEventType::Dragging, mouse_pos, mouse.shift, mouse.alt, false))
         {
-            // the gizmo got the event and took some action, no need to do
-            // anything more here
             m_parent.set_as_dirty();
             return true;
         }
-        if (control_down && (mouse_event.LeftIsDown() || mouse_event.RightIsDown()))
+        if (control_down && (mouse.left_down || mouse.right_down))
         {
-            // CTRL has been pressed while already dragging -> stop current action
-            if (mouse_event.LeftIsDown())
-                gizmo_event(SLAGizmoEventType::LeftUp, mouse_pos, mouse_event.ShiftDown(), mouse_event.AltDown(), true);
-            else if (mouse_event.RightIsDown())
-                gizmo_event(SLAGizmoEventType::RightUp, mouse_pos, mouse_event.ShiftDown(), mouse_event.AltDown(),
-                            true);
+            if (mouse.left_down)
+                gizmo_event(SLAGizmoEventType::LeftUp, mouse_pos, mouse.shift, mouse.alt, true);
+            else if (mouse.right_down)
+                gizmo_event(SLAGizmoEventType::RightUp, mouse_pos, mouse.shift, mouse.alt, true);
             return false;
         }
     }
-    else if (mouse_event.LeftUp())
+    else if (mouse.type == MouseEventType::LeftUp)
     {
-        if (gizmo_event(SLAGizmoEventType::LeftUp, mouse_pos, mouse_event.ShiftDown(), mouse_event.AltDown(),
-                        control_down) &&
+        if (gizmo_event(SLAGizmoEventType::LeftUp, mouse_pos, mouse.shift, mouse.alt, control_down) &&
             !m_parent.is_mouse_dragging())
-        {
-            // in case SLA/FDM gizmo is selected, we just pass the LeftUp
-            // event and stop processing - neither object moving or selecting
-            // is suppressed in that case
             return true;
-        }
     }
-    return use_grabbers(mouse_event);
+    return use_grabbers(mouse);
 }
 
 // Following function is called from GLCanvas3D to inform the gizmo about a mouse/keyboard event.
@@ -555,10 +537,7 @@ bool GLGizmoBrimEars::gizmo_event(SLAGizmoEventType action, const Vec2d &mouse_p
         // First check that the mouse pointer is on an object.
         const Selection &selection = m_parent.get_selection();
         const ModelInstance *mi = mo->instances[0];
-        Plater *plater = wxGetApp().plater();
-        if (!plater)
-            return false;
-        const Camera &camera = wxGetApp().plater()->get_camera();
+        const Camera &camera = m_parent.get_camera();
         const GLVolume *volume = selection.get_volume(*selection.get_volume_idxs().begin());
         Transform3d inverse_trsf = volume->get_instance_transformation().get_matrix_no_offset().inverse();
         std::pair<Vec3f, Vec3f> pos_and_normal;
@@ -622,8 +601,7 @@ bool GLGizmoBrimEars::gizmo_event(SLAGizmoEventType action, const Vec2d &mouse_p
                 world_pos[2] = -0.0001;
                 Vec3d object_pos = trsf.inverse() * world_pos;
                 // brim ear always face up
-                Plater::TakeSnapshot snapshot(wxGetApp().plater(), wxString("Add brim ear"),
-                                              UndoRedo::SnapshotType::GizmoAction);
+                m_parent.take_gizmo_snapshot("Add brim ear");
                 add_point_to_cache(object_pos.cast<float>(), m_new_point_head_diameter / 2.f, false,
                                    (inverse_trsf * m_world_normal).cast<float>());
                 m_parent.set_as_dirty();
@@ -672,7 +650,7 @@ bool GLGizmoBrimEars::gizmo_event(SLAGizmoEventType action, const Vec2d &mouse_p
                     .cast<float>());
 
         for (size_t idx :
-             m_c->raycaster()->raycaster()->get_unobscured_idxs(trafo, wxGetApp().plater()->get_camera(), points_inside,
+             m_c->raycaster()->raycaster()->get_unobscured_idxs(trafo, m_parent.get_camera(), points_inside,
                                                                 m_c->object_clipper()->get_clipping_plane()))
         {
             if (idx >= orig_pts_num) // this is a cone-base, get index of point it belongs to
@@ -793,8 +771,7 @@ bool GLGizmoBrimEars::gizmo_event(SLAGizmoEventType action, const Vec2d &mouse_p
 
 void GLGizmoBrimEars::delete_selected_points()
 {
-    Plater::TakeSnapshot snapshot(wxGetApp().plater(), wxString("Delete brim ear"),
-                                  UndoRedo::SnapshotType::GizmoAction);
+    m_parent.take_gizmo_snapshot("Delete brim ear");
 
     for (unsigned int idx = 0; idx < m_editing_cache.size(); ++idx)
     {
@@ -833,7 +810,7 @@ std::vector<const ConfigOption *> GLGizmoBrimEars::get_config_options(const std:
         return out;
 
     const DynamicPrintConfig &object_cfg = mo->config.get();
-    const DynamicPrintConfig &print_cfg = wxGetApp().preset_bundle->sla_prints.get_edited_preset().config;
+    const DynamicPrintConfig &print_cfg = m_parent.preset_bundle()->sla_prints.get_edited_preset().config;
     std::unique_ptr<DynamicPrintConfig> default_cfg = nullptr;
 
     for (const std::string &key : keys)
@@ -885,8 +862,7 @@ void GLGizmoBrimEars::apply_radius_change()
             cache_entry.brim_point.head_front_radius = m_old_point_head_diameter / 2.f;
     float backup = m_new_point_head_diameter;
     m_new_point_head_diameter = m_old_point_head_diameter;
-    Plater::TakeSnapshot snapshot(wxGetApp().plater(), wxString("Change point head diameter"),
-                                  UndoRedo::SnapshotType::GizmoAction);
+    m_parent.take_gizmo_snapshot("Change point head diameter");
     m_new_point_head_diameter = backup;
     update_cache_radius();
     m_old_point_head_diameter = 0.f;
@@ -924,8 +900,7 @@ void GLGizmoBrimEars::apply_overlap_change()
             cache_entry.brim_point.overlap_percent = m_old_point_overlap;
     float backup = m_new_point_overlap;
     m_new_point_overlap = m_old_point_overlap;
-    Plater::TakeSnapshot snapshot(wxGetApp().plater(), wxString("Change brim overlap"),
-                                  UndoRedo::SnapshotType::GizmoAction);
+    m_parent.take_gizmo_snapshot("Change brim overlap");
     m_new_point_overlap = backup;
     update_cache_overlap();
     m_old_point_overlap = 0.f;
@@ -938,7 +913,7 @@ void GLGizmoBrimEars::on_render_input_window(float x, float y, float bottom_limi
 
     ModelObject *mo = m_c->selection_info()->model_object();
     const DynamicPrintConfig &obj_cfg = mo->config.get();
-    const DynamicPrintConfig &glb_cfg = wxGetApp().preset_bundle->prints.get_edited_preset().config;
+    const DynamicPrintConfig &glb_cfg = m_parent.preset_bundle()->prints.get_edited_preset().config;
 
     // Track canvas size and reset positioning on resize
     const auto &canvas_size = m_parent.get_canvas_size();
@@ -955,7 +930,7 @@ void GLGizmoBrimEars::on_render_input_window(float x, float y, float bottom_limi
 
     // Stay off-screen until we have a reasonable height (not 32px fake size)
     // DPI-scaled threshold (100px at 100% DPI)
-    const float height_threshold = 100.0f * wxGetApp().imgui()->get_style_scaling();
+    const float height_threshold = 100.0f * m_imgui->get_style_scaling();
     if (m_popup_render_count == 0 || m_popup_height < height_threshold)
     {
         // Position just above visible area to get accurate size
@@ -1117,7 +1092,7 @@ void GLGizmoBrimEars::on_render_input_window(float x, float y, float bottom_limi
 
     if (ImGui::Checkbox(_u8L("Always show brims").c_str(), &m_always_show_brims))
     {
-        wxGetApp().app_config->set("brim_ears_always_show", m_always_show_brims ? "1" : "0");
+        m_parent.app_config()->set("brim_ears_always_show", m_always_show_brims ? "1" : "0");
         m_parent.set_as_dirty();
     }
 
@@ -1206,22 +1181,21 @@ void GLGizmoBrimEars::update_model_object()
         // If we have brim points and brim type is not already Advanced mouse ears (btPainted), switch to it
         if (!mo->brim_points.empty())
         {
-            DynamicPrintConfig &global_config = wxGetApp().preset_bundle->prints.get_edited_preset().config;
+            DynamicPrintConfig &global_config = m_parent.preset_bundle()->prints.get_edited_preset().config;
             auto *brim_type_opt = global_config.opt<ConfigOptionEnum<BrimType>>("brim_type");
             if (brim_type_opt && brim_type_opt->value != btPainted)
             {
                 brim_type_opt->value = btPainted;
-                // Mark the config as modified
-                wxGetApp().get_tab(Preset::TYPE_PRINT)->update_dirty();
-                wxGetApp().plater()->on_config_change(global_config);
+                m_parent.event_poster()->postEvent(CanvasEventType::TabUpdateDirty);
+                m_parent.on_config_change(global_config);
             }
         }
 
-        wxGetApp().plater()->set_plater_dirty(true);
+        m_parent.event_poster()->postEvent(CanvasEventType::SetPlaterDirty);
 
         m_parent.set_as_dirty();
     }
-    m_parent.post_event(SimpleEvent(EVT_GLCANVAS_SCHEDULE_BACKGROUND_PROCESS));
+    m_parent.event_poster()->postEvent(CanvasEventType::ScheduleBackgroundProcess);
 }
 
 // switch gizmos
@@ -1232,8 +1206,7 @@ void GLGizmoBrimEars::on_set_state()
 
     if (m_state == On && m_old_state != On)
     {
-        // the gizmo was just turned on
-        wxGetApp().plater()->enter_gizmos_stack();
+        m_parent.enter_gizmos_stack();
         first_layer_slicer();
     }
     if (m_state == Off && m_old_state != Off)
@@ -1242,15 +1215,13 @@ void GLGizmoBrimEars::on_set_state()
         // GizmosManager will take a LeavingGizmoWithAction snapshot after this returns,
         // which clears the dirty flag because brim_points aren't in snapshot serialization.
         // We save the current dirty state and will re-apply it via a deferred call.
-        bool was_dirty = wxGetApp().plater()->is_project_dirty();
+        bool was_dirty = m_parent.is_project_dirty();
         update_model_object();
-        wxGetApp().plater()->leave_gizmos_stack();
-        // Use CallAfter to run after GizmosManager's LeavingGizmoWithAction snapshot
+        m_parent.leave_gizmos_stack();
         if (was_dirty)
         {
-            wxGetApp().CallAfter([=]() { wxGetApp().plater()->set_plater_dirty(true); });
+            m_parent.call_after([this]() { m_parent.event_poster()->postEvent(CanvasEventType::SetPlaterDirty); });
         }
-        // wxGetApp().mainframe->update_slice_print_status(MainFrame::SlicePrintEventType::eEventSliceUpdate, true, true);
     }
     m_old_state = m_state;
 }
@@ -1277,8 +1248,7 @@ void GLGizmoBrimEars::on_stop_dragging()
             && backup.brim_point.pos != m_point_before_drag.brim_point.pos) // and it was moved, not just selected
         {
             m_editing_cache[m_hover_id] = m_point_before_drag;
-            Plater::TakeSnapshot snapshot(wxGetApp().plater(), wxString("Move brim ear"),
-                                          UndoRedo::SnapshotType::GizmoAction);
+            m_parent.take_gizmo_snapshot("Move brim ear");
             m_editing_cache[m_hover_id] = backup;
             update_model_object(); // Update ModelObject to trigger dirty flag
         }
@@ -1390,7 +1360,7 @@ void GLGizmoBrimEars::first_layer_slicer()
     for (auto idx : idxs)
     {
         const GLVolume *volume = selection.get_volume(idx);
-        const ModelVolume *model_volume = get_model_volume(*volume, wxGetApp().model());
+        const ModelVolume *model_volume = get_model_volume(*volume, *m_parent.get_model());
         if (model_volume == nullptr)
             continue;
         if (model_volume->type() == ModelVolumeType::MODEL_PART ||
@@ -1439,8 +1409,7 @@ void GLGizmoBrimEars::auto_generate()
         Polygon out_poly = ex_poly.contour;
         Polygons inner_poly = ex_poly.holes;
         polygons_reverse(inner_poly);
-        Plater::TakeSnapshot snapshot(wxGetApp().plater(), wxString("Auto generate brim ear"),
-                                      UndoRedo::SnapshotType::GizmoAction);
+        m_parent.take_gizmo_snapshot("Auto generate brim ear");
         Points out_points = generate_points(out_poly, m_detection_radius, m_max_angle, true);
         for (Point &p : out_points)
         {
@@ -1556,7 +1525,7 @@ void GLGizmoBrimEars::update_raycasters()
         {
             if (it->picking_id >= 0)
             {
-                it->unregister_raycasters_for_picking();
+                it->unregister_raycasters_for_picking(m_parent);
             }
         }
         m_grabbers.erase(m_grabbers.begin() + m_editing_cache.size(), m_grabbers.end());
@@ -1585,7 +1554,7 @@ void GLGizmoBrimEars::register_single_mesh_pick()
         for (unsigned int idx : idxs)
         {
             GLVolume *v = const_cast<GLVolume *>(selection.get_volume(idx));
-            const ModelVolume *mv = get_model_volume(*v, wxGetApp().model());
+            const ModelVolume *mv = get_model_volume(*v, *m_parent.get_model());
             if (!mv->is_model_part())
                 continue;
             auto world_tran = v->get_instance_transformation() * v->get_volume_transformation();
@@ -1619,11 +1588,11 @@ void GLGizmoBrimEars::reset_all_pick()
 
 float GLGizmoBrimEars::get_brim_default_radius() const
 {
-    const double nozzle_diameter = wxGetApp()
-                                       .preset_bundle->printers.get_edited_preset()
+    const double nozzle_diameter = m_parent.preset_bundle()
+                                       ->printers.get_edited_preset()
                                        .config.option<ConfigOptionFloats>("nozzle_diameter")
                                        ->get_at(0);
-    const DynamicPrintConfig &pring_cfg = wxGetApp().preset_bundle->prints.get_edited_preset().config;
+    const DynamicPrintConfig &pring_cfg = m_parent.preset_bundle()->prints.get_edited_preset().config;
     return pring_cfg.get_abs_value("first_layer_extrusion_width", nozzle_diameter) * 16.0f;
 }
 

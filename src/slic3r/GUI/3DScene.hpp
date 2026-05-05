@@ -60,8 +60,10 @@ inline void glAssertRecentCall() {}
 
 namespace Slic3r
 {
+class AppConfig;
 class BuildVolume;
 class DynamicPrintConfig;
+class Model;
 class ExtrusionPath;
 class ExtrusionMultiPath;
 class ExtrusionLoop;
@@ -459,6 +461,26 @@ typedef std::vector<GLVolume *> GLVolumePtrs;
 typedef std::pair<GLVolume *, std::pair<unsigned int, double>> GLVolumeWithIdAndZ;
 typedef std::vector<GLVolumeWithIdAndZ> GLVolumeWithIdAndZList;
 
+namespace GUI
+{
+struct Camera;
+class ImGuiWrapper;
+} // namespace GUI
+
+struct GLRenderContext
+{
+    std::function<GLShaderProgram *(const std::string &)> get_shader;
+    std::function<GLShaderProgram *()> get_current_shader;
+    const GUI::Camera *camera{nullptr};
+    const Model *model{nullptr};
+    const AppConfig *app_config{nullptr};
+    const GUI::ImGuiWrapper *imgui{nullptr};
+    size_t extruders_edited_cnt{1};
+    std::vector<ColorRGBA> extruder_colors;
+    unsigned int environment_texture_id{0};
+    bool use_environment_map{false};
+};
+
 class GLVolumeCollection
 {
 public:
@@ -562,7 +584,7 @@ public:
     GLVolume *new_nontoolpath_volume(const ColorRGBA &rgba);
     // Render the volumes by OpenGL.
     void render(ERenderType type, bool disable_cullface, const Transform3d &view_matrix,
-                const Transform3d &projection_matrix,
+                const Transform3d &projection_matrix, const GLRenderContext &ctx,
                 std::function<bool(const GLVolume &)> filter_func = std::function<bool(const GLVolume &)>()) const;
 
     // Clear the geometry
@@ -579,6 +601,8 @@ public:
         for (GLVolume *vol : this->volumes)
             vol->set_range(low, high);
     }
+
+    static void set_render_context(const GLRenderContext *ctx);
 
     void set_use_raycasters(bool value) { m_use_raycasters = value; }
     void set_print_volume(const PrintVolume &print_volume) { m_print_volume = print_volume; }

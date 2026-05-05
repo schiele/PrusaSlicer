@@ -903,12 +903,12 @@ void SkeletalTrapezoidation::generateTransitionMids(ptr_vector_t<std::list<Trans
             coord_t mid_R = beading_strategy.getTransitionThickness(transition_lower_bead_count) / 2;
             if (mid_R > end_R)
             {
-                BOOST_LOG_TRIVIAL(error) << "transition on segment lies outside of segment!";
+                BOOST_LOG_TRIVIAL(trace) << "transition on segment lies outside of segment!";
                 mid_R = end_R;
             }
             if (mid_R < start_R)
             {
-                BOOST_LOG_TRIVIAL(error) << "transition on segment lies outside of segment!";
+                BOOST_LOG_TRIVIAL(trace) << "transition on segment lies outside of segment!";
                 mid_R = start_R;
             }
             coord_t mid_pos = int64_t(edge_size) * int64_t(mid_R - start_R) / int64_t(end_R - start_R);

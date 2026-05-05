@@ -11,6 +11,7 @@
 #include "libslic3r/Point.hpp"
 #include "libslic3r/CustomGCode.hpp"
 
+#include <memory>
 #include <string>
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 
@@ -39,6 +40,7 @@ namespace GUI
 {
 
 class GLCanvas3D;
+class GLSurface_wx;
 class GLToolbar;
 class Bed3D;
 struct Camera;
@@ -51,6 +53,7 @@ class View3D : public wxPanel
 {
     wxGLCanvas *m_canvas_widget;
     GLCanvas3D *m_canvas;
+    std::unique_ptr<GLSurface_wx> m_gl_surface;
 
 public:
     View3D(wxWindow *parent, Bed3D &bed, Model *model, DynamicPrintConfig *config, BackgroundSlicingProcess *process);
@@ -87,6 +90,7 @@ class Preview : public wxPanel
 {
     wxGLCanvas *m_canvas_widget{nullptr};
     GLCanvas3D *m_canvas{nullptr};
+    std::unique_ptr<GLSurface_wx> m_gl_surface;
     wxBoxSizer *m_left_sizer{nullptr};
 
     DynamicPrintConfig *m_config;

@@ -23,7 +23,7 @@ class GLGizmoAlign : public GLGizmoBase
 public:
     GLGizmoAlign(GLCanvas3D &parent, const std::string &icon_filename, unsigned int sprite_id);
 
-    bool on_mouse(const wxMouseEvent &mouse_event) override;
+    bool on_mouse(const MouseInput &mouse) override;
     void data_changed(bool is_serializing) override;
 
 protected:

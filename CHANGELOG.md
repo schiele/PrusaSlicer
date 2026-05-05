@@ -1,5 +1,82 @@
 # preFlight Changelog
 
+## v0.9.14
+
+### G-code Preprocessing (Python Scripting) with 150 APIs and all settings
+- Added embedded Python pre-processor for G-code scripting - users can run Python scripts against sliced G-code before preview and export with full read/write access to moves, layers, settings, and raw G-code lines
+- Pre-processing runs inside the slicing pipeline giving unprecedented access never before achieved
+- Bundled Python 3.14.4 runtime so end users don't need Python installed - fully isolated with no system directories, PATH, or registry modified
+- Added per-profile preprocessing UI with consent-gated script execution - each settings panel (Print, Filament, Printer) gets a Preprocessing tab with an enable toggle and ordered script list
+- Exposed motion planner data to scripts: distance, junction angle, acceleration, max entry speed, per-role metrics, and conflict detection
+- Exposed per-fill-region geometry to scripts: region area (mm^2) and fill pattern name for detecting small features
+- Added state isolation per slice: snapshots and restores sys.path, sys.modules, signal handlers, and CWD before/after each script
+- Added pip support with a Python Console button in Preferences that launches a shell with PATH configured for the bundled runtime
+- Added per-move annotations and optional comment parameters for insert, rewrite, prepend, and append operations
+- Added error reporting: script errors, missing scripts, and cross-profile duplicates surface as breadcrumb notifications
+- Added script validation: rejects invalid Python identifiers on add, blocks duplicate paths within the same profile, deduplicates across profiles at slice time
+- Included 18 sample scripts (numpy, pressure advance, flow limiting, fan curves, motion optimizer, and more) with comprehensive API test
+- Included preFlight.py type stub for autocomplete and intellisense in external editors
+- Included comprehensive HOW TO document located in resources/preprocessor
+
+### Profiles / Configuration Wizard
+- Added ProfileServer client that fetches vendor profiles from profiles.preflight3d.com
+- Rewrote Configuration Wizard: Choose Vendors page with saved selections, alphabetically sorted vendor printer pages, Type/Vendor toggle on filaments page
+- Wizard saves printer, print, and filament presets as user .ini files with overwrite prompts and save-failure reporting
+- Flattened preset combo boxes (removed system/user/template separators)
+- Removed Compare preset button (no system reference to compare against)
+- Filament page starts clean (no pre-selected profiles), defaults to Vendor > Type sort
+- Added community-sourced disclaimer with link to profiles repository on filament page
+- Added path traversal protection and HTTP status validation on profile downloads
+
+### Rendering / Lighting
+- Added Blinn-Phong per-pixel lighting with specular highlights and rim lighting as an "Enhanced" alternative to Gouraud shading - GPU auto-detection selects the appropriate mode
+- Added user-configurable MSAA anti-aliasing dropdown (Auto/Off/2x/4x/8x/16x) in Preferences > Performance
+- Added spherical harmonics studio-environment reflections to the Phong shader for subtle surface sheen
+- Upgraded MMU painting gizmo shaders to Blinn-Phong with specular and rim lighting to match the 3D editor's lighting quality
+- Fixed painting gizmos (seam, support, fuzzy skin, counterbore) invisible when Enhanced lighting was active due to shader mismatch causing depth buffer rejection
+
+### UI Migration Prepwork
+- Abstracted the entire rendering pipeline (GLCanvas3D, Selection, GCodeViewer, 3DScene, all 21 gizmos)
+- Extracted stb_truetype from imgui into standalone bundled dependency
+- Added engine boundary firewall preventing wx/imgui in libslic3r at configure time
+- Routed all GL surface operations through toolkit-agnostic IGLSurface interface and replaced wxTimer-based timers with callback-driven ITimer interface
+- Converted all event posts, mouse/keyboard input, and gizmo handlers to toolkit-agnostic types
+
+### Interlocking Perimeters
+- Added "Perimeters while interlocking" setting to reduce wall count on interlocking layers while retaining interlocking strength (issue #122)
+- Stabilized interlocking inner contour across even/odd layers - phase 1 now uses consistent parameters so Athena's skeleton produces stable results regardless of layer parity
+- Fixed interlocking shell ordering: replaced centroid-to-centroid distance matching with minimum point-to-point distance, sorted by inset index instead of shortest-path chaining
+- Fixed interlocking shells clipped at narrow visibility zone boundary strips by applying morphological opening to the visibility zone
+- Fixed solid infill overlapping perimeters on multi-hole thin shells after interlocking consumed interior space
+
+### Infill / Fill
+- Absorbed thin sparse slivers into adjacent bridge and solid fills - extended the solid absorption loop to also use bridge fills as absorbers with an effective gap test
+- Fixed rectilinear/monotonic solid infill overlapping perimeters at interior cutouts by stretching holes directionally in the scan direction before fill generation
+- Limited solid infill hole-stretch overlap fix to internal solid only - top and bottom surfaces retain full coverage at hole boundaries for surface quality
+- Fixed solid infill producing empty regions on polygons with holes near contour edge by falling back to monotonic code path on malformed intersection data
+- Fixed sparse infill (Grid, Triangles, Stars, Cubic) missing segments near holes due to misplaced tangent-line clipping intended for solid fills
+- Fixed greedy chain walk silently dropping polylines causing large empty regions in Line sparse infill when segment clusters were disconnected
+- Fixed counterbore bridge infill not merging with adjacent internal bridge due to angle-based grouping separating overlapping corridor regions
+
+### Athena Perimeter Generation
+- Fixed diamond artifacts on variable-width walls by blocking center bead splits when resulting beads would be too narrow
+- Fixed thin-ring infill overlap where Clipper operations lost contour/hole winding on thin annular rings, turning a thin ring into a full disc covering perimeters
+
+### Seams
+- Fixed nip/tuck seam double-notch on thin walls where two external perimeters shared a single inner perimeter
+
+### 3MF Import
+- Fixed crash when importing config from PrusaSlicer 3MF projects (issue #125)
+
+### G-code Preview
+- Fixed G-code viewer losing base moves during incremental actual speed insertion, causing missing segment tips and wrong actual speed coloring
+
+### Supports
+- Fixed organic supports not generating inside closed perimeters due to Clipper2 migration breaking polygon winding preservation (issue #123)
+- Fixed enforce-layers generating blanket support for all overhangs in paint-on mode instead of limiting to painted areas
+- Fixed support crash on non-ExtrusionPath entities (ExtrusionMultiPath, ExtrusionLoop, ExtrusionEntityCollection)
+
+
 ## v0.9.13
 
 ### Reissue of v0.9.12 due to regression issue

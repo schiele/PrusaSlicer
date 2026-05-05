@@ -43,6 +43,8 @@
 #include "Widgets/ScrollablePanel.hpp"
 
 #include <map>
+
+class wxListCtrl;
 #include <vector>
 #include <memory>
 
@@ -441,6 +443,15 @@ protected:
     void create_line_with_widget(ConfigOptionsGroup *optgroup, const std::string &opt_key, const std::string &path,
                                  widget_t widget);
     wxSizer *compatible_widget_create(wxWindow *parent, PresetDependencies &deps);
+    wxSizer *create_preprocessing_scripts_widget(wxWindow *parent, const std::string &opt_key);
+
+    wxPanel *m_preprocessing_panel{nullptr};
+    wxListCtrl *m_preprocessing_listbox{nullptr};
+    std::function<void()> m_preprocessing_update_buttons;
+    std::function<void()> m_preprocessing_mark_missing;
+    std::string m_preprocessing_enable_key;
+    std::string m_preprocessing_scripts_key;
+    void update_preprocessing_panel_visibility();
     void compatible_widget_reload(PresetDependencies &deps);
     void load_key_value(const std::string &opt_key, const boost::any &value, bool saved_value = false);
 

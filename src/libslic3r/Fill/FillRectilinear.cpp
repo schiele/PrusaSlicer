@@ -1426,10 +1426,6 @@ static void connect_segment_intersections_by_contours(const ExPolygonWithOffset 
             {
                 // Connectivity search failed - this intersection is orphaned or has invalid geometry
                 // This is likely due to Clipper2 producing pathological geometry or Athena perimeter quirks
-                printf(
-                    "WARNING: Connectivity search failed for intersection at vline=%zu, idx=%d (iprev=%d, inext=%d) - marking as invalid\n",
-                    i_vline, i_intersection, iprev, inext);
-                fflush(stdout);
                 // Mark it as invalid so it's not used in path traversal
                 itsct.prev_on_contour = -1;
                 itsct.next_on_contour = -1;
@@ -1858,34 +1854,7 @@ static void traverse_graph_generate_polylines(const ExPolygonWithOffset &poly_wi
             {
                 it->consumed_vertical_up = true;
                 if (size_t(i_intersection) >= vline.intersections.size() - 1)
-                {
-                    printf("ERROR [traverse:CONSUME_UP_OVERFLOW]: No OUTER_HIGH found, i_intersection=%d, size=%zu\n",
-                           i_intersection, vline.intersections.size());
-                    printf("  Intersection types in this vline: ");
-                    for (size_t idx = 0; idx < vline.intersections.size(); idx++)
-                    {
-                        const char *type_name = "UNKNOWN";
-                        switch (vline.intersections[idx].type)
-                        {
-                        case SegmentIntersection::OUTER_LOW:
-                            type_name = "OUTER_LOW";
-                            break;
-                        case SegmentIntersection::OUTER_HIGH:
-                            type_name = "OUTER_HIGH";
-                            break;
-                        case SegmentIntersection::INNER_LOW:
-                            type_name = "INNER_LOW";
-                            break;
-                        case SegmentIntersection::INNER_HIGH:
-                            type_name = "INNER_HIGH";
-                            break;
-                        }
-                        printf("[%zu]=%s ", idx, type_name);
-                    }
-                    printf("\n");
-                    fflush(stdout);
                     break;
-                }
                 ++it;
                 ++i_intersection;
                 assert(size_t(i_intersection) < vline.intersections.size());
@@ -1912,33 +1881,6 @@ static void traverse_graph_generate_polylines(const ExPolygonWithOffset &poly_wi
             {
                 if (i_intersection <= 0)
                 {
-                    // Get vline reference for debugging
-                    const SegmentedIntersectionLine &dbg_vline = segs[i_vline];
-                    printf("ERROR [traverse:CONSUME_DOWN_UNDERFLOW]: No OUTER_LOW found, i_intersection=%d\n",
-                           i_intersection);
-                    printf("  Intersection types in this vline: ");
-                    for (size_t idx = 0; idx < dbg_vline.intersections.size(); idx++)
-                    {
-                        const char *type_name = "UNKNOWN";
-                        switch (dbg_vline.intersections[idx].type)
-                        {
-                        case SegmentIntersection::OUTER_LOW:
-                            type_name = "OUTER_LOW";
-                            break;
-                        case SegmentIntersection::OUTER_HIGH:
-                            type_name = "OUTER_HIGH";
-                            break;
-                        case SegmentIntersection::INNER_LOW:
-                            type_name = "INNER_LOW";
-                            break;
-                        case SegmentIntersection::INNER_HIGH:
-                            type_name = "INNER_HIGH";
-                            break;
-                        }
-                        printf("[%zu]=%s ", idx, type_name);
-                    }
-                    printf("\n");
-                    fflush(stdout);
                     it->consumed_vertical_up = true;
                     break;
                 }
@@ -2735,11 +2677,6 @@ static float montonous_region_path_length(const MonotonicRegion &region, bool di
 
         if (iright < 0 || (size_t) iright >= vline_right.intersections.size())
         {
-            // Layer 5 safety net triggered - log this so we know layers 1-4 didn't catch everything
-            printf(
-                "WARNING: montonous_region_path_length caught invalid iright=%d (size=%zu) - earlier validation layers missed this!\n",
-                iright, vline_right.intersections.size());
-            fflush(stdout);
             // Return current accumulated length rather than crashing
             return unscale<float>(total_length);
         }
@@ -3689,12 +3626,7 @@ static void polylines_from_paths(const std::vector<MonotonicRegionLink> &path,
 
             if (iright < 0 || (size_t) iright >= vline_right.intersections.size())
             {
-                // Layer 5 safety net triggered - log this so we know layers 1-4 didn't catch everything
-                printf(
-                    "WARNING: polylines_from_paths caught invalid iright=%d (size=%zu) - earlier validation layers missed this!\n",
-                    iright, vline_right.intersections.size());
-                fflush(stdout);
-                break; // Exit inner loop to prevent crash
+                break;
             }
 
             const SegmentIntersection *right = going_up
@@ -3786,7 +3718,6 @@ bool FillRectilinear::fill_surface_by_lines(const Surface *surface, const FillPa
     if (poly_with_offset.n_contours_inner() == 0)
     {
         // Not a single infill line fits.
-        //FIXME maybe one shall trigger the gap fill here?
         return true;
     }
 
@@ -3803,6 +3734,46 @@ bool FillRectilinear::fill_surface_by_lines(const Surface *surface, const FillPa
         // This is the rotated polygon bbox (before offset shrink in poly_with_offset)
         line_spacing = this->_adjust_solid_spacing(bounding_box_src.size().x(), line_spacing);
         this->spacing = unscale<double>(line_spacing);
+    }
+
+    // For solid fills with beads wider than the perimeters, stretch holes in the
+    // scan direction (X in the rotated system) so that scan lines passing tangent
+    // to a hole don't overlap the innermost perimeter by more than 50%. Uses the
+    // post-adjustment line_spacing so the stretch matches the actual bead width.
+    bool holes_stretched = false;
+    if (!surface->expolygon.holes.empty() && params.full_infill() && this->perimeter_width > 0 &&
+        surface->surface_type == stInternalSolid)
+    {
+        const coord_t bead_half = line_spacing / 2;
+        const coord_t threshold = coord_t(scale_(this->perimeter_width * 0.25));
+        const coord_t stretch = std::max(coord_t(0), bead_half - threshold);
+        if (stretch > 0)
+        {
+            ExPolygon fill_expoly = surface->expolygon;
+            const float fill_angle = rotate_vector.first;
+            for (Polygon &hole : fill_expoly.holes)
+            {
+                hole.rotate(-fill_angle);
+                BoundingBox hbb = get_extents(hole);
+                coord_t cx = (hbb.min.x() + hbb.max.x()) / 2;
+                for (Point &pt : hole.points)
+                {
+                    if (pt.x() > cx)
+                        pt.x() += stretch;
+                    else if (pt.x() < cx)
+                        pt.x() -= stretch;
+                }
+                hole.rotate(fill_angle);
+            }
+            ExPolygonWithOffset stretched_offset(fill_expoly, -rotate_vector.first, float(scale_(outer_offset)),
+                                                 float(scale_(inner_offset)));
+            if (stretched_offset.n_contours_inner() > 0)
+            {
+                poly_with_offset = std::move(stretched_offset);
+                bounding_box_src = poly_with_offset.bounding_box_src();
+                holes_stretched = true;
+            }
+        }
     }
     else
     {
@@ -3929,18 +3900,15 @@ bool FillRectilinear::fill_surface_by_lines(const Surface *surface, const FillPa
         coord_t line_spacing_scaled = coord_t(scale_(this->spacing) / params.density);
         coord_t min_width_threshold = line_spacing_scaled * 3;
 
-        // Check if this is a narrow sliver by comparing bounding box dimensions to hole proximity
         bool is_narrow_sliver = false;
         for (const auto &ep : poly_with_offset.expolygons_outer)
         {
             if (ep.holes.empty())
                 continue;
-            // For each hole, check if contour is very close (narrow ring around hole)
             for (const Polygon &hole : ep.holes)
             {
                 BoundingBox hole_bb = get_extents(hole);
                 BoundingBox contour_bb = get_extents(ep.contour);
-                // If the gap between hole and contour is small on any side, it's a sliver
                 coord_t gap_x = std::min(hole_bb.min.x() - contour_bb.min.x(), contour_bb.max.x() - hole_bb.max.x());
                 coord_t gap_y = std::min(hole_bb.min.y() - contour_bb.min.y(), contour_bb.max.y() - hole_bb.max.y());
                 if (gap_x < min_width_threshold || gap_y < min_width_threshold)
@@ -3985,26 +3953,38 @@ bool FillRectilinear::fill_surface_by_lines(const Surface *surface, const FillPa
     }
     else
     {
-        // Some ring geometries (around holes) produce malformed intersection sequences where
-        // INNER_LOW appears before OUTER_LOW. This happens when the ring width is < 1 extrusion.
-        // Detect this and skip - these surfaces are too narrow for any infill pattern.
-        bool has_malformed_sequence = false;
+        // Malformed intersection sequences (wrong first/last type, odd count) cause
+        // heap corruption in traverse_graph. Detect and fall back to the monotonic path
+        // which has bounds checking for these cases.
+        bool has_malformed = false;
         for (const SegmentedIntersectionLine &vline : segs)
         {
-            if (!vline.intersections.empty() && vline.intersections.front().type != SegmentIntersection::OUTER_LOW)
+            if (!vline.intersections.empty() && (vline.intersections.front().type != SegmentIntersection::OUTER_LOW ||
+                                                 vline.intersections.back().type != SegmentIntersection::OUTER_HIGH ||
+                                                 (vline.intersections.size() & 1) != 0))
             {
-                has_malformed_sequence = true;
+                has_malformed = true;
                 break;
             }
         }
-        if (has_malformed_sequence)
-        {
-            // Malformed sequence (e.g., INNER_LOW before OUTER_LOW) - skip to prevent crash
-            return true;
-        }
 
-        traverse_graph_generate_polylines(poly_with_offset, params, segs, this->has_consistent_pattern(),
-                                          polylines_out);
+        if (has_malformed)
+        {
+            pinch_contours_insert_phony_outer_intersections(segs);
+            std::vector<MonotonicRegion> regions = generate_montonous_regions(segs);
+            connect_monotonic_regions(regions, poly_with_offset, segs);
+            if (!regions.empty())
+            {
+                std::mt19937_64 rng;
+                std::vector<MonotonicRegionLink> path = chain_monotonic_regions(regions, poly_with_offset, segs, rng);
+                polylines_from_paths(path, poly_with_offset, segs, polylines_out, params);
+            }
+        }
+        else
+        {
+            traverse_graph_generate_polylines(poly_with_offset, params, segs, this->has_consistent_pattern(),
+                                              polylines_out);
+        }
     }
 
     // preFlight: Clip generated polylines against the fill boundary to prevent lines from
@@ -4077,6 +4057,7 @@ bool FillRectilinear::fill_surface_by_lines(const Surface *surface, const FillPa
     return true;
 }
 
+// Sparse fills only. Solid fills use fill_surface_by_lines() which has its own hole-overlap logic.
 void make_fill_lines(const ExPolygonWithOffset &poly_with_offset, Point refpt, double angle, coord_t x_margin,
                      coord_t line_spacing, coord_t pattern_shift, Polylines &fill_lines)
 {

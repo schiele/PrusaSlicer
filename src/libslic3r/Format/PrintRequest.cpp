@@ -15,8 +15,6 @@
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Format/STL.hpp"
 
-//#include "slic3r/GUI/format.hpp"
-
 namespace Slic3r
 {
 namespace pt = boost::property_tree;

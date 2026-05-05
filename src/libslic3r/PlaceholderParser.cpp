@@ -1936,8 +1936,7 @@ struct MyContext : public ConfigOptionResolver
             }
         }
         msg += '\n';
-        // This hack removes all non-UTF8 characters from the source line, so that the upstream wxWidgets conversions
-        // from UTF8 to UTF16 don't bail out.
+        // Strip non-UTF8 characters so downstream UTF8-to-UTF16 conversions don't fail.
         msg += boost::nowide::narrow(boost::nowide::widen(error_line));
         msg += '\n';
         for (size_t i = 0; i < error_pos; ++i)

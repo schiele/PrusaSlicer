@@ -512,7 +512,7 @@ void MedialAxis::build(ThickPolylines *polylines)
         m_vd.construct_voronoi(m_lines.begin(), m_lines.end());
 
         if (!m_vd.is_valid())
-            BOOST_LOG_TRIVIAL(error) << "MedialAxis - Invalid Voronoi diagram even after morphological closing.";
+            BOOST_LOG_TRIVIAL(trace) << "MedialAxis - Invalid Voronoi diagram even after morphological closing.";
     }
 
     Slic3r::Voronoi::annotate_inside_outside(m_vd, m_lines);

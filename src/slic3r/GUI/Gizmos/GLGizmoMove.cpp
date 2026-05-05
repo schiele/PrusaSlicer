@@ -5,9 +5,9 @@
 ///|/
 #include "GLGizmoMove.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
-#include "slic3r/GUI/GUI_App.hpp"
-#include "slic3r/GUI/GUI_ObjectManipulation.hpp"
-#include "slic3r/GUI/Plater.hpp"
+#include "slic3r/GUI/I18N.hpp"
+#include "slic3r/GUI/GLShader.hpp"
+#include "slic3r/GUI/OpenGLManager.hpp"
 #include "libslic3r/Model.hpp"
 
 #if SLIC3R_OPENGL_ES
@@ -42,9 +42,9 @@ std::string GLGizmoMove3D::get_tooltip() const
         return "";
 }
 
-bool GLGizmoMove3D::on_mouse(const wxMouseEvent &mouse_event)
+bool GLGizmoMove3D::on_mouse(const MouseInput &mouse)
 {
-    return use_grabbers(mouse_event);
+    return use_grabbers(mouse);
 }
 
 void GLGizmoMove3D::data_changed(bool is_serializing)
@@ -106,7 +106,7 @@ void GLGizmoMove3D::on_dragging(const UpdateData &data)
     Selection &selection = m_parent.get_selection();
     TransformationType trafo_type;
     trafo_type.set_relative();
-    switch (wxGetApp().obj_manipul()->get_coordinates_type())
+    switch (m_parent.get_coordinates_type())
     {
     case ECoordinatesType::Instance:
     {
@@ -160,7 +160,7 @@ void GLGizmoMove3D::on_render()
 #if !SLIC3R_OPENGL_ES
     if (!OpenGLManager::get_gl_info().is_core_profile())
     {
-        const float scale = wxGetApp().imgui()->get_style_scaling();
+        const float scale = m_imgui->get_style_scaling();
         glsafe(::glLineWidth((m_hover_id != -1) ? 2.0f * scale : 1.5f * scale));
     }
 #endif // !SLIC3R_OPENGL_ES
@@ -198,16 +198,16 @@ void GLGizmoMove3D::on_render()
     if (m_hover_id == -1)
     {
 #if SLIC3R_OPENGL_ES
-        GLShaderProgram *shader = wxGetApp().get_shader("dashed_lines");
+        GLShaderProgram *shader = m_parent.get_shader("dashed_lines");
 #else
         GLShaderProgram *shader = OpenGLManager::get_gl_info().is_core_profile()
-                                      ? wxGetApp().get_shader("dashed_thick_lines")
-                                      : wxGetApp().get_shader("flat");
+                                      ? m_parent.get_shader("dashed_thick_lines")
+                                      : m_parent.get_shader("flat");
 #endif // SLIC3R_OPENGL_ES
         if (shader != nullptr)
         {
             shader->start_using();
-            const Camera &camera = wxGetApp().plater()->get_camera();
+            const Camera &camera = m_parent.get_camera();
             shader->set_uniform("view_model_matrix", camera.get_view_matrix() * base_matrix);
             shader->set_uniform("projection_matrix", camera.get_projection_matrix());
 #if !SLIC3R_OPENGL_ES
@@ -238,17 +238,17 @@ void GLGizmoMove3D::on_render()
     {
         // draw axis
 #if SLIC3R_OPENGL_ES
-        GLShaderProgram *shader = wxGetApp().get_shader("dashed_lines");
+        GLShaderProgram *shader = m_parent.get_shader("dashed_lines");
 #else
         GLShaderProgram *shader = OpenGLManager::get_gl_info().is_core_profile()
-                                      ? wxGetApp().get_shader("dashed_thick_lines")
-                                      : wxGetApp().get_shader("flat");
+                                      ? m_parent.get_shader("dashed_thick_lines")
+                                      : m_parent.get_shader("flat");
 #endif // SLIC3R_OPENGL_ES
         if (shader != nullptr)
         {
             shader->start_using();
 
-            const Camera &camera = wxGetApp().plater()->get_camera();
+            const Camera &camera = m_parent.get_camera();
             shader->set_uniform("view_model_matrix", camera.get_view_matrix() * base_matrix);
             shader->set_uniform("projection_matrix", camera.get_projection_matrix());
 #if !SLIC3R_OPENGL_ES
@@ -267,7 +267,7 @@ void GLGizmoMove3D::on_render()
             shader->stop_using();
         }
 
-        shader = wxGetApp().get_shader("gouraud_light");
+        shader = m_parent.get_shader("gouraud_light");
         if (shader != nullptr)
         {
             shader->start_using();
@@ -276,7 +276,7 @@ void GLGizmoMove3D::on_render()
             // draw grabber
             const Vec3d box_size = m_bounding_box.size();
             const float mean_size = (float) ((box_size.x() + box_size.y() + box_size.z()) / 3.0);
-            m_grabbers[m_hover_id].render(true, mean_size);
+            m_grabbers[m_hover_id].render(true, mean_size, m_parent.get_camera(), shader, m_parent);
             glsafe(::glEnable(GL_CULL_FACE));
             shader->stop_using();
         }
@@ -325,11 +325,11 @@ double GLGizmoMove3D::calc_projection(const UpdateData &data) const
 Transform3d GLGizmoMove3D::local_transform(const Selection &selection) const
 {
     Transform3d ret = Geometry::translation_transform(m_center);
-    if (!wxGetApp().obj_manipul()->is_world_coordinates())
+    if (!m_parent.is_world_coordinates())
     {
         const GLVolume &v = *selection.get_first_volume();
         Transform3d orient_matrix = v.get_instance_transformation().get_rotation_matrix();
-        if (selection.is_single_volume_or_modifier() && wxGetApp().obj_manipul()->is_local_coordinates())
+        if (selection.is_single_volume_or_modifier() && m_parent.is_local_coordinates())
             orient_matrix = orient_matrix * v.get_volume_transformation().get_rotation_matrix();
         ret = ret * orient_matrix;
     }

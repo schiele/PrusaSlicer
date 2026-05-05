@@ -12,21 +12,24 @@
 #include "slic3r/GUI/GLModel.hpp"
 #include "slic3r/GUI/MeshUtils.hpp"
 #include "slic3r/GUI/SceneRaycaster.hpp"
+#include "slic3r/GUI/InputEvents.hpp"
 
 #include <cereal/archives/binary.hpp>
 
 class wxWindow;
-class wxMouseEvent;
 
 namespace Slic3r
 {
 
 class BoundingBoxf3;
+class GLShaderProgram;
 class Linef3;
 class ModelObject;
 
 namespace GUI
 {
+
+struct Camera;
 
 static const ColorRGBA DEFAULT_BASE_COLOR = {0.625f, 0.625f, 0.625f, 1.0f};
 static const ColorRGBA DEFAULT_DRAG_COLOR = ColorRGBA::WHITE();
@@ -82,16 +85,20 @@ protected:
         Grabber() = default;
         ~Grabber();
 
-        void render(bool hover, float size) { render(size, hover ? complementary(color) : color); }
+        void render(bool hover, float size, const Camera &camera, GLShaderProgram *shader, GLCanvas3D &canvas)
+        {
+            render(size, hover ? complementary(color) : color, camera, shader, canvas);
+        }
 
         float get_half_size(float size) const;
         float get_dragging_half_size(float size) const;
 
         void register_raycasters_for_picking(int id);
-        void unregister_raycasters_for_picking();
+        void unregister_raycasters_for_picking(GLCanvas3D &canvas);
 
     private:
-        void render(float size, const ColorRGBA &render_color);
+        void render(float size, const ColorRGBA &render_color, const Camera &camera, GLShaderProgram *shader,
+                    GLCanvas3D &canvas);
 
         static PickingModel s_cube;
         static PickingModel s_cone;
@@ -201,9 +208,9 @@ public:
     /// Implement when want to process mouse events in gizmo
     /// Click, Right click, move, drag, ...
     /// </summary>
-    /// <param name="mouse_event">Keep information about mouse click</param>
+    /// <param name="mouse">Keep information about mouse click</param>
     /// <returns>Return True when use the information and don't want to propagate it otherwise False.</returns>
-    virtual bool on_mouse(const wxMouseEvent &mouse_event) { return false; }
+    virtual bool on_mouse(const MouseInput &mouse) { return false; }
 
     void register_raycasters_for_picking()
     {
@@ -264,7 +271,7 @@ protected:
     /// </summary>
     /// <param name="mouse_event">Keep information about mouse click</param>
     /// <returns>same as on_mouse</returns>
-    bool use_grabbers(const wxMouseEvent &mouse_event);
+    bool use_grabbers(const MouseInput &mouse);
 
     void do_stop_dragging(bool perform_mouse_cleanup);
 

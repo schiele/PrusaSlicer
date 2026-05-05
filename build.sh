@@ -157,6 +157,11 @@ else
     CMAKE_EXTRA_ARGS="-DSLIC3R_GTK=3"
 fi
 
+# Find Python 3.14 (required for ABI compatibility with bundled runtime)
+if command -v python3.14 >/dev/null 2>&1; then
+    CMAKE_EXTRA_ARGS="$CMAKE_EXTRA_ARGS -DPython3_EXECUTABLE=$(command -v python3.14)"
+fi
+
 echo "**********************************************************************"
 echo "** preFlight Build ($PLATFORM_LABEL)"
 echo "** Config:    $CONFIG"

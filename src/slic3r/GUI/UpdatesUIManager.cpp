@@ -33,13 +33,6 @@ RepositoryUpdateUIManager::RepositoryUpdateUIManager(wxWindow *parent, Slic3r::P
 
     m_main_sizer->Add(online_label, 0, wxTOP | wxLEFT | wxBOTTOM, 2 * em);
 
-    auto online_info = new wxStaticText(
-        m_parent, wxID_ANY,
-        _L("*** Online profile sources are not yet available. This feature is coming in a future update. ***"));
-    online_info->SetFont(wxGetApp().bold_font());
-
-    m_main_sizer->Add(online_info, 0, wxLEFT, 3 * em);
-
     m_online_sizer = new wxFlexGridSizer(4, 0.75 * em, 1.5 * em);
     m_online_sizer->AddGrowableCol(2);
     m_online_sizer->AddGrowableCol(3);
@@ -75,7 +68,7 @@ RepositoryUpdateUIManager::RepositoryUpdateUIManager(wxWindow *parent, Slic3r::P
             _L("As an alternative to online sources, profiles can also be updated by manually loading files containing the updates. "
                "This is mostly useful on computers that are not connected to the internet. "
                "Files containing the configuration updates can be downloaded from <a href=%1%>our website</a>."),
-            "https://oozebot.com/preflight-profiles");
+            "https://preflight3d.com/profiles");
 
         const wxFont &font = m_parent->GetFont();
         const int fs = font.GetPointSize();
@@ -168,10 +161,16 @@ void RepositoryUpdateUIManager::fill_grids()
         for (const auto &entry : m_online_entries)
         {
             auto chb = CheckBox::GetNewWin(m_parent, "");
-            // Online sources not yet implemented - disable and uncheck
-            CheckBox::SetValue(chb, false);
-            chb->Enable(false);
-            m_selected_uuids.erase(entry.id);
+            CheckBox::SetValue(chb, entry.use);
+            chb->Bind(wxEVT_CHECKBOX,
+                      [this, chb, &entry](wxCommandEvent e)
+                      {
+                          if (CheckBox::GetValue(chb))
+                              m_selected_uuids.emplace(entry.id);
+                          else
+                              m_selected_uuids.erase(entry.id);
+                          check_selection();
+                      });
             add(chb);
 
             if (entry.not_in_manifest)
@@ -208,7 +207,10 @@ void RepositoryUpdateUIManager::fill_grids()
 
             add(new wxStaticText(m_parent, wxID_ANY, from_u8(entry.name) + " "));
 
-            add(new wxStaticText(m_parent, wxID_ANY, from_u8(entry.description) + " "));
+            wxString desc = from_u8(entry.description) + " ";
+            if (entry.name == "oozeBot")
+                desc += _L("(coming soon)");
+            add(new wxStaticText(m_parent, wxID_ANY, desc));
         }
     }
 

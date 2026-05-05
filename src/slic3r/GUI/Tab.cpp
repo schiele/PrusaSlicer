@@ -46,6 +46,7 @@
 #include <wx/sizer.h>
 
 #include <wx/bmpcbox.h>
+#include <wx/listctrl.h>
 #include <wx/bmpbuttn.h>
 #include <wx/treectrl.h>
 
@@ -227,6 +228,7 @@ void Tab::create_preset_tab()
     m_scaled_buttons.reserve(2);
 
     add_scaled_button(panel, &m_btn_compare_preset, "compare");
+    m_btn_compare_preset->Hide();
     add_scaled_button(panel, &m_btn_save_preset, "save");
     add_scaled_button(panel, &m_btn_rename_preset, "edit");
     add_scaled_button(panel, &m_btn_delete_preset, "cross");
@@ -308,7 +310,6 @@ void Tab::create_preset_tab()
     m_h_buttons_sizer->Add(m_undo_to_sys_btn, 0, wxALIGN_CENTER_VERTICAL);
     m_h_buttons_sizer->Add(m_undo_btn, 0, wxALIGN_CENTER_VERTICAL);
     m_h_buttons_sizer->AddSpacer(int(8 * scale_factor));
-    m_h_buttons_sizer->Add(m_btn_compare_preset, 0, wxALIGN_CENTER_VERTICAL);
 
     m_top_hsizer->Add(m_h_buttons_sizer, 1, wxEXPAND);
     m_top_hsizer->AddSpacer(int(16 * scale_factor));
@@ -1118,6 +1119,7 @@ void Tab::update_mode()
     m_mode = wxGetApp().get_mode();
 
     update_visibility();
+    update_preprocessing_panel_visibility();
     update_sla_vendor_specific_visibility();
 
     update_changed_tree_ui();
@@ -1367,6 +1369,42 @@ void Tab::on_value_change(const std::string &opt_key, const boost::any &value)
             bool val = m_config->opt_float("brim_width") > 0.0 ? true : false;
             og_freq_chng_params->set_value("brim", val);
         }
+    }
+
+    // Preprocessing consent check: revert toggle if user declines
+    if ((opt_key == "preprocessing_enabled_print" || opt_key == "preprocessing_enabled_filament" ||
+         opt_key == "preprocessing_enabled_printer") &&
+        m_config->has(opt_key) && m_config->opt_bool(opt_key))
+    {
+        auto *app_config = wxGetApp().app_config;
+        if (!app_config->get_bool("preprocessing_consent_accepted"))
+        {
+            MessageDialog dlg(
+                nullptr,
+                _L("Enabling preprocessing allows external Python scripts to run during slicing.\n"
+                   "Scripts have full access to your filesystem, network, and can execute arbitrary code.\n\n"
+                   "Only enable this if you trust the scripts you are adding.\n\n"
+                   "Do you want to enable preprocessing?"),
+                _L("Preprocessing Security Warning"), wxICON_WARNING | wxYES | wxNO);
+            if (dlg.ShowModal() == wxID_YES)
+            {
+                app_config->set("preprocessing_consent_accepted", "1");
+            }
+            else
+            {
+                m_config->set_key_value(opt_key, new ConfigOptionBool(false));
+                reload_config();
+                return;
+            }
+        }
+    }
+
+    // Update preprocessing scripts panel enabled state
+    if (m_preprocessing_panel && !m_preprocessing_enable_key.empty() && opt_key == m_preprocessing_enable_key)
+    {
+        update_preprocessing_panel_visibility();
+        if (m_preprocessing_panel)
+            m_preprocessing_panel->GetParent()->Layout();
     }
 
     if (opt_key == "wipe_tower" || opt_key == "single_extruder_multi_material" || opt_key == "extruders_count")
@@ -1845,6 +1883,7 @@ void TabPrint::build()
     optgroup = page->new_optgroup_for_sidebar(L("Interlocking perimeters"));
     optgroup->append_single_option_line("interlock_perimeters_enabled", category_path + "interlock-perimeters");
     optgroup->append_single_option_line("interlock_perimeter_count", category_path + "interlock-count");
+    optgroup->append_single_option_line("interlock_regular_perimeters", category_path + "interlock-regular-perimeters");
     line = {L("Solid layers"), L("Number of solid layers between interlocking perimeters and visible surfaces. "
                                  "Ensures the interlocking pattern is fully hidden inside the object.")};
     line.label_path = category_path + "interlock-solid-layers";
@@ -2266,6 +2305,17 @@ void TabPrint::build()
         validate_custom_parameters(this, opt_key, value);
     };
 
+    page = add_options_page(L("Preprocessing"), "cog");
+    optgroup = page->new_optgroup(L("Script Execution"));
+    optgroup->append_single_option_line("preprocessing_enabled_print");
+    line = {"", ""};
+    line.full_width = 1;
+    line.widget = [this](wxWindow *parent)
+    {
+        return create_preprocessing_scripts_widget(parent, "preprocessing_scripts_print");
+    };
+    optgroup->append_line(line);
+
     page = add_options_page(L("Output options"), "output+page_white");
     optgroup = page->new_optgroup_for_sidebar(L("Sequential printing"));
     optgroup->append_single_option_line("complete_objects", "sequential-printing_124589");
@@ -2303,7 +2353,7 @@ void TabPrint::build()
     };
     optgroup->append_line(line);
 
-    optgroup = page->new_optgroup(L("Post-processing scripts"), 0);
+    optgroup = page->new_optgroup(L("Post-processing scripts (Legacy)"), 0);
     line = {"", ""};
     line.full_width = 1;
     line.widget = [this](wxWindow *parent)
@@ -2356,7 +2406,8 @@ void TabPrint::update_description_lines()
     {
         if (m_post_process_explanation)
         {
-            m_post_process_explanation->SetText(_L("Post processing scripts shall modify G-code file in place."));
+            m_post_process_explanation->SetText(
+                _L("Post-processing is deprecated. Please consider migrating to Pre-processing instead."));
             m_post_process_explanation->SetPathEnd("post-processing-scripts_283913");
         }
         // update G-code substitutions from the current configuration
@@ -3144,6 +3195,17 @@ void TabFilament::build()
         validate_custom_parameters(this, opt_key, value);
     };
 
+    page = add_options_page(L("Preprocessing"), "cog");
+    optgroup = page->new_optgroup(L("Script Execution"));
+    optgroup->append_single_option_line("preprocessing_enabled_filament");
+    line = {"", ""};
+    line.full_width = 1;
+    line.widget = [this](wxWindow *parent)
+    {
+        return create_preprocessing_scripts_widget(parent, "preprocessing_scripts_filament");
+    };
+    optgroup->append_line(line);
+
     page = add_options_page(L("Notes"), "note");
     optgroup = page->new_optgroup(L("Notes"), 0);
     optgroup->label_width = 0;
@@ -3885,6 +3947,19 @@ void TabPrinter::build_fff()
     {
         validate_custom_parameters(this, opt_key, value);
     };
+
+    page = add_options_page(L("Preprocessing"), "cog");
+    optgroup = page->new_optgroup(L("Script Execution"));
+    optgroup->append_single_option_line("preprocessing_enabled_printer");
+    {
+        Line pp_line = {"", ""};
+        pp_line.full_width = 1;
+        pp_line.widget = [this](wxWindow *parent)
+        {
+            return create_preprocessing_scripts_widget(parent, "preprocessing_scripts_printer");
+        };
+        optgroup->append_line(pp_line);
+    }
 
     page = add_options_page(L("Notes"), "note");
     optgroup = page->new_optgroup(L("Notes"), 0);
@@ -4958,6 +5033,49 @@ void Tab::load_current_preset()
 
     update_btns_enabling();
 
+    // Enforce preprocessing consent and update UI widgets for the loaded preset.
+    // Deferred to after update()/reload_config() via CallAfter to avoid interfering
+    // with the preset loading pipeline.
+    if (!m_preprocessing_enable_key.empty())
+    {
+        // Consent enforcement: force enable off if consent is not granted
+        auto *app_cfg = wxGetApp().app_config;
+        if (app_cfg && !app_cfg->get_bool("preprocessing_consent_accepted") &&
+            m_config->has(m_preprocessing_enable_key) && m_config->opt_bool(m_preprocessing_enable_key))
+        {
+            m_config->set_key_value(m_preprocessing_enable_key, new ConfigOptionBool(false));
+        }
+
+        // Panel visibility is applied after update_visibility() below,
+        // which calls ShowItems(true) and overrides any Show(false) set here.
+
+        // Defer listbox repopulation to avoid interfering with the preset loading pipeline
+        wxTheApp->CallAfter(
+            [this]()
+            {
+                if (m_destroying || m_preprocessing_enable_key.empty())
+                    return;
+
+                if (m_preprocessing_listbox)
+                {
+                    m_preprocessing_listbox->Freeze();
+                    m_preprocessing_listbox->DeleteAllItems();
+                    if (auto *opt = m_config->option<ConfigOptionStrings>(m_preprocessing_scripts_key))
+                    {
+                        for (const auto &path : opt->values)
+                            if (!path.empty())
+                                m_preprocessing_listbox->InsertItem(m_preprocessing_listbox->GetItemCount(),
+                                                                    from_u8(path));
+                    }
+                    m_preprocessing_listbox->Thaw();
+                    if (m_preprocessing_mark_missing)
+                        m_preprocessing_mark_missing();
+                    if (m_preprocessing_update_buttons)
+                        m_preprocessing_update_buttons();
+                }
+            });
+    }
+
     update();
     if (m_type == Slic3r::Preset::TYPE_PRINTER)
     {
@@ -5056,6 +5174,7 @@ void Tab::load_current_preset()
         init_options_list();
 
         update_visibility();
+        update_preprocessing_panel_visibility();
 
         update_sla_vendor_specific_visibility();
 
@@ -5475,6 +5594,13 @@ void Tab::clear_pages()
     // invalidated highlighter, if any exists
     m_highlighter.invalidate();
     m_page_sizer->Clear(true);
+    // Preprocessing widgets are owned by the page hierarchy and were just destroyed
+    m_preprocessing_panel = nullptr;
+    m_preprocessing_listbox = nullptr;
+    m_preprocessing_update_buttons = nullptr;
+    m_preprocessing_mark_missing = nullptr;
+    m_preprocessing_enable_key.clear();
+    m_preprocessing_scripts_key.clear();
     // clear pages from the controlls
     for (auto p : m_pages)
         p->clear();
@@ -5502,6 +5628,7 @@ void Tab::activate_selected_page(std::function<void()> throw_if_canceled)
         return;
 
     m_active_page->activate(m_mode, throw_if_canceled);
+    update_preprocessing_panel_visibility();
 
     // Recursively bind to all container panels (but not input controls)
     std::function<void(wxWindow *)> bind_handler = [this, &bind_handler](wxWindow *win)
@@ -5722,36 +5849,17 @@ void Tab::save_preset(std::string name /*= ""*/, bool detach)
     //!	m_treectrl->OnSetFocus();
 
     Preset &edited_preset = m_presets->get_edited_preset();
-    bool from_template = false;
-    std::string edited_printer;
-    if (m_type == Preset::TYPE_FILAMENT && edited_preset.vendor && edited_preset.vendor->templates_profile)
-    {
-        edited_printer = wxGetApp().preset_bundle->printers.get_edited_preset().config.opt_string("printer_model");
-        from_template = !edited_printer.empty();
-    }
 
     if (name.empty())
     {
-        SavePresetDialog dlg(m_parent, {m_type}, detach ? _u8L("Detached") : "", from_template);
+        SavePresetDialog dlg(m_parent, std::vector<Preset::Type>{m_type}, detach ? _u8L("Detached") : "");
         if (dlg.ShowModal() != wxID_OK)
             return;
         name = dlg.get_name();
-        if (from_template)
-            from_template = dlg.get_template_filament_checkbox();
     }
 
     if (detach && m_type == Preset::TYPE_PRINTER)
         m_config->opt_string("printer_model", true) = "";
-
-    // Update compatible printers
-    if (from_template && !edited_printer.empty())
-    {
-        std::string cond = edited_preset.compatible_printers_condition();
-        if (!cond.empty())
-            cond += " and ";
-        cond += "printer_model == \"" + edited_printer + "\"";
-        edited_preset.config.opt_string("compatible_printers_condition") = cond;
-    }
 
     // Save the preset into Slic3r::data_dir / presets / section_name / preset_name.ini
     save_current_preset(name, detach);
@@ -6078,6 +6186,359 @@ void Tab::create_line_with_widget(ConfigOptionsGroup *optgroup, const std::strin
     line.set_label_colour(&m_default_text_clr);
 
     optgroup->append_line(line);
+}
+
+void Tab::update_preprocessing_panel_visibility()
+{
+    if (m_preprocessing_panel && !m_preprocessing_enable_key.empty())
+    {
+        bool en = m_config->has(m_preprocessing_enable_key) && m_config->opt_bool(m_preprocessing_enable_key);
+        m_preprocessing_panel->Show(en);
+    }
+}
+
+wxSizer *Tab::create_preprocessing_scripts_widget(wxWindow *parent, const std::string &opt_key)
+{
+    // Derive the enable key from the scripts key (e.g., "preprocessing_scripts_print" -> "preprocessing_enabled_print")
+    std::string enable_key = opt_key;
+    auto pos = enable_key.find("scripts");
+    assert(pos != std::string::npos);
+    if (pos != std::string::npos)
+        enable_key.replace(pos, 7, "enabled");
+
+    auto *sizer = new wxBoxSizer(wxVERTICAL);
+
+    // Wrap controls in a panel so we can enable/disable all at once
+    auto *panel = new wxPanel(parent, wxID_ANY);
+    panel->SetBackgroundColour(wxGetApp().get_window_default_clr());
+
+    // Border wrapper: 1px-padded panel whose background acts as the border color
+    auto *border_panel = new wxPanel(panel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE);
+#ifdef _WIN32
+    border_panel->SetBackgroundColour(UIColors::StaticBoxBorder());
+#else
+    wxColour border_clr = wxGetApp().get_label_clr_default();
+    border_clr = wxColour(border_clr.Red(), border_clr.Green(), border_clr.Blue(), 80);
+    border_panel->SetBackgroundColour(border_clr);
+#endif
+    auto *border_sizer = new wxBoxSizer(wxVERTICAL);
+
+    auto *listbox = new wxListCtrl(border_panel, wxID_ANY, wxDefaultPosition, wxSize(-1, 150),
+                                   wxLC_REPORT | wxLC_SINGLE_SEL | wxLC_NO_HEADER | wxBORDER_NONE);
+    listbox->SetBackgroundColour(wxGetApp().get_window_default_clr());
+    listbox->SetForegroundColour(wxGetApp().get_label_clr_default());
+#ifdef _WIN32
+    wxGetApp().UpdateDarkUI(panel);
+#endif
+    border_sizer->Add(listbox, 1, wxEXPAND | wxALL, 1);
+    border_panel->SetSizer(border_sizer);
+    wxWindow *listbox_container = border_panel;
+
+    listbox->InsertColumn(0, "", wxLIST_FORMAT_LEFT);
+
+    // Auto-resize column to fill width
+    listbox->Bind(wxEVT_SIZE,
+                  [listbox](wxSizeEvent &evt)
+                  {
+                      listbox->SetColumnWidth(0, listbox->GetClientSize().GetWidth());
+                      evt.Skip();
+                  });
+
+    wxColour missing_colour(255, 80, 80);
+
+    // Highlight missing scripts in red
+    auto file_exists_safe = [](const std::string &path) -> bool
+    {
+        if (path.empty())
+            return false;
+        try
+        {
+            return boost::filesystem::exists(path);
+        }
+        catch (...)
+        {
+            return false;
+        }
+    };
+
+    auto mark_missing_scripts = [listbox, missing_colour, file_exists_safe]()
+    {
+        for (int i = 0; i < listbox->GetItemCount(); ++i)
+        {
+            std::string path = into_u8(listbox->GetItemText(i));
+            listbox->SetItemTextColour(i, file_exists_safe(path) ? listbox->GetTextColour() : missing_colour);
+        }
+    };
+
+    // Show tooltip on hover for missing scripts
+    listbox->Bind(wxEVT_MOTION,
+                  [listbox, file_exists_safe](wxMouseEvent &evt)
+                  {
+                      int flags;
+                      long item = listbox->HitTest(evt.GetPosition(), flags);
+                      if (item != wxNOT_FOUND && (flags & wxLIST_HITTEST_ONITEM))
+                      {
+                          std::string path = into_u8(listbox->GetItemText(item));
+                          if (!file_exists_safe(path))
+                          {
+                              listbox->SetToolTip(_L("Script not found on disk"));
+                              evt.Skip();
+                              return;
+                          }
+                      }
+                      listbox->UnsetToolTip();
+                      evt.Skip();
+                  });
+
+    // Populate from current config
+    if (auto *opt = m_config->option<ConfigOptionStrings>(opt_key))
+    {
+        for (const auto &path : opt->values)
+        {
+            if (!path.empty())
+                listbox->InsertItem(listbox->GetItemCount(), from_u8(path));
+        }
+    }
+    mark_missing_scripts();
+
+    auto *btn_sizer = new wxBoxSizer(wxHORIZONTAL);
+
+    auto *btn_add = new ScalableButton(panel, wxID_ANY, "add_copies", _L("Add Script..."), wxDefaultSize,
+                                       wxDefaultPosition, wxBU_LEFT | wxBU_EXACTFIT);
+    auto *btn_remove = new ScalableButton(panel, wxID_ANY, "remove", _L("Remove"), wxDefaultSize, wxDefaultPosition,
+                                          wxBU_LEFT | wxBU_EXACTFIT);
+    auto *btn_up = new ScalableButton(panel, wxID_ANY, "toolbar_arrow", _L("Move Up"), wxDefaultSize, wxDefaultPosition,
+                                      wxBU_LEFT | wxBU_EXACTFIT);
+    auto *btn_down = new ScalableButton(panel, wxID_ANY, "toolbar_arrow_down", _L("Move Down"), wxDefaultSize,
+                                        wxDefaultPosition, wxBU_LEFT | wxBU_EXACTFIT);
+
+    // Remove and Move buttons start disabled until a list item is selected
+    btn_remove->Enable(false);
+    btn_up->Enable(false);
+    btn_down->Enable(false);
+
+    btn_sizer->Add(btn_add, 0, wxRIGHT, 5);
+    btn_sizer->Add(btn_remove, 0, wxRIGHT, 5);
+    btn_sizer->Add(btn_up, 0, wxRIGHT, 5);
+    btn_sizer->Add(btn_down, 0);
+
+    // Helper to get the selected item index (-1 if none)
+    auto get_selection = [listbox]() -> int
+    {
+        return listbox->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+    };
+
+    auto set_selection = [listbox](int idx)
+    {
+        if (idx >= 0 && idx < listbox->GetItemCount())
+            listbox->SetItemState(idx, wxLIST_STATE_SELECTED | wxLIST_STATE_FOCUSED,
+                                  wxLIST_STATE_SELECTED | wxLIST_STATE_FOCUSED);
+    };
+
+    // Enable/disable buttons based on selection
+    auto update_buttons = [listbox, btn_remove, btn_up, btn_down, get_selection]()
+    {
+        int sel = get_selection();
+        bool has_sel = sel >= 0;
+        btn_remove->Enable(has_sel);
+        btn_up->Enable(has_sel && sel > 0);
+        btn_down->Enable(has_sel && sel < listbox->GetItemCount() - 1);
+    };
+
+    listbox->Bind(wxEVT_LIST_ITEM_SELECTED, [update_buttons](wxListEvent &) { update_buttons(); });
+    listbox->Bind(wxEVT_LIST_ITEM_DESELECTED, [update_buttons](wxListEvent &) { update_buttons(); });
+
+    auto *panel_sizer = new wxBoxSizer(wxVERTICAL);
+    panel_sizer->Add(listbox_container, 1, wxEXPAND | wxBOTTOM, 5);
+    panel_sizer->Add(btn_sizer, 0, wxEXPAND);
+    panel->SetSizer(panel_sizer);
+
+    // Start hidden; load_current_preset will show it if preprocessing is enabled
+    panel->Show(false);
+
+    // Store pointers so we can update state on config/preset changes
+    m_preprocessing_panel = panel;
+    m_preprocessing_listbox = listbox;
+    m_preprocessing_update_buttons = update_buttons;
+    m_preprocessing_mark_missing = mark_missing_scripts;
+    m_preprocessing_enable_key = enable_key;
+    m_preprocessing_scripts_key = opt_key;
+
+    sizer->Add(panel, 1, wxEXPAND);
+
+    // Sync listbox contents back to config
+    auto sync_to_config = [this, opt_key, listbox]()
+    {
+        auto *opt = m_config->option<ConfigOptionStrings>(opt_key);
+        if (!opt)
+            return;
+        std::vector<std::string> paths;
+        for (int i = 0; i < listbox->GetItemCount(); ++i)
+            paths.push_back(into_u8(listbox->GetItemText(i)));
+        opt->values = paths;
+        update_dirty();
+        on_value_change(opt_key, {});
+    };
+
+    // Consent check for first-time enable
+    auto check_consent = [this]() -> bool
+    {
+        auto *app_config = wxGetApp().app_config;
+        if (app_config->get_bool("preprocessing_consent_accepted"))
+            return true;
+
+        MessageDialog dlg(nullptr,
+                          _L("Enabling preprocessing allows external Python scripts to run during slicing.\n"
+                             "Scripts have full access to your filesystem, network, and can execute arbitrary code.\n\n"
+                             "Only enable this if you trust the scripts you are adding.\n\n"
+                             "Do you want to enable preprocessing?"),
+                          _L("Preprocessing Security Warning"), wxICON_WARNING | wxYES | wxNO);
+        if (dlg.ShowModal() == wxID_YES)
+        {
+            app_config->set("preprocessing_consent_accepted", "1");
+            return true;
+        }
+        return false;
+    };
+
+    btn_add->Bind(wxEVT_BUTTON,
+                  [this, opt_key, listbox, sync_to_config, check_consent, update_buttons,
+                   mark_missing_scripts](wxCommandEvent &)
+                  {
+                      if (!check_consent())
+                          return;
+
+                      wxFileDialog dlg(nullptr, _L("Select preprocessing script"), "", "", "Python scripts (*.py)|*.py",
+                                       wxFD_OPEN | wxFD_FILE_MUST_EXIST | wxFD_MULTIPLE);
+                      if (dlg.ShowModal() != wxID_OK)
+                          return;
+
+                      wxArrayString paths;
+                      dlg.GetPaths(paths);
+
+                      std::vector<std::string> duplicates;
+                      std::vector<std::string> invalid_names;
+                      int added = 0;
+
+                      for (const auto &p : paths)
+                      {
+                          std::string path_str = into_u8(p);
+
+                          // Check for duplicate (by full path)
+                          bool is_dup = false;
+                          for (int i = 0; i < listbox->GetItemCount(); ++i)
+                          {
+                              if (into_u8(listbox->GetItemText(i)) == path_str)
+                              {
+                                  is_dup = true;
+                                  break;
+                              }
+                          }
+                          if (is_dup)
+                          {
+                              duplicates.push_back(boost::filesystem::path(path_str).filename().string());
+                              continue;
+                          }
+
+                          // Validate filename is a valid Python identifier
+                          std::string stem = boost::filesystem::path(path_str).stem().string();
+                          bool valid_id = !stem.empty() && (std::isalpha(stem[0]) || stem[0] == '_');
+                          for (size_t i = 1; valid_id && i < stem.size(); ++i)
+                              valid_id = std::isalnum(stem[i]) || stem[i] == '_';
+                          if (!valid_id)
+                          {
+                              invalid_names.push_back(stem);
+                              continue;
+                          }
+
+                          listbox->InsertItem(listbox->GetItemCount(), p);
+                          added++;
+                      }
+
+                      if (added > 0)
+                      {
+                          sync_to_config();
+                          mark_missing_scripts();
+                          update_buttons();
+                      }
+
+                      // Report issues
+                      std::string msg;
+                      if (!duplicates.empty())
+                      {
+                          msg += into_u8(_L("Already in this list:")) + "\n";
+                          for (const auto &d : duplicates)
+                              msg += "  " + d + "\n";
+                      }
+                      if (!invalid_names.empty())
+                      {
+                          if (!msg.empty())
+                              msg += "\n";
+                          msg += into_u8(_L("Invalid Python module name (no hyphens, spaces, or leading digits):")) +
+                                 "\n";
+                          for (const auto &n : invalid_names)
+                              msg += "  " + n + ".py\n";
+                      }
+                      if (!msg.empty())
+                      {
+                          MessageDialog warn(nullptr, from_u8(msg), _L("Scripts Not Added"), wxICON_WARNING | wxOK);
+                          warn.ShowModal();
+                      }
+                  });
+
+    btn_remove->Bind(wxEVT_BUTTON,
+                     [listbox, sync_to_config, update_buttons, mark_missing_scripts, get_selection,
+                      set_selection](wxCommandEvent &)
+                     {
+                         int sel = get_selection();
+                         if (sel >= 0)
+                         {
+                             listbox->DeleteItem(sel);
+                             if (sel < listbox->GetItemCount())
+                                 set_selection(sel);
+                             else if (listbox->GetItemCount() > 0)
+                                 set_selection(listbox->GetItemCount() - 1);
+                             sync_to_config();
+                             mark_missing_scripts();
+                             update_buttons();
+                         }
+                     });
+
+    btn_up->Bind(wxEVT_BUTTON,
+                 [listbox, sync_to_config, update_buttons, get_selection, set_selection](wxCommandEvent &)
+                 {
+                     int sel = get_selection();
+                     if (sel > 0)
+                     {
+                         wxString item = listbox->GetItemText(sel);
+                         wxColour clr = listbox->GetItemTextColour(sel);
+                         listbox->DeleteItem(sel);
+                         listbox->InsertItem(sel - 1, item);
+                         listbox->SetItemTextColour(sel - 1, clr);
+                         set_selection(sel - 1);
+                         sync_to_config();
+                         update_buttons();
+                     }
+                 });
+
+    btn_down->Bind(wxEVT_BUTTON,
+                   [listbox, sync_to_config, update_buttons, get_selection, set_selection](wxCommandEvent &)
+                   {
+                       int sel = get_selection();
+                       if (sel >= 0 && sel < listbox->GetItemCount() - 1)
+                       {
+                           wxString item = listbox->GetItemText(sel);
+                           wxColour clr = listbox->GetItemTextColour(sel);
+                           listbox->DeleteItem(sel);
+                           listbox->InsertItem(sel + 1, item);
+                           listbox->SetItemTextColour(sel + 1, clr);
+                           set_selection(sel + 1);
+                           sync_to_config();
+                           update_buttons();
+                       }
+                   });
+
+    return sizer;
 }
 
 // Return a callback to create a Tab widget to mark the preferences as compatible / incompatible to the current printer.

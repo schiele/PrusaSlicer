@@ -7,6 +7,8 @@
 #include "OpenGLManager.hpp"
 
 #include "GUI.hpp"
+#include "GUI_App.hpp"
+#include "libslic3r/AppConfig.hpp"
 #if !SLIC3R_OPENGL_ES
 #include "GUI_Init.hpp"
 #endif // !SLIC3R_OPENGL_ES
@@ -492,8 +494,30 @@ bool OpenGLManager::init_gl()
 
         if (valid_version)
         {
-            // load shaders
-            auto [result, error] = m_shaders_manager.init();
+            // Determine whether to compile phong shaders based on lighting quality setting.
+            // Shader compilation is GPU-blocking; skip it for Basic lighting to reduce
+            // GPU pressure during startup (prevents TDR on some configurations).
+            bool compile_phong = true;
+            {
+                const AppConfig *config = GUI::wxGetApp().app_config;
+                if (config)
+                {
+                    const std::string quality = config->get("canvas_lighting_quality");
+                    if (quality == "basic")
+                        compile_phong = false;
+                    else if (quality != "enhanced")
+                    {
+                        const std::string &renderer = s_gl_info.get_renderer();
+                        if (renderer.find("Intel") != std::string::npos || renderer.find("Iris") != std::string::npos ||
+                            renderer.find("UHD") != std::string::npos ||
+                            renderer.find("HD Graphics") != std::string::npos ||
+                            renderer.find("llvmpipe") != std::string::npos ||
+                            renderer.find("SwiftShader") != std::string::npos)
+                            compile_phong = false;
+                    }
+                }
+            }
+            auto [result, error] = m_shaders_manager.init(compile_phong);
             if (!result)
             {
                 wxString message = format_wxstr(_L("Unable to load the following shaders:\n%s"), error);
@@ -686,43 +710,79 @@ wxGLContext *OpenGLManager::init_glcontext(wxGLCanvas &canvas, const std::pair<i
     return m_context;
 }
 
-wxGLCanvas *OpenGLManager::create_wxglcanvas(wxWindow &parent, bool enable_auto_aa_samples)
+wxGLCanvas *OpenGLManager::create_wxglcanvas(wxWindow &parent, int msaa_samples)
 {
     wxGLAttributes attribList;
-    s_multisample = EMultisampleState::Disabled;
-    // Disable multi-sampling on ChromeOS, as the OpenGL virtualization swaps Red/Blue channels with multi-sampling enabled,
-    // at least on some platforms.
-    if (platform_flavor() != PlatformFlavor::LinuxOnChromium)
+    // Only probe MSAA once - subsequent calls reuse the cached result.
+    // Each IsDisplaySupported call creates/destroys a temporary WGL context,
+    // and redundant probing during startup can saturate the GPU command queue.
+    static bool s_msaa_probed = false;
+    static wxGLAttributes s_msaa_attribs;
+    if (!s_msaa_probed)
     {
-        for (int i = enable_auto_aa_samples ? 16 : 4; i >= 4; i /= 2)
+        s_multisample = EMultisampleState::Disabled;
+        // Disable multi-sampling on ChromeOS, as the OpenGL virtualization swaps Red/Blue channels with multi-sampling
+        // enabled, at least on some platforms.
+        if (msaa_samples != 0 && platform_flavor() != PlatformFlavor::LinuxOnChromium)
         {
-            attribList.Reset();
-            attribList.PlatformDefaults()
-                .RGBA()
-                .DoubleBuffer()
-                .MinRGBA(8, 8, 8, 8)
-                .Depth(24)
-                .SampleBuffers(1)
-                .Samplers(i);
-#ifdef __APPLE__
-            // on MAC the method RGBA() has no effect
-            attribList.SetNeedsARB(true);
-#endif // __APPLE__
-            attribList.EndList();
-            if (wxGLCanvas::IsDisplaySupported(attribList))
+            if (msaa_samples < 0)
             {
-                s_multisample = EMultisampleState::Enabled;
-                break;
+                // Auto: try highest available, fall back gracefully
+                for (int i = 16; i >= 2; i /= 2)
+                {
+                    attribList.Reset();
+                    attribList.PlatformDefaults()
+                        .RGBA()
+                        .DoubleBuffer()
+                        .MinRGBA(8, 8, 8, 8)
+                        .Depth(24)
+                        .Stencil(8)
+                        .SampleBuffers(1)
+                        .Samplers(i);
+#ifdef __APPLE__
+                    attribList.SetNeedsARB(true);
+#endif // __APPLE__
+                    attribList.EndList();
+                    if (wxGLCanvas::IsDisplaySupported(attribList))
+                    {
+                        s_multisample = EMultisampleState::Enabled;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                // Explicit sample count requested
+                attribList.Reset();
+                attribList.PlatformDefaults()
+                    .RGBA()
+                    .DoubleBuffer()
+                    .MinRGBA(8, 8, 8, 8)
+                    .Depth(24)
+                    .Stencil(8)
+                    .SampleBuffers(1)
+                    .Samplers(msaa_samples);
+#ifdef __APPLE__
+                attribList.SetNeedsARB(true);
+#endif // __APPLE__
+                attribList.EndList();
+                if (wxGLCanvas::IsDisplaySupported(attribList))
+                    s_multisample = EMultisampleState::Enabled;
             }
         }
+        s_msaa_probed = true;
+        s_msaa_attribs = attribList;
+    }
+    else if (s_multisample == EMultisampleState::Enabled)
+    {
+        attribList = s_msaa_attribs;
     }
 
     if (s_multisample != EMultisampleState::Enabled)
     {
         attribList.Reset();
-        attribList.PlatformDefaults().RGBA().DoubleBuffer().MinRGBA(8, 8, 8, 8).Depth(24);
+        attribList.PlatformDefaults().RGBA().DoubleBuffer().MinRGBA(8, 8, 8, 8).Depth(24).Stencil(8);
 #ifdef __APPLE__
-        // on MAC the method RGBA() has no effect
         attribList.SetNeedsARB(true);
 #endif // __APPLE__
         attribList.EndList();

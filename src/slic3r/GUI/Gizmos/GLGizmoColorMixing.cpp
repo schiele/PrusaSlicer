@@ -16,13 +16,11 @@
 
 #include "slic3r/GUI/Camera.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
-#include "slic3r/GUI/GUI_App.hpp"
-#include "slic3r/GUI/GUI_ObjectList.hpp"
 #include "slic3r/GUI/ImGuiWrapper.hpp"
 #include "slic3r/GUI/NotificationManager.hpp"
-#include "slic3r/GUI/Plater.hpp"
 #include "slic3r/GUI/format.hpp"
-#include "slic3r/Utils/UndoRedo.hpp"
+#include "slic3r/GUI/EventTypes.hpp"
+#include "slic3r/GUI/EventBridge.hpp"
 
 #if SLIC3R_OPENGL_ES
 #include <glad/gles2.h>
@@ -119,7 +117,7 @@ PainterGizmoType GLGizmoColorMixing::get_painter_type() const
 
 void GLGizmoColorMixing::init_palette()
 {
-    if (!wxGetApp().plater())
+    if (!m_parent.preset_bundle())
         return;
 
     m_filament_optics = get_current_filament_optics();
@@ -164,11 +162,11 @@ void GLGizmoColorMixing::init_palette()
 std::vector<FilamentOptics> GLGizmoColorMixing::get_current_filament_optics() const
 {
     std::vector<FilamentOptics> optics;
-    if (!wxGetApp().plater() || !wxGetApp().preset_bundle)
+    if (!m_parent.preset_bundle())
         return optics;
 
-    const auto &extruder_colors = wxGetApp().plater()->get_extruder_colors_from_plater_config();
-    const auto &extruders_filaments = wxGetApp().preset_bundle->extruders_filaments;
+    const auto &extruder_colors = m_parent.get_extruder_colors_from_plater_config();
+    const auto &extruders_filaments = m_parent.preset_bundle()->extruders_filaments;
 
     optics.reserve(extruder_colors.size());
     for (size_t i = 0; i < extruder_colors.size(); ++i)
@@ -196,9 +194,9 @@ std::vector<FilamentOptics> GLGizmoColorMixing::get_current_filament_optics() co
 // specially would only skew predictions for one layer out of hundreds.
 float GLGizmoColorMixing::get_current_layer_height() const
 {
-    if (!wxGetApp().preset_bundle)
+    if (!m_parent.preset_bundle())
         return 0.2f;
-    const auto *opt = wxGetApp().preset_bundle->prints.get_edited_preset().config.option<ConfigOptionFloat>(
+    const auto *opt = m_parent.preset_bundle()->prints.get_edited_preset().config.option<ConfigOptionFloat>(
         "layer_height");
     return (opt && opt->value > 0.0) ? (float) opt->value : 0.2f;
 }
@@ -220,7 +218,7 @@ void GLGizmoColorMixing::data_changed(bool is_serializing)
 {
     GLGizmoPainterBase::data_changed(is_serializing);
 
-    if (m_state != On || !wxGetApp().plater())
+    if (m_state != On)
         return;
 
     if (palette_inputs_changed())
@@ -255,7 +253,7 @@ bool GLGizmoColorMixing::gizmo_event(SLAGizmoEventType action, const Vec2d &mous
         if (mv->is_model_part())
             trafo_matrices.emplace_back(mi->get_transformation().get_matrix() * mv->get_matrix());
 
-    update_raycast_cache(mouse_position, wxGetApp().plater()->get_camera(), trafo_matrices);
+    update_raycast_cache(mouse_position, m_parent.get_camera(), trafo_matrices);
     if (m_rr.mesh_id < 0 || m_rr.mesh_id >= (int) m_triangle_selectors.size())
         return false;
 
@@ -307,9 +305,6 @@ void GLGizmoColorMixing::update_from_model_object()
 {
     wxBusyCursor wait;
 
-    if (!wxGetApp().plater())
-        return;
-
     if (palette_inputs_changed())
         this->init_palette();
 
@@ -350,21 +345,22 @@ void GLGizmoColorMixing::update_model_object() const
 
     if (updated)
     {
-        const ModelObjectPtrs &mos = wxGetApp().model().objects;
-        wxGetApp().obj_list()->update_info_items(std::find(mos.begin(), mos.end(), mo) - mos.begin());
-        m_parent.post_event(SimpleEvent(EVT_GLCANVAS_SCHEDULE_BACKGROUND_PROCESS));
+        const ModelObjectPtrs &mos = m_parent.get_model()->objects;
+        m_parent.event_poster()->postEvent(CanvasEventType::UpdateInfoItems,
+                                           int(std::find(mos.begin(), mos.end(), mo) - mos.begin()));
+        m_parent.event_poster()->postEvent(CanvasEventType::ScheduleBackgroundProcess);
 
         // First-paint welcome notification, once per app installation. The persistent banner in
         // the gizmo popup carries the same message at lower volume; this one fires on the user's
         // very first paint so they read it at least once before forming expectations.
-        if (wxGetApp().app_config && wxGetApp().app_config->get("color_mixing_warning_shown") != "1")
+        if (m_parent.app_config() && m_parent.app_config()->get("color_mixing_warning_shown") != "1")
         {
-            wxGetApp().plater()->get_notification_manager()->push_notification(
+            m_parent.get_notification_manager()->push_notification(
                 _u8L("Color mixing painted. Blends look best on near-vertical walls. Top surfaces, "
                      "steep overhangs, and the base layers may show a single filament rather than the "
                      "blended target. Base layer behavior is configurable in Print Settings -> Layer "
                      "height."));
-            wxGetApp().app_config->set("color_mixing_warning_shown", "1");
+            m_parent.app_config()->set("color_mixing_warning_shown", "1");
         }
     }
 }
@@ -387,9 +383,9 @@ void GLGizmoColorMixing::render_painter_gizmo()
 void GLGizmoColorMixing::render_triangles(const Selection &selection) const
 {
     ClippingPlaneDataWrapper clp_data = this->get_clipping_plane_data();
-    auto *shader = wxGetApp().get_shader("mm_color_preview");
+    auto *shader = m_parent.get_shader("mm_color_preview");
     if (!shader)
-        shader = wxGetApp().get_shader("mm_gouraud"); // fallback
+        shader = m_parent.get_shader("mm_gouraud"); // fallback
     if (!shader)
         return;
     shader->start_using();
@@ -417,7 +413,7 @@ void GLGizmoColorMixing::render_triangles(const Selection &selection) const
         if (is_left_handed)
             glsafe(::glFrontFace(GL_CW));
 
-        const Camera &camera = wxGetApp().plater()->get_camera();
+        const Camera &camera = m_parent.get_camera();
         const Transform3d &view_matrix = camera.get_view_matrix();
         shader->set_uniform("view_model_matrix", view_matrix * trafo_matrix);
         shader->set_uniform("projection_matrix", camera.get_projection_matrix());
@@ -427,7 +423,10 @@ void GLGizmoColorMixing::render_triangles(const Selection &selection) const
         shader->set_uniform("volume_world_matrix", trafo_matrix);
         shader->set_uniform("volume_mirrored", is_left_handed);
 
-        m_triangle_selectors[mesh_id]->render(m_imgui, trafo_matrix);
+        m_triangle_selectors[mesh_id]->set_shader_getters([this](const std::string &name)
+                                                          { return m_parent.get_shader(name); },
+                                                          [this]() { return m_parent.get_current_shader(); });
+        m_triangle_selectors[mesh_id]->render(m_imgui, trafo_matrix, m_parent.get_camera());
 
         if (is_left_handed)
             glsafe(::glFrontFace(GL_CCW));
@@ -756,7 +755,7 @@ void GLGizmoColorMixing::on_render_input_window(float x, float y, float bottom_l
     ImGui::Separator();
     if (ImGuiPureWrap::button(m_desc.at("remove_all")))
     {
-        Plater::TakeSnapshot snapshot(wxGetApp().plater(), _u8L("Clear color mixing"));
+        m_parent.take_gizmo_snapshot(_u8L("Clear color mixing"));
         ModelObject *mo = m_c->selection_info()->model_object();
         int idx = -1;
         for (ModelVolume *mv : mo->volumes)

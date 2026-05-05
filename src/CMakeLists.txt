@@ -156,6 +156,19 @@ if (NOT WIN32 AND NOT APPLE)
     set_target_properties(preFlight PROPERTIES OUTPUT_NAME "preflight")
 endif ()
 
+# RPATH for bundled Python: the preFlight binary needs to find libpython3.XX.so
+# in the bundled python/lib/ directory at runtime (no system Python required).
+if (SLIC3R_PYTHON_PREPROCESSOR AND NOT WIN32)
+    if (APPLE)
+        set_target_properties(preFlight PROPERTIES
+            INSTALL_RPATH "@loader_path/../python/lib"
+            BUILD_WITH_INSTALL_RPATH TRUE)
+    else ()
+        set_target_properties(preFlight PROPERTIES
+            INSTALL_RPATH "$ORIGIN/../python/lib"
+            BUILD_WITH_INSTALL_RPATH TRUE)
+    endif ()
+endif ()
 
 target_link_libraries(preFlight PRIVATE libslic3r libcereal slic3r-arrange-wrapper libseqarrange stb_image)
 
@@ -325,6 +338,107 @@ else ()
         VERBATIM)
 endif ()
 
+# Bundled Python runtime: copy to build output so the embedded interpreter works
+# without a system Python installation.
+if (SLIC3R_PYTHON_PREPROCESSOR AND PYTHON_RUNTIME_AVAILABLE)
+    # Determine the Python version-specific filenames (e.g. python314 for 3.14)
+    string(REPLACE "." "" _py_ver_nodot "${Python3_VERSION_MAJOR}${Python3_VERSION_MINOR}")
+
+    if (WIN32)
+        # Windows layout:
+        #   <exe_dir>/python<ver>.dll   - main runtime DLL (OS loader needs it here)
+        #   <exe_dir>/python3.dll       - stable ABI forwarder
+        #   <exe_dir>/python/           - stdlib zip, .pyd extensions, python.exe
+        # The DLLs exist in BOTH locations: exe dir for the linked preFlight binary,
+        # python/ so standalone tools (pip.exe) load the DLL from python/ and find
+        # the ._pth file there for proper isolation from system Python.
+        if (CMAKE_CONFIGURATION_TYPES)
+            foreach (CONF ${CMAKE_CONFIGURATION_TYPES})
+                set(_out "${CMAKE_CURRENT_BINARY_DIR}/${CONF}")
+                add_custom_command(TARGET preFlight POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${PYTHON_RUNTIME_DIR}/python${_py_ver_nodot}.dll"
+                        "${_out}/python${_py_ver_nodot}.dll"
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${PYTHON_RUNTIME_DIR}/python3.dll"
+                        "${_out}/python3.dll"
+                    COMMAND ${CMAKE_COMMAND} -E make_directory "${_out}/python"
+                    COMMAND ${CMAKE_COMMAND} -E copy_directory
+                        "${PYTHON_RUNTIME_DIR}"
+                        "${_out}/python"
+                    COMMAND ${CMAKE_COMMAND}
+                        -DPYTHON_DIR=${_out}/python
+                        -P ${CMAKE_SOURCE_DIR}/cmake/modules/DownloadGetPip.cmake
+                    COMMENT "Bundling Python runtime to ${CONF}/python/"
+                    VERBATIM
+                )
+            endforeach ()
+        else ()
+            set(_out "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}")
+            add_custom_command(TARGET preFlight POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${PYTHON_RUNTIME_DIR}/python${_py_ver_nodot}.dll"
+                    "${_out}/python${_py_ver_nodot}.dll"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${PYTHON_RUNTIME_DIR}/python3.dll"
+                    "${_out}/python3.dll"
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${_out}/python"
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    "${PYTHON_RUNTIME_DIR}"
+                    "${_out}/python"
+                COMMAND ${CMAKE_COMMAND}
+                    -DPYTHON_DIR=${_out}/python
+                    -P ${CMAKE_SOURCE_DIR}/cmake/modules/DownloadGetPip.cmake
+                COMMENT "Bundling Python runtime to ${CMAKE_BUILD_TYPE}/python/"
+                VERBATIM
+            )
+        endif ()
+    elseif (APPLE)
+        # macOS layout:
+        #   <exe_dir>/../python/        - shared lib, stdlib, extensions
+        # After copying, fix dylib references so the binary uses the bundled
+        # libpython via @rpath instead of the build-time absolute path.
+        set(_py_dylib_name "libpython${Python3_VERSION_MAJOR}.${Python3_VERSION_MINOR}.dylib")
+        get_target_property(_py_lib_location Python3::Python IMPORTED_LOCATION)
+        if (NOT _py_lib_location)
+            # Framework builds store it in IMPORTED_LOCATION_RELEASE
+            get_target_property(_py_lib_location Python3::Python IMPORTED_LOCATION_RELEASE)
+        endif ()
+        # Get the install_name from the Python library (what the linker embeds)
+        execute_process(
+            COMMAND otool -D "${_py_lib_location}"
+            OUTPUT_VARIABLE _py_install_name
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        # otool -D output: first line is the filename, second line is the install_name
+        string(REGEX REPLACE "^[^\n]*\n" "" _py_install_name "${_py_install_name}")
+        message(STATUS "Python library install_name: ${_py_install_name}")
+        add_custom_command(TARGET preFlight POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:preFlight>/../python"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${PYTHON_RUNTIME_DIR}"
+                "$<TARGET_FILE_DIR:preFlight>/../python"
+            COMMAND install_name_tool -id "@rpath/${_py_dylib_name}"
+                "$<TARGET_FILE_DIR:preFlight>/../python/lib/${_py_dylib_name}"
+            COMMAND install_name_tool -change "${_py_install_name}"
+                "@rpath/${_py_dylib_name}"
+                "$<TARGET_FILE:preFlight>"
+            COMMENT "Bundling Python runtime"
+            VERBATIM
+        )
+    else ()
+        # Linux layout:
+        #   <exe_dir>/../python/        - shared lib, stdlib, extensions
+        add_custom_command(TARGET preFlight POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:preFlight>/../python"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${PYTHON_RUNTIME_DIR}"
+                "$<TARGET_FILE_DIR:preFlight>/../python"
+            COMMENT "Bundling Python runtime"
+            VERBATIM
+        )
+    endif ()
+endif ()
+
 # Slic3r binary install target
 if (WIN32)
     install(TARGETS preFlight RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}")
@@ -332,9 +446,20 @@ if (WIN32)
         install(TARGETS preFlight_app_gui RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}")
         install(TARGETS preFlight_app_console RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}")
     endif ()
+    if (SLIC3R_PYTHON_PREPROCESSOR AND PYTHON_RUNTIME_AVAILABLE)
+        string(REPLACE "." "" _py_ver_nodot "${Python3_VERSION_MAJOR}${Python3_VERSION_MINOR}")
+        set(_py_ver_dotted "${Python3_VERSION_MAJOR}.${Python3_VERSION_MINOR}")
+        install(FILES "${PYTHON_RUNTIME_DIR}/python${_py_ver_nodot}.dll" DESTINATION "${CMAKE_INSTALL_PREFIX}")
+        install(FILES "${PYTHON_RUNTIME_DIR}/python3.dll" DESTINATION "${CMAKE_INSTALL_PREFIX}")
+        install(DIRECTORY "${PYTHON_RUNTIME_DIR}/" DESTINATION "${CMAKE_INSTALL_PREFIX}/python")
+    endif ()
 else ()
     install(TARGETS preFlight RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 
     # Install the symlink for gcodeviewer
     install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink preflight preflight-gcodeviewer WORKING_DIRECTORY \$ENV{DESTDIR}/${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})")
+
+    if (SLIC3R_PYTHON_PREPROCESSOR AND PYTHON_RUNTIME_AVAILABLE)
+        install(DIRECTORY "${PYTHON_RUNTIME_DIR}/" DESTINATION "${CMAKE_INSTALL_PREFIX}/python")
+    endif ()
 endif ()

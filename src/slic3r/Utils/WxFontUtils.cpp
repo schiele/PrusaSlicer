@@ -135,11 +135,11 @@ std::unique_ptr<Emboss::FontFile> WxFontUtils::create_font_file(const wxFont &fo
 EmbossStyle::Type WxFontUtils::get_current_type()
 {
 #ifdef _WIN32
-    return EmbossStyle::Type::wx_win_font_descr;
+    return EmbossStyle::Type::win_font_descr;
 #elif defined(__APPLE__)
-    return EmbossStyle::Type::wx_mac_font_descr;
+    return EmbossStyle::Type::mac_font_descr;
 #elif defined(__linux__)
-    return EmbossStyle::Type::wx_lin_font_descr;
+    return EmbossStyle::Type::lin_font_descr;
 #else
     return EmbossStyle::Type::undefined;
 #endif
@@ -260,9 +260,9 @@ wxFont WxFontUtils::create_wxFont(const EmbossStyle &style)
 
     // Improve: load descriptor instead of store to font property to 3mf
     // switch (es.type) {
-    // case EmbossStyle::Type::wx_lin_font_descr:
-    // case EmbossStyle::Type::wx_win_font_descr:
-    // case EmbossStyle::Type::wx_mac_font_descr:
+    // case EmbossStyle::Type::lin_font_descr:
+    // case EmbossStyle::Type::win_font_descr:
+    // case EmbossStyle::Type::mac_font_descr:
     // case EmbossStyle::Type::file_path:
     // case EmbossStyle::Type::undefined:
     // default:

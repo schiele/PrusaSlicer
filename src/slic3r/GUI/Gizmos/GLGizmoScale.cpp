@@ -5,9 +5,9 @@
 ///|/
 #include "GLGizmoScale.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
-#include "slic3r/GUI/GUI_App.hpp"
-#include "slic3r/GUI/GUI_ObjectManipulation.hpp"
-#include "slic3r/GUI/Plater.hpp"
+#include "slic3r/GUI/I18N.hpp"
+#include "slic3r/GUI/GLShader.hpp"
+#include "slic3r/GUI/OpenGLManager.hpp"
 #include "libslic3r/Model.hpp"
 
 #if SLIC3R_OPENGL_ES
@@ -70,42 +70,36 @@ static int constraint_id(int grabber_id)
     return (0 <= grabber_id && grabber_id < (int) id_map.size()) ? id_map[grabber_id] : -1;
 }
 
-bool GLGizmoScale3D::on_mouse(const wxMouseEvent &mouse_event)
+bool GLGizmoScale3D::on_mouse(const MouseInput &mouse)
 {
-    if (mouse_event.Dragging())
+    if (mouse.dragging)
     {
         if (m_dragging)
         {
-            // Apply new temporary scale factors
             TransformationType transformation_type;
-            if (wxGetApp().obj_manipul()->is_local_coordinates())
+            if (m_parent.is_local_coordinates())
                 transformation_type.set_local();
-            else if (wxGetApp().obj_manipul()->is_instance_coordinates())
+            else if (m_parent.is_instance_coordinates())
                 transformation_type.set_instance();
 
             transformation_type.set_relative();
 
-            if (mouse_event.AltDown())
+            if (mouse.alt)
                 transformation_type.set_independent();
 
             Selection &selection = m_parent.get_selection();
             selection.scale(m_scale, transformation_type);
             if (m_starting.ctrl_down)
             {
-                // constrained scale:
-                // uses the performed scale to calculate the new position of the constrained grabber
-                // and from that calculates the offset (in world coordinates) to be applied to fullfill the constraint
                 update_render_data();
                 const Vec3d constraint_position = m_grabbers_transform * m_grabbers[constraint_id(m_hover_id)].center;
-                // re-apply the scale because the selection always applies the transformations with respect to the initial state
-                // set into on_start_dragging() with the call to selection.setup_cache()
                 m_parent.get_selection().scale_and_translate(m_scale,
                                                              m_starting.constraint_position - constraint_position,
                                                              transformation_type);
             }
         }
     }
-    return use_grabbers(mouse_event);
+    return use_grabbers(mouse);
 }
 
 void GLGizmoScale3D::enable_ununiversal_scale(bool enable)
@@ -181,7 +175,7 @@ void GLGizmoScale3D::on_render()
 #if !SLIC3R_OPENGL_ES
     if (!OpenGLManager::get_gl_info().is_core_profile())
     {
-        const float scale = wxGetApp().imgui()->get_style_scaling();
+        const float scale = m_imgui->get_style_scaling();
         glsafe(::glLineWidth((m_hover_id != -1) ? 2.0f * scale : 1.5f * scale));
     }
 #endif // !SLIC3R_OPENGL_ES
@@ -193,16 +187,16 @@ void GLGizmoScale3D::on_render()
     {
         // draw connections
 #if SLIC3R_OPENGL_ES
-        GLShaderProgram *shader = wxGetApp().get_shader("dashed_lines");
+        GLShaderProgram *shader = m_parent.get_shader("dashed_lines");
 #else
         GLShaderProgram *shader = OpenGLManager::get_gl_info().is_core_profile()
-                                      ? wxGetApp().get_shader("dashed_thick_lines")
-                                      : wxGetApp().get_shader("flat");
+                                      ? m_parent.get_shader("dashed_thick_lines")
+                                      : m_parent.get_shader("flat");
 #endif // SLIC3R_OPENGL_ES
         if (shader != nullptr)
         {
             shader->start_using();
-            const Camera &camera = wxGetApp().plater()->get_camera();
+            const Camera &camera = m_parent.get_camera();
             shader->set_uniform("view_model_matrix", camera.get_view_matrix() * m_grabbers_transform);
             shader->set_uniform("projection_matrix", camera.get_projection_matrix());
 #if !SLIC3R_OPENGL_ES
@@ -236,16 +230,16 @@ void GLGizmoScale3D::on_render()
     {
         // draw connections
 #if SLIC3R_OPENGL_ES
-        GLShaderProgram *shader = wxGetApp().get_shader("dashed_lines");
+        GLShaderProgram *shader = m_parent.get_shader("dashed_lines");
 #else
         GLShaderProgram *shader = OpenGLManager::get_gl_info().is_core_profile()
-                                      ? wxGetApp().get_shader("dashed_thick_lines")
-                                      : wxGetApp().get_shader("flat");
+                                      ? m_parent.get_shader("dashed_thick_lines")
+                                      : m_parent.get_shader("flat");
 #endif // SLIC3R_OPENGL_ES
         if (shader != nullptr)
         {
             shader->start_using();
-            const Camera &camera = wxGetApp().plater()->get_camera();
+            const Camera &camera = m_parent.get_camera();
             shader->set_uniform("view_model_matrix", camera.get_view_matrix() * m_grabbers_transform);
             shader->set_uniform("projection_matrix", camera.get_projection_matrix());
 #if !SLIC3R_OPENGL_ES
@@ -264,7 +258,7 @@ void GLGizmoScale3D::on_render()
         }
 
         // draw grabbers
-        shader = wxGetApp().get_shader("gouraud_light");
+        shader = m_parent.get_shader("gouraud_light");
         if (shader != nullptr)
         {
             shader->start_using();
@@ -277,16 +271,16 @@ void GLGizmoScale3D::on_render()
     {
         // draw connections
 #if SLIC3R_OPENGL_ES
-        GLShaderProgram *shader = wxGetApp().get_shader("dashed_lines");
+        GLShaderProgram *shader = m_parent.get_shader("dashed_lines");
 #else
         GLShaderProgram *shader = OpenGLManager::get_gl_info().is_core_profile()
-                                      ? wxGetApp().get_shader("dashed_thick_lines")
-                                      : wxGetApp().get_shader("flat");
+                                      ? m_parent.get_shader("dashed_thick_lines")
+                                      : m_parent.get_shader("flat");
 #endif // SLIC3R_OPENGL_ES
         if (shader != nullptr)
         {
             shader->start_using();
-            const Camera &camera = wxGetApp().plater()->get_camera();
+            const Camera &camera = m_parent.get_camera();
             shader->set_uniform("view_model_matrix", camera.get_view_matrix() * m_grabbers_transform);
             shader->set_uniform("projection_matrix", camera.get_projection_matrix());
 #if !SLIC3R_OPENGL_ES
@@ -305,7 +299,7 @@ void GLGizmoScale3D::on_render()
         }
 
         // draw grabbers
-        shader = wxGetApp().get_shader("gouraud_light");
+        shader = m_parent.get_shader("gouraud_light");
         if (shader != nullptr)
         {
             shader->start_using();
@@ -318,16 +312,16 @@ void GLGizmoScale3D::on_render()
     {
         // draw connections
 #if SLIC3R_OPENGL_ES
-        GLShaderProgram *shader = wxGetApp().get_shader("dashed_lines");
+        GLShaderProgram *shader = m_parent.get_shader("dashed_lines");
 #else
         GLShaderProgram *shader = OpenGLManager::get_gl_info().is_core_profile()
-                                      ? wxGetApp().get_shader("dashed_thick_lines")
-                                      : wxGetApp().get_shader("flat");
+                                      ? m_parent.get_shader("dashed_thick_lines")
+                                      : m_parent.get_shader("flat");
 #endif // SLIC3R_OPENGL_ES
         if (shader != nullptr)
         {
             shader->start_using();
-            const Camera &camera = wxGetApp().plater()->get_camera();
+            const Camera &camera = m_parent.get_camera();
             shader->set_uniform("view_model_matrix", camera.get_view_matrix() * m_grabbers_transform);
             shader->set_uniform("projection_matrix", camera.get_projection_matrix());
 #if !SLIC3R_OPENGL_ES
@@ -346,7 +340,7 @@ void GLGizmoScale3D::on_render()
         }
 
         // draw grabbers
-        shader = wxGetApp().get_shader("gouraud_light");
+        shader = m_parent.get_shader("gouraud_light");
         if (shader != nullptr)
         {
             shader->start_using();
@@ -359,16 +353,16 @@ void GLGizmoScale3D::on_render()
     {
         // draw connections
 #if SLIC3R_OPENGL_ES
-        GLShaderProgram *shader = wxGetApp().get_shader("dashed_lines");
+        GLShaderProgram *shader = m_parent.get_shader("dashed_lines");
 #else
         GLShaderProgram *shader = OpenGLManager::get_gl_info().is_core_profile()
-                                      ? wxGetApp().get_shader("dashed_thick_lines")
-                                      : wxGetApp().get_shader("flat");
+                                      ? m_parent.get_shader("dashed_thick_lines")
+                                      : m_parent.get_shader("flat");
 #endif // SLIC3R_OPENGL_ES
         if (shader != nullptr)
         {
             shader->start_using();
-            const Camera &camera = wxGetApp().plater()->get_camera();
+            const Camera &camera = m_parent.get_camera();
             shader->set_uniform("view_model_matrix", camera.get_view_matrix() * m_grabbers_transform);
             shader->set_uniform("projection_matrix", camera.get_projection_matrix());
 #if !SLIC3R_OPENGL_ES
@@ -390,7 +384,7 @@ void GLGizmoScale3D::on_render()
         }
 
         // draw grabbers
-        shader = wxGetApp().get_shader("gouraud_light");
+        shader = m_parent.get_shader("gouraud_light");
         if (shader != nullptr)
         {
             shader->start_using();

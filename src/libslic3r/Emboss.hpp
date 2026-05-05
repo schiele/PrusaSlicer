@@ -81,7 +81,7 @@ using Glyphs = std::map<int, Glyph>;
 struct FontFile
 {
     // loaded data from font file
-    // must store data size for imgui rasterization
+    // must store data size for font rasterization
     // To not store data on heap and To prevent unneccesary copy
     // data are stored inside unique_ptr
     std::unique_ptr<std::vector<unsigned char>> data;

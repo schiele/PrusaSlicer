@@ -232,7 +232,7 @@ std::pair<float, Point> Fill::_infill_direction(const Surface *surface) const
     if (out_angle == FLT_MAX)
     {
         assert(false);
-        BOOST_LOG_TRIVIAL(error) << "Using undefined infill angle";
+        BOOST_LOG_TRIVIAL(trace) << "Using undefined infill angle";
         out_angle = 0.f;
     }
 
@@ -1437,6 +1437,7 @@ Polylines chain_polylines_by_region(Polylines &&polylines, coord_t region_thresh
         // Find nearest unprocessed cluster
         double best_dist = std::numeric_limits<double>::max();
         size_t best_cluster = 0;
+        bool found = false;
         for (size_t c = 0; c < next_cluster; ++c)
         {
             if (cluster_done[c] || clusters[c].empty())
@@ -1446,8 +1447,11 @@ Polylines chain_polylines_by_region(Polylines &&polylines, coord_t region_thresh
             {
                 best_dist = dist;
                 best_cluster = c;
+                found = true;
             }
         }
+        if (!found)
+            break;
         cluster_done[best_cluster] = true;
 
         // Collect polylines in this cluster
@@ -1594,6 +1598,8 @@ static inline void mark_boundary_segments_overlapping_infill(
 {
     for (ContourIntersectionPoint &cp : graph.map_infill_end_point_to_boundary)
     {
+        if (cp.contour_idx == boundary_idx_unconnected)
+            continue;
         const Points &contour = graph.boundary[cp.contour_idx];
         const std::vector<double> &contour_params = graph.boundary_params[cp.contour_idx];
         const Polyline &infill_polyline = infill[(&cp - graph.map_infill_end_point_to_boundary.data()) / 2];
@@ -2149,6 +2155,8 @@ static inline void base_support_extend_infill_lines(Polylines &infill, BoundaryI
 
     for (ContourIntersectionPoint &cp : graph.map_infill_end_point_to_boundary)
     {
+        if (cp.contour_idx == boundary_idx_unconnected)
+            continue;
         const Points &contour = graph.boundary[cp.contour_idx];
         const std::vector<double> &contour_param = graph.boundary_params[cp.contour_idx];
         const Point &pt = contour[cp.point_idx];
@@ -2494,9 +2502,12 @@ static void export_partial_infill_to_svg(const std::string &path, const Boundary
     svg.draw(infill, "blue");
     svg.draw(emitted, "darkblue");
     for (const ContourIntersectionPoint &cp : graph.map_infill_end_point_to_boundary)
-        svg.draw(graph.point(cp), cp.consumed ? "red" : "green", scaled(0.2));
+        if (cp.contour_idx != boundary_idx_unconnected)
+            svg.draw(graph.point(cp), cp.consumed ? "red" : "green", scaled(0.2));
     for (const ContourIntersectionPoint &cp : graph.map_infill_end_point_to_boundary)
     {
+        if (cp.contour_idx == boundary_idx_unconnected)
+            continue;
         assert(cp.next_trimmed == cp.next_on_contour->prev_trimmed);
         assert(cp.prev_trimmed == cp.prev_on_contour->next_trimmed);
         if (cp.contour_not_taken_length_next > SCALED_EPSILON)
@@ -2557,7 +2568,8 @@ static inline std::vector<SupportArcCost> evaluate_support_arches(Polylines &inf
     Polyline pl;
     for (ContourIntersectionPoint &cp : graph.map_infill_end_point_to_boundary)
     {
-        // Not a losed loop, such loops should already be consumed.
+        if (cp.contour_idx == boundary_idx_unconnected)
+            continue;
         assert(cp.next_on_contour != &cp);
         const size_t infill_line_idx = &cp - graph.map_infill_end_point_to_boundary.data();
         const bool first = (infill_line_idx & 1) == 0;
@@ -2637,7 +2649,8 @@ void Fill::connect_base_support(Polylines &&infill_ordered, const std::vector<co
     {
         std::vector<size_t> num_boundary_contour_infill_points(graph.boundary.size(), 0);
         for (ContourIntersectionPoint &cp : graph.map_infill_end_point_to_boundary)
-            ++num_boundary_contour_infill_points[cp.contour_idx];
+            if (cp.contour_idx != boundary_idx_unconnected)
+                ++num_boundary_contour_infill_points[cp.contour_idx];
         for (size_t i = 0; i < num_boundary_contour_infill_points.size(); ++i)
             if (num_boundary_contour_infill_points[i] == 0 &&
                 graph.boundary_params[i].back() > trim_length + 0.5 * line_spacing)
@@ -2827,7 +2840,8 @@ void Fill::connect_base_support(Polylines &&infill_ordered, const std::vector<co
     // only consume the trimmed part if it is longer than min_arch_length.
     for (ContourIntersectionPoint &cp : graph.map_infill_end_point_to_boundary)
     {
-        assert(cp.contour_idx != boundary_idx_unconnected);
+        if (cp.contour_idx == boundary_idx_unconnected)
+            continue;
         if (cp.consumed)
             continue;
         const ContourIntersectionPoint &cp_other = graph.other(cp);
@@ -2868,7 +2882,7 @@ void Fill::connect_base_support(Polylines &&infill_ordered, const std::vector<co
         selected.reserve(graph.map_infill_end_point_to_boundary.size());
         for (ContourIntersectionPoint &cp : graph.map_infill_end_point_to_boundary)
         {
-            if (cp.consumed)
+            if (cp.contour_idx == boundary_idx_unconnected || cp.consumed)
                 continue;
             const SupportArcCost &cost_prev = arches[(&cp - graph.map_infill_end_point_to_boundary.data()) * 2];
             const SupportArcCost &cost_next = *(&cost_prev + 1);
@@ -2917,9 +2931,8 @@ void Fill::connect_base_support(Polylines &&infill_ordered, const std::vector<co
         std::vector<Arc> arches;
         arches.reserve(graph.map_infill_end_point_to_boundary.size());
         for (ContourIntersectionPoint &cp : graph.map_infill_end_point_to_boundary) {
-            if (cp.consumed)
+            if (cp.contour_idx == boundary_idx_unconnected || cp.consumed)
                 continue;
-            // Not a losed loop, such loops should already be consumed.
             assert(cp.next_on_contour != &cp);
             const bool                      first     = ((&cp - graph.map_infill_end_point_to_boundary.data()) & 1) == 0;
             const ContourIntersectionPoint *other_end = first ? &cp + 1 : &cp - 1;
@@ -2984,7 +2997,8 @@ void Fill::connect_base_support(Polylines &&infill_ordered, const std::vector<co
     // Traverse the unconnected lines in a zig-zag fashion, left to right only.
     for (ContourIntersectionPoint &cp : graph.map_infill_end_point_to_boundary)
     {
-        assert(cp.contour_idx != boundary_idx_unconnected);
+        if (cp.contour_idx == boundary_idx_unconnected)
+            continue;
         if (cp.consumed)
             continue;
         bool first = ((&cp - graph.map_infill_end_point_to_boundary.data()) & 1) == 0;
@@ -3009,6 +3023,8 @@ void Fill::connect_base_support(Polylines &&infill_ordered, const std::vector<co
     // Add the left caps.
     for (ContourIntersectionPoint &cp : graph.map_infill_end_point_to_boundary)
     {
+        if (cp.contour_idx == boundary_idx_unconnected)
+            continue;
         const bool first = ((&cp - graph.map_infill_end_point_to_boundary.data()) & 1) == 0;
         const ContourIntersectionPoint *other_end = first ? &cp + 1 : &cp - 1;
         const bool loop_next = cp.next_on_contour == other_end;
@@ -3035,6 +3051,8 @@ void Fill::connect_base_support(Polylines &&infill_ordered, const std::vector<co
         std::vector<const SupportArcCost *> candidates;
         for (ContourIntersectionPoint &cp : graph.map_infill_end_point_to_boundary)
         {
+            if (cp.contour_idx == boundary_idx_unconnected)
+                continue;
             if (cp.could_take_prev())
                 candidates.emplace_back(&arches[(&cp - graph.map_infill_end_point_to_boundary.data()) * 2]);
             if (cp.could_take_next())
@@ -3071,6 +3089,8 @@ void Fill::connect_base_support(Polylines &&infill_ordered, const std::vector<co
     const double cap_cost = 0.5 * line_spacing;
     for (ContourIntersectionPoint &cp : graph.map_infill_end_point_to_boundary)
     {
+        if (cp.contour_idx == boundary_idx_unconnected)
+            continue;
         const SupportArcCost &cost_prev = arches[(&cp - graph.map_infill_end_point_to_boundary.data()) * 2];
         const SupportArcCost &cost_next = *(&cost_prev + 1);
         if (cp.contour_not_taken_length_prev > SCALED_EPSILON &&

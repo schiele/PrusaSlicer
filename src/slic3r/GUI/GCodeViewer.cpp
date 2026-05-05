@@ -67,9 +67,9 @@ namespace GUI
 {
 
 #if VGCODE_ENABLE_COG_AND_TOOL_MARKERS
-void GCodeViewer::COG::render(bool fixed_screen_size)
+void GCodeViewer::COG::render(bool fixed_screen_size, const Camera &camera, GLShaderProgram *shader)
 #else
-void GCodeViewer::COG::render()
+void GCodeViewer::COG::render(const Camera &camera, GLShaderProgram *shader)
 #endif // VGCODE_ENABLE_COG_AND_TOOL_MARKERS
 {
     if (!m_visible)
@@ -82,7 +82,6 @@ void GCodeViewer::COG::render()
     init();
 #endif // VGCODE_ENABLE_COG_AND_TOOL_MARKERS
 
-    GLShaderProgram *shader = wxGetApp().get_shader("toolpaths_cog");
     if (shader == nullptr)
         return;
 
@@ -90,7 +89,6 @@ void GCodeViewer::COG::render()
 
     glsafe(::glDisable(GL_DEPTH_TEST));
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
     Transform3d model_matrix = Geometry::translation_transform(cog()) * Geometry::scale_transform(m_scale_factor);
 #if VGCODE_ENABLE_COG_AND_TOOL_MARKERS
     if (fixed_screen_size)
@@ -119,8 +117,8 @@ void GCodeViewer::COG::render()
     //static float last_window_width = 0.0f;
     //static size_t last_text_length = 0;
 
-    //ImGuiWrapper& imgui = *wxGetApp().imgui();
-    //const Size cnv_size = wxGetApp().plater()->get_current_canvas3D()->get_canvas_size();
+    //ImGuiWrapper& imgui = *m_imgui;
+    //const Size cnv_size = m_canvas->get_canvas_size();
     //ImGuiPureWrap::set_next_window_pos(0.5f * static_cast<float>(cnv_size.get_width()), 0.0f, ImGuiCond_Always, 0.5f, 0.0f);
     //ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     //ImGui::SetNextWindowBgAlpha(0.25f);
@@ -178,7 +176,7 @@ int GCodeViewer::SequentialView::ActualSpeedImguiWidget::plot(const char *label,
     const int values_count = static_cast<int>(data.size());
     int idx_hovered = -1;
 
-    const float scale = wxGetApp().imgui()->get_style_scaling();
+    const float scale = ImGui::GetIO().FontGlobalScale;
     const ImVec2 offset(10.0f * scale, 0.0f);
 
     const float size_y = y_range.second - y_range.first;
@@ -343,12 +341,11 @@ static void render_ht90_rods(const Vec3d &pos, GLShaderProgram *shader, const Tr
     }
 }
 
-void GCodeViewer::SequentialView::Marker::render()
+void GCodeViewer::SequentialView::Marker::render(const Camera &camera, GLShaderProgram *shader)
 {
     if (!m_visible)
         return;
 
-    GLShaderProgram *shader = wxGetApp().get_shader("tool_marker");
     if (shader == nullptr)
         return;
 
@@ -359,7 +356,6 @@ void GCodeViewer::SequentialView::Marker::render()
     glsafe(::glDisable(GL_CULL_FACE));
 
     shader->start_using();
-    const Camera &camera = wxGetApp().plater()->get_camera();
 
     Transform3d view_matrix = camera.get_view_matrix();
     Vec3d bed_inst_offset = s_multiple_beds.get_bed_translation(s_multiple_beds.get_active_bed());
@@ -583,17 +579,18 @@ static std::string to_string(libvgcode::EGCodeExtrusionRole role)
 
 void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode::Viewer *viewer)
 {
+    if (!m_imgui || !m_canvas)
+        return;
     static float last_window_width = 0.0f;
     static size_t last_text_length = 0;
     static bool properties_shown = false;
 
     if (viewer != nullptr)
     {
-        ImGuiWrapper &imgui = *wxGetApp().imgui();
+        ImGuiWrapper &imgui = *m_imgui;
         const ImGuiViewport &viewport = *ImGui::GetMainViewport();
 
-        Preview *preview = dynamic_cast<Preview *>(
-            wxGetApp().plater()->get_current_canvas3D()->get_wxglcanvas_parent());
+        Preview *preview = dynamic_cast<Preview *>(m_canvas->get_wxglcanvas_parent());
         assert(preview);
 
         /*
@@ -783,8 +780,8 @@ void GCodeViewer::SequentialView::Marker::render_position_window(const libvgcode
     }
     else
     {
-        ImGuiWrapper &imgui = *wxGetApp().imgui();
-        const Size cnv_size = wxGetApp().plater()->get_current_canvas3D()->get_canvas_size();
+        ImGuiWrapper &imgui = *m_imgui;
+        const Size cnv_size = m_canvas->get_canvas_size();
         ImGuiPureWrap::set_next_window_pos(0.5f * static_cast<float>(cnv_size.get_width()),
                                            static_cast<float>(cnv_size.get_height()), ImGuiCond_Always, 0.5f, 1.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
@@ -859,6 +856,8 @@ void GCodeViewer::SequentialView::GCodeWindow::add_gcode_line_to_lines_cache(con
 
 void GCodeViewer::SequentialView::GCodeWindow::render(float top, float bottom, size_t curr_line_id, float legend_width)
 {
+    if (!m_imgui)
+        return;
     auto update_lines_ascii = [this, curr_line_id]()
     {
         m_lines_cache.clear();
@@ -1127,7 +1126,7 @@ void GCodeViewer::SequentialView::GCodeWindow::render(float top, float bottom, s
 
     // Push legend font BEFORE measuring text metrics so text_height and
     // visible_lines_count use the correct (smaller) legend font, not the default font.
-    ImGuiWrapper &imgui = *wxGetApp().imgui();
+    ImGuiWrapper &imgui = *m_imgui;
     ImFont *gcode_legend_font = imgui.get_legend_font();
     if (gcode_legend_font)
         ImGui::PushFont(gcode_legend_font);
@@ -1451,18 +1450,18 @@ void GCodeViewer::SequentialView::GCodeWindow::render(float top, float bottom, s
 }
 
 void GCodeViewer::SequentialView::render(float legend_height, const libvgcode::Viewer *viewer, uint32_t gcode_id,
-                                         float legend_width)
+                                         const Camera &camera, GLShaderProgram *marker_shader, float legend_width)
 {
 #if VGCODE_ENABLE_COG_AND_TOOL_MARKERS
     if (viewer == nullptr)
 #endif // VGCODE_ENABLE_COG_AND_TOOL_MARKERS
-        marker.render();
+        marker.render(camera, marker_shader);
     marker.render_position_window(viewer);
 
     // Check if viewer has layers and legend is not collapsed before rendering the G-code window
     if (viewer != nullptr && viewer->get_layers_count() > 0 && legend_height >= 0.0f)
     {
-        float bottom = wxGetApp().plater()->get_current_canvas3D()->get_canvas_size().get_height();
+        float bottom = canvas->get_canvas_size().get_height();
         gcode_window.render(legend_height, bottom, gcode_id, legend_width);
     }
 }
@@ -1486,7 +1485,7 @@ void GCodeViewer::init()
     }
     catch (const std::exception &e)
     {
-        MessageDialog msg_dlg(wxGetApp().plater(), e.what(), _L("Error"), wxICON_ERROR | wxOK);
+        MessageDialog msg_dlg(m_canvas->get_wxglcanvas_parent(), e.what(), _L("Error"), wxICON_ERROR | wxOK);
         msg_dlg.ShowModal();
     }
 }
@@ -1549,7 +1548,7 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult &gcode_result, const 
     }
 
     // avoid processing if called with the same gcode_result
-    if (m_last_result_id == gcode_result.id && !s_beds_switched_since_last_gcode_load && wxGetApp().is_editor() &&
+    if (m_last_result_id == gcode_result.id && !s_beds_switched_since_last_gcode_load && is_editor() &&
         !s_reload_preview_after_switching_beds)
     {
         // collect tool colors
@@ -1586,8 +1585,6 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult &gcode_result, const 
     // Define progress callback that updates main progress bar only (no separate rendering notification)
     auto progress_callback = [&print](float progress)
     {
-        wxYield();
-
         // Update main progress bar: map data conversion 0-100% to main progress 85-100%
         if (progress >= 0.0f && progress < 1.0f)
         {
@@ -1710,8 +1707,8 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult &gcode_result, const 
     // data conversion phase above can process focus-loss events that release the GL
     // context via wglMakeCurrent(NULL, NULL). ViewerImpl::load() creates GPU buffers
     // that require a valid context.
-    if (auto *canvas = wxGetApp().plater()->get_current_canvas3D())
-        canvas->ensure_gl_current();
+    if (m_canvas)
+        m_canvas->ensure_gl_current();
 
     // send data to the viewer
     m_viewer.reset_default_extrusion_roles_colors();
@@ -1743,7 +1740,7 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult &gcode_result, const 
 #endif // !VGCODE_ENABLE_COG_AND_TOOL_MARKERS
 
     const libvgcode::AABox bbox =
-        wxGetApp().is_gcode_viewer()
+        is_gcode_viewer()
             ? m_viewer.get_bounding_box()
             : m_viewer.get_extrusion_bounding_box(
                   {libvgcode::EGCodeExtrusionRole::Perimeter, libvgcode::EGCodeExtrusionRole::ExternalPerimeter,
@@ -1758,9 +1755,11 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult &gcode_result, const 
     m_paths_bounding_box = BoundingBoxf3(libvgcode::convert(bbox[0]).cast<double>(),
                                          libvgcode::convert(bbox[1]).cast<double>());
 
-    if (wxGetApp().is_editor())
+    if (is_editor())
     {
-        m_contained_in_bed = wxGetApp().plater()->build_volume().all_paths_inside(gcode_result, m_paths_bounding_box);
+        m_contained_in_bed = m_get_build_volume
+                                 ? m_get_build_volume().all_paths_inside(gcode_result, m_paths_bounding_box)
+                                 : true;
         if (!m_contained_in_bed)
         {
             s_print_statuses[s_multiple_beds.get_active_bed()] = PrintStatus::toolpath_outside;
@@ -1787,7 +1786,7 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult &gcode_result, const 
     m_time_cost = gcode_result.time_cost;
     m_currency_symbol = gcode_result.currency_symbol;
 
-    if (!wxGetApp().is_editor())
+    if (!is_editor())
     {
         Pointfs bed_shape;
         std::string texture;
@@ -1797,7 +1796,7 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult &gcode_result, const 
         {
             // bed shape detected in the gcode
             bed_shape = gcode_result.bed_shape;
-            const auto bundle = wxGetApp().preset_bundle;
+            const auto bundle = m_preset_bundle;
             if (bundle != nullptr && !m_settings_ids.printer.empty())
             {
                 const Preset *preset = bundle->printers.find_preset(m_settings_ids.printer);
@@ -1807,13 +1806,15 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult &gcode_result, const 
                     texture = PresetUtils::system_printer_bed_texture(*preset);
                 }
             }
-            wxGetApp().plater()->set_bed_shape(bed_shape, gcode_result.max_print_height, texture, model, false);
+            if (m_set_bed_shape)
+                m_set_bed_shape(bed_shape, gcode_result.max_print_height, texture, model, false);
         }
         else
         {
             // When G-code doesn't have bed shape metadata, use the user's printer preset from the main app
             // instead of calculating a bed shape from the toolpath bounding box
-            wxGetApp().plater()->set_default_bed_shape();
+            if (m_set_default_bed_shape)
+                m_set_default_bed_shape();
         }
     }
 
@@ -1878,10 +1879,10 @@ void GCodeViewer::load_as_gcode(const GCodeProcessorResult &gcode_result, const 
 
     // Now that rendering is truly complete, transition to SP_COMPLETED state
     // This shows "Slicing finished. Export G-Code." with the export hyperlink
-    if (wxGetApp().plater() && wxGetApp().plater()->get_notification_manager())
+    if (m_notification_manager)
     {
-        auto *nm = wxGetApp().plater()->get_notification_manager();
-        nm->set_slicing_complete_print_time("", wxGetApp().plater()->is_sidebar_collapsed());
+        m_notification_manager->set_slicing_complete_print_time("", m_is_sidebar_collapsed ? m_is_sidebar_collapsed()
+                                                                                           : false);
     }
 
     // printf("[%lld] PROCESS COMPLETE\n",
@@ -1905,8 +1906,9 @@ void GCodeViewer::load_as_preview(libvgcode::GCodeInputData &&data)
     const libvgcode::AABox bbox = m_viewer.get_extrusion_bounding_box();
     const BoundingBoxf3 paths_bounding_box(libvgcode::convert(bbox[0]).cast<double>(),
                                            libvgcode::convert(bbox[1]).cast<double>());
-    m_contained_in_bed = wxGetApp().plater()->build_volume().all_paths_inside(GCodeProcessorResult(),
-                                                                              paths_bounding_box);
+    m_contained_in_bed = m_get_build_volume
+                             ? m_get_build_volume().all_paths_inside(GCodeProcessorResult(), paths_bounding_box)
+                             : true;
     if (!m_contained_in_bed)
     {
         s_print_statuses[s_multiple_beds.get_active_bed()] = PrintStatus::toolpath_outside;
@@ -1948,6 +1950,9 @@ void GCodeViewer::reset()
 
 void GCodeViewer::render()
 {
+    if (!m_canvas)
+        return;
+
     glsafe(::glEnable(GL_DEPTH_TEST));
     render_shells();
 
@@ -1975,7 +1980,7 @@ void GCodeViewer::render()
         m_sequential_view.marker.set_z_offset(m_z_offset);
 
         // Following just makes sure that the shown marker is correct.
-        auto [marker_model_opt, is_ht90] = wxGetApp().plater()->get_current_canvas3D()->get_current_marker_model();
+        auto [marker_model_opt, is_ht90] = m_canvas->get_current_marker_model();
         m_sequential_view.marker.init(marker_model_opt, is_ht90);
         if (marker_model_opt.has_value())
             m_max_bounding_box.reset();
@@ -2012,14 +2017,15 @@ void GCodeViewer::render()
             }
         }
 
-        m_sequential_view.render(legend_height, &m_viewer, gcode_id_to_use, m_legend_width);
+        m_sequential_view.render(legend_height, &m_viewer, gcode_id_to_use, get_camera(), get_shader("tool_marker"),
+                                 m_legend_width);
     }
 
 #if VGCODE_ENABLE_COG_AND_TOOL_MARKERS
     if (is_legend_shown())
     {
-        ImGuiWrapper &imgui = *Slic3r::GUI::wxGetApp().imgui();
-        const Size cnv_size = wxGetApp().plater()->get_current_canvas3D()->get_canvas_size();
+        ImGuiWrapper &imgui = *get_imgui();
+        const Size cnv_size = m_canvas->get_canvas_size();
         ImGuiPureWrap::set_next_window_pos(static_cast<float>(cnv_size.get_width()),
                                            static_cast<float>(cnv_size.get_height()), ImGuiCond_Always, 1.0f, 1.0f);
         ImGuiPureWrap::begin(std::string("LibVGCode Viewer Controller"),
@@ -2069,7 +2075,8 @@ void GCodeViewer::update_sequential_view_current(unsigned int first, unsigned in
 {
     m_viewer.set_view_visible_range(static_cast<uint32_t>(first), static_cast<uint32_t>(last));
     const libvgcode::Interval &enabled_range = m_viewer.get_view_enabled_range();
-    wxGetApp().plater()->enable_preview_moves_slider(enabled_range[1] > enabled_range[0]);
+    if (m_enable_preview_moves_slider)
+        m_enable_preview_moves_slider(enabled_range[1] > enabled_range[0]);
 
 #if ENABLE_ACTUAL_SPEED_DEBUG
     if (enabled_range[1] != m_viewer.get_view_visible_range()[1])
@@ -2136,7 +2143,8 @@ void GCodeViewer::update_sequential_view_current(unsigned int first, unsigned in
 void GCodeViewer::set_layers_z_range(const std::array<unsigned int, 2> &layers_z_range)
 {
     m_viewer.set_layers_view_range(static_cast<uint32_t>(layers_z_range[0]), static_cast<uint32_t>(layers_z_range[1]));
-    wxGetApp().plater()->update_preview_moves_slider();
+    if (m_update_preview_moves_slider)
+        m_update_preview_moves_slider();
 }
 
 class ToolpathsObjExporter
@@ -2488,7 +2496,9 @@ void GCodeViewer::load_shells(const Print &print)
     {
         const ModelObject *model_obj = obj->model_object();
         int object_id = -1;
-        const ModelObjectPtrs model_objects = wxGetApp().plater()->model().objects;
+        if (!m_get_model)
+            continue;
+        const ModelObjectPtrs model_objects = m_get_model().objects;
         for (int i = 0; i < static_cast<int>(model_objects.size()); ++i)
         {
             if (model_obj->id() == model_objects[i]->id())
@@ -2521,8 +2531,8 @@ void GCodeViewer::load_shells(const Print &print)
         if (has_negative)
         {
             // Try both the current canvas and the 3D view canvas for CSG preview
-            GLCanvas3D *canvas = wxGetApp().plater()->get_current_canvas3D();
-            GLCanvas3D *canvas3d = wxGetApp().plater()->canvas3D();
+            GLCanvas3D *canvas = m_canvas;
+            GLCanvas3D *canvas3d = m_canvas;
             const TriangleMesh *csg_mesh = nullptr;
 
             if (canvas && canvas->get_csg_preview() && canvas->get_csg_preview()->has_preview(object_id))
@@ -2569,7 +2579,7 @@ void GCodeViewer::load_shells(const Print &print)
         }
     }
 
-    wxGetApp().plater()->get_current_canvas3D()->check_volumes_outside_state(m_shells.volumes);
+    m_canvas->check_volumes_outside_state(m_shells.volumes);
 
     // remove modifiers, non-printable and out-of-bed volumes
     while (true)
@@ -2605,7 +2615,9 @@ void GCodeViewer::load_shells(const Print &print)
     {
         if (v->is_sinking())
         {
-            TriangleMesh mesh(wxGetApp().plater()->model().objects[v->object_idx()]->volumes[v->volume_idx()]->mesh());
+            if (!m_get_model)
+                continue;
+            TriangleMesh mesh(m_get_model().objects[v->object_idx()]->volumes[v->volume_idx()]->mesh());
             mesh.transform(v->world_matrix(), true);
             indexed_triangle_set upper_its;
             cut_mesh(mesh.its, 0.0f, &upper_its, nullptr);
@@ -2635,7 +2647,7 @@ void GCodeViewer::load_shells(const Print &print)
 
 void GCodeViewer::load_wipetower_shell(const Print &print)
 {
-    if (wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology() == ptFFF &&
+    if (m_preset_bundle && m_preset_bundle->printers.get_edited_preset().printer_technology() == ptFFF &&
         print.is_step_done(psWipeTower))
     {
         // adds wipe tower's volume
@@ -2649,13 +2661,12 @@ void GCodeViewer::load_wipetower_shell(const Print &print)
             const std::vector<std::pair<float, float>> z_and_depth_pairs =
                 print.wipe_tower_data(extruders_count).z_and_depth_pairs;
             const float brim_width = wipe_tower_data.brim_width;
-            if (depth != 0.)
+            if (depth != 0. && m_get_model)
             {
                 GLVolume *volume{m_shells.volumes.load_wipe_tower_preview(
-                    wxGetApp().plater()->model().wipe_tower().position.x(),
-                    wxGetApp().plater()->model().wipe_tower().position.y(), config.wipe_tower_width, depth,
-                    z_and_depth_pairs, max_z, config.wipe_tower_cone_angle,
-                    wxGetApp().plater()->model().wipe_tower().rotation, false, brim_width, 0)};
+                    m_get_model().wipe_tower().position.x(), m_get_model().wipe_tower().position.y(),
+                    config.wipe_tower_width, depth, z_and_depth_pairs, max_z, config.wipe_tower_cone_angle,
+                    m_get_model().wipe_tower().rotation, false, brim_width, 0)};
                 m_shells.volumes.volumes.emplace_back(volume);
                 volume->color.a(0.25f);
                 volume->force_native_color = true;
@@ -2669,7 +2680,7 @@ void GCodeViewer::load_wipetower_shell(const Print &print)
 
 void GCodeViewer::render_toolpaths()
 {
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = get_camera();
 
     Transform3d tr = camera.get_view_matrix();
     tr.translate(s_multiple_beds.get_bed_translation(s_multiple_beds.get_active_bed()));
@@ -2689,8 +2700,8 @@ void GCodeViewer::render_toolpaths()
 #if ENABLE_NEW_GCODE_VIEWER_DEBUG
     if (is_legend_shown())
     {
-        ImGuiWrapper &imgui = *wxGetApp().imgui();
-        const Size cnv_size = wxGetApp().plater()->get_current_canvas3D()->get_canvas_size();
+        ImGuiWrapper &imgui = *get_imgui();
+        const Size cnv_size = m_canvas->get_canvas_size();
         ImGuiPureWrap::set_next_window_pos(static_cast<float>(cnv_size.get_width()), 0.0f, ImGuiCond_Always, 1.0f,
                                            0.0f);
         ImGuiPureWrap::begin(std::string("LibVGCode Viewer Debug"),
@@ -2877,17 +2888,30 @@ void GCodeViewer::render_shells()
     // preFlight: When preview clip controller is active, render only the clipped object shell
     if (m_preview_clipping_plane.has_value())
     {
-        GLShaderProgram *shader = wxGetApp().get_shader("gouraud_light_clip");
+        GLShaderProgram *shader = get_shader("gouraud_light_clip");
         if (shader == nullptr)
             return;
 
         shader->start_using();
         shader->set_uniform("emission_factor", 0.1f);
 
-        const Camera &camera = wxGetApp().plater()->get_camera();
+        const Camera &camera = get_camera();
         Transform3d view_matrix = camera.get_view_matrix();
         view_matrix.translate(s_multiple_beds.get_bed_translation(s_multiple_beds.get_active_bed()));
         const Transform3d &projection_matrix = camera.get_projection_matrix();
+
+        // Set render context so volume->render() has a valid s_render_ctx
+        GLRenderContext clip_render_ctx;
+        clip_render_ctx.get_shader = m_get_shader;
+        clip_render_ctx.get_current_shader = m_get_current_shader;
+        clip_render_ctx.camera = m_camera;
+        if (m_canvas && m_get_model)
+        {
+            clip_render_ctx.model = &m_get_model();
+            clip_render_ctx.app_config = m_app_config;
+            clip_render_ctx.imgui = m_imgui;
+        }
+        GLVolumeCollection::set_render_context(&clip_render_ctx);
 
         const std::array<double, 4> &clip_plane = m_preview_clipping_plane.value();
 
@@ -2933,7 +2957,9 @@ void GCodeViewer::render_shells()
     }
 
     const bool use_progressive_clip = (max_z > 0.0);
-    GLShaderProgram *shader = wxGetApp().get_shader(use_progressive_clip ? "gouraud_light_clip" : "gouraud_light");
+    const bool use_phong = m_app_config && m_app_config->get("canvas_lighting_quality") != "basic";
+    GLShaderProgram *shader = get_shader(use_progressive_clip ? "gouraud_light_clip"
+                                                              : (use_phong ? "phong_light" : "gouraud_light"));
 
     if (shader == nullptr)
         return;
@@ -2941,10 +2967,23 @@ void GCodeViewer::render_shells()
     shader->start_using();
     shader->set_uniform("emission_factor", 0.1f);
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = get_camera();
     Transform3d view_matrix = camera.get_view_matrix();
     view_matrix.translate(s_multiple_beds.get_bed_translation(s_multiple_beds.get_active_bed()));
     const Transform3d &projection_matrix = camera.get_projection_matrix();
+
+    // Build render context before branching so volume->render() has a valid s_render_ctx in all paths
+    GLRenderContext render_ctx;
+    render_ctx.get_shader = m_get_shader;
+    render_ctx.get_current_shader = m_get_current_shader;
+    render_ctx.camera = m_camera;
+    if (m_canvas && m_get_model)
+    {
+        render_ctx.model = &m_get_model();
+        render_ctx.app_config = m_app_config;
+        render_ctx.imgui = m_imgui;
+    }
+    GLVolumeCollection::set_render_context(&render_ctx);
 
     if (use_progressive_clip)
     {
@@ -3015,8 +3054,8 @@ void GCodeViewer::render_shells()
     }
     else
     {
-        // No progressive clipping - render normally as translucent
-        m_shells.volumes.render(GLVolumeCollection::ERenderType::Transparent, true, view_matrix, projection_matrix);
+        m_shells.volumes.render(GLVolumeCollection::ERenderType::Transparent, true, view_matrix, projection_matrix,
+                                render_ctx);
     }
 
     shader->set_uniform("emission_factor", 0.0f);
@@ -3025,7 +3064,7 @@ void GCodeViewer::render_shells()
 
 void GCodeViewer::render_legend(float &legend_height)
 {
-    if (!is_legend_shown())
+    if (!is_legend_shown() || !m_canvas || !get_imgui())
         return;
 
     // Theme-aware text color for legend values
@@ -3033,9 +3072,9 @@ void GCodeViewer::render_legend(float &legend_height)
     UIColors::LegendTextRGBA(legend_text_r, legend_text_g, legend_text_b, legend_text_a);
     const ImVec4 LEGEND_TEXT_COLOR = {legend_text_r, legend_text_g, legend_text_b, legend_text_a};
 
-    const Size cnv_size = wxGetApp().plater()->get_current_canvas3D()->get_canvas_size();
+    const Size cnv_size = m_canvas->get_canvas_size();
 
-    ImGuiWrapper &imgui = *wxGetApp().imgui();
+    ImGuiWrapper &imgui = *get_imgui();
 
     ImGuiPureWrap::set_next_window_pos(0.0f, 0.0f, ImGuiCond_Always);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
@@ -3047,9 +3086,9 @@ void GCodeViewer::render_legend(float &legend_height)
     const float child_height = 0.3333f * max_height;
     // preFlight: em_unit() is in logical pixels; ImGui operates in physical pixels on
     // Retina/HiDPI.  Scale by the canvas content scale factor to match.
-    float em = static_cast<float>(wxGetApp().em_unit());
+    float em = static_cast<float>(em_unit());
 #if ENABLE_RETINA_GL
-    const float scale = wxGetApp().plater()->get_current_canvas3D()->get_canvas_size().get_scale_factor();
+    const float scale = m_canvas->get_canvas_size().get_scale_factor();
     em *= scale;
 #endif
     const float sidebar_width = 45.0f * em;
@@ -3082,7 +3121,7 @@ void GCodeViewer::render_legend(float &legend_height)
 
     const float icon_size = ImGui::GetTextLineHeight();
 
-    bool imperial_units = wxGetApp().app_config->get_bool("use_inches");
+    bool imperial_units = m_app_config && m_app_config->get_bool("use_inches");
 
     auto append_item =
         [icon_size, &imgui,
@@ -3420,8 +3459,9 @@ void GCodeViewer::render_legend(float &legend_height)
             view_visible_range_min = static_cast<int>(view_visible_range[0]);
             view_visible_range_max = static_cast<int>(view_visible_range[1]);
         }
-        wxGetApp().plater()->update_preview_moves_slider(view_visible_range_min, view_visible_range_max);
-        wxGetApp().plater()->get_current_canvas3D()->set_as_dirty();
+        if (m_update_preview_moves_slider_range)
+            m_update_preview_moves_slider_range(view_visible_range_min, view_visible_range_max);
+        m_canvas->set_as_dirty();
     };
 
     // data used to properly align items in columns when showing time
@@ -3633,9 +3673,10 @@ void GCodeViewer::render_legend(float &legend_height)
         enable_view_type_cache_load(false);
         set_view_type(static_cast<libvgcode::EViewType>(new_view_type_i));
         enable_view_type_cache_load(true);
-        wxGetApp().plater()->set_keep_current_preview_type(true);
-        wxGetApp().plater()->get_current_canvas3D()->set_as_dirty();
-        wxGetApp().plater()->get_current_canvas3D()->request_extra_frame();
+        if (m_set_keep_current_preview_type)
+            m_set_keep_current_preview_type(true);
+        m_canvas->set_as_dirty();
+        m_canvas->request_extra_frame();
         view_type_changed = true;
     }
 
@@ -4103,7 +4144,7 @@ void GCodeViewer::render_legend(float &legend_height)
         has_filament_settings &= !fs.empty();
     }
     has_settings |= has_filament_settings;
-    bool show_settings = wxGetApp().is_gcode_viewer();
+    bool show_settings = is_gcode_viewer();
     show_settings &= (new_view_type == libvgcode::EViewType::FeatureType ||
                       new_view_type == libvgcode::EViewType::Tool);
     show_settings &= has_settings;
@@ -4485,7 +4526,8 @@ void GCodeViewer::render_legend(float &legend_height)
             std::optional<int> view_visible_range_max = keep_visible_range ? std::optional<int>{static_cast<int>(
                                                                                  view_visible_range[1])}
                                                                            : std::nullopt;
-            wxGetApp().plater()->update_preview_moves_slider(view_visible_range_min, view_visible_range_max);
+            if (m_update_preview_moves_slider_range)
+                m_update_preview_moves_slider_range(view_visible_range_min, view_visible_range_max);
 
             // Persist the new toggle state to app config
             const char *cfg_key = preview_option_config_key(type);
@@ -4517,7 +4559,7 @@ void GCodeViewer::render_legend(float &legend_height)
     // When adding/removing toggle buttons, update these counts to keep centering correct.
     {
         const float btn_size = 1.5f * icon_size;
-        const int num_buttons = wxGetApp().is_gcode_viewer() ? 11 : 12;
+        const int num_buttons = is_gcode_viewer() ? 11 : 12;
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
         const float total_width = num_buttons * btn_size + (num_buttons - 1) * spacing;
         const float avail_width = ImGui::GetContentRegionAvail().x;
@@ -4564,7 +4606,7 @@ void GCodeViewer::render_legend(float &legend_height)
                   [&imgui](ImGuiWindow &window, const ImVec2 &pos, float size)
                   { imgui.draw_icon(window, pos, size, ImGui::LegendCOG); });
     ImGui::SameLine();
-    if (!wxGetApp().is_gcode_viewer())
+    if (!is_gcode_viewer())
     {
         toggle_button(Preview::OptionType::Shells, _u8L("Shells"),
                       [&imgui](ImGuiWindow &window, const ImVec2 &pos, float size)
@@ -4590,8 +4632,8 @@ void GCodeViewer::render_legend(float &legend_height)
     if (s_resize_frames > 0)
     {
         --s_resize_frames;
-        wxGetApp().plater()->get_current_canvas3D()->set_as_dirty();
-        wxGetApp().plater()->get_current_canvas3D()->request_extra_frame();
+        m_canvas->set_as_dirty();
+        m_canvas->request_extra_frame();
     }
     m_legend_resizer.dirty = size_dirty;
 

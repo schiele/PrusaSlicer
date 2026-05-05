@@ -3297,6 +3297,21 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionInt(5));
 
+    def = this->add("interlock_regular_perimeters", coInt);
+    def->label = L("Perimeters while interlocking");
+    def->category = L("Layers and Perimeters");
+    def->tooltip = L("Overrides the number of regular perimeters on layers where interlocking is active. "
+                     "Layers near top/bottom surfaces (controlled by the solid layers settings) use the "
+                     "normal perimeter count.\n\n"
+                     "0 = use the normal Perimeters setting (no override)\n"
+                     ">0 = use this many regular perimeters on interlocking layers\n\n"
+                     "This allows thinner walls on interior layers while retaining interlocking strength.");
+    def->sidetext = L("(0 = off)");
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(0));
+
     def = this->add("interlock_solid_layers_top", coInt);
     def->label = L("Above");
     def->full_label = L("Solid layers above interlocking");
@@ -3387,6 +3402,45 @@ void PrintConfigDef::init_fff_params()
     def->full_width = true;
     def->height = 6;
     def->mode = comExpert;
+    def->set_default_value(new ConfigOptionStrings());
+
+    def = this->add("preprocessing_enabled_filament", coBool);
+    def->label = L("Enable preprocessing");
+    def->category = L("Preprocessing");
+    def->tooltip = L("Enable Python preprocessing scripts for this filament profile. "
+                     "Scripts run during slicing and can read/modify G-code moves.");
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("preprocessing_enabled_print", coBool);
+    def->label = L("Enable preprocessing");
+    def->category = L("Preprocessing");
+    def->tooltip = L("Enable Python preprocessing scripts for this print profile. "
+                     "Scripts run during slicing and can read/modify G-code moves.");
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("preprocessing_enabled_printer", coBool);
+    def->label = L("Enable preprocessing");
+    def->category = L("Preprocessing");
+    def->tooltip = L("Enable Python preprocessing scripts for this printer profile. "
+                     "Scripts run during slicing and can read/modify G-code moves.");
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("preprocessing_scripts_filament", coStrings);
+    def->label = L("Preprocessing scripts");
+    def->category = L("Preprocessing");
+    def->tooltip = L("Ordered list of Python preprocessing script paths for this filament profile.");
+    def->set_default_value(new ConfigOptionStrings());
+
+    def = this->add("preprocessing_scripts_print", coStrings);
+    def->label = L("Preprocessing scripts");
+    def->category = L("Preprocessing");
+    def->tooltip = L("Ordered list of Python preprocessing script paths for this print profile.");
+    def->set_default_value(new ConfigOptionStrings());
+
+    def = this->add("preprocessing_scripts_printer", coStrings);
+    def->label = L("Preprocessing scripts");
+    def->category = L("Preprocessing");
+    def->tooltip = L("Ordered list of Python preprocessing script paths for this printer profile.");
     def->set_default_value(new ConfigOptionStrings());
 
     def = this->add("printer_model", coString);

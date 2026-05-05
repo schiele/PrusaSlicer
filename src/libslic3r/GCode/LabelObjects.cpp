@@ -237,6 +237,52 @@ std::string LabelObjects::all_objects_header() const
     return out;
 }
 
+static std::string json_escape(const std::string &s)
+{
+    std::string out;
+    out.reserve(s.size() + 4);
+    for (char c : s)
+    {
+        switch (c)
+        {
+        case '"':
+            out += "\\\"";
+            break;
+        case '\\':
+            out += "\\\\";
+            break;
+        case '\b':
+            out += "\\b";
+            break;
+        case '\f':
+            out += "\\f";
+            break;
+        case '\n':
+            out += "\\n";
+            break;
+        case '\r':
+            out += "\\r";
+            break;
+        case '\t':
+            out += "\\t";
+            break;
+        default:
+            if (static_cast<unsigned char>(c) < 0x20)
+            {
+                char buf[8];
+                std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
+                out += buf;
+            }
+            else
+            {
+                out += c;
+            }
+            break;
+        }
+    }
+    return out;
+}
+
 std::string LabelObjects::all_objects_header_singleline_json() const
 {
     std::string out;
@@ -244,7 +290,7 @@ std::string LabelObjects::all_objects_header_singleline_json() const
     for (size_t i = 0; i < m_label_data.size(); ++i)
     {
         const LabelData &label = m_label_data[i];
-        out += std::string("{\"name\":\"") + label.name + "\",";
+        out += std::string("{\"name\":\"") + json_escape(label.name) + "\",";
         out += "\"polygon\":" + label.polygon + "}";
         if (i != m_label_data.size() - 1)
             out += ",";

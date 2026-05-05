@@ -709,8 +709,9 @@ static inline void simplify_polygon_impl(const Points &points, double tolerance,
     for (const Clipper2Lib::Path64 &path : simplified_paths)
     {
         Points slic3r_points = ClipperPath_to_Slic3rPoints(path);
-        if (!ccw)
-            // Clipper2 likely reoriented negative area contours to become positive. Reverse holes back to CW.
+        // Preserve original winding: check output orientation and match to input.
+        bool out_ccw = Clipper2Lib::Area(path) > 0.;
+        if (out_ccw != ccw)
             std::reverse(slic3r_points.begin(), slic3r_points.end());
         out.emplace_back(std::move(slic3r_points));
     }

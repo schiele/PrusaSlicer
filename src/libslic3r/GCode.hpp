@@ -427,6 +427,8 @@ private:
     float m_last_layer_z{0.0f};
     float m_max_layer_z{0.0f};
     float m_last_width{0.0f};
+    float m_last_region_area{0.0f};
+    int m_last_fill_pattern{-1};
     double m_last_interlocking_flow_multiplier{-1.0}; // -1.0 = sentinel, ensures first interlocking gets comment
     std::optional<Vec3d> m_previous_layer_last_position;
     std::optional<Vec3d> m_previous_layer_last_position_before_wipe;

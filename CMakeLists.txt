@@ -59,6 +59,7 @@ CMAKE_DEPENDENT_OPTION(SLIC3R_OPENGL_ES "Compile preFlight targeting OpenGL ES" 
 # Desktop integration: when ON, the app can prompt the user to create .desktop files and icons at runtime.
 # The upstream logic forced this OFF for FHS builds, but preFlight needs it ON for Flatpak.
 option(SLIC3R_DESKTOP_INTEGRATION "Allow performing desktop integration during runtime" ON)
+option(SLIC3R_PYTHON_PREPROCESSOR "Enable Python pre-processor scripting via embedded interpreter" ON)
 
 set(OPENVDB_FIND_MODULE_PATH "" CACHE PATH "Path to OpenVDB installation's find modules.")
 
@@ -626,6 +627,36 @@ else ()
     message(FATAL_ERROR "OpenVDB could not be found with the bundled find module. "
                    "You can try to specify the find module location of your "
                    "OpenVDB installation with the OPENVDB_FIND_MODULE_PATH cache variable.")
+endif ()
+
+# Python pre-processor: embedded interpreter for G-code pre-processing scripts
+if (SLIC3R_PYTHON_PREPROCESSOR)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Embed)
+    find_package(pybind11 CONFIG REQUIRED)
+    message(STATUS "Python pre-processor: ON (Python ${Python3_VERSION})")
+
+    # Bundled Python runtime for end users (no system Python required at runtime).
+    # The runtime is downloaded by deps/+PythonRuntime and extracted to the deps destdir.
+    # The bundled version MUST match the build Python's major.minor version (ABI compatibility).
+    set(PYTHON_RUNTIME_DIR "${CMAKE_PREFIX_PATH}/python-runtime" CACHE PATH "Bundled Python runtime directory")
+    if (EXISTS "${PYTHON_RUNTIME_DIR}")
+        set(PYTHON_RUNTIME_AVAILABLE TRUE)
+        # Version pinned in deps/+PythonRuntime/PythonRuntime.cmake
+        set(PYTHON_RUNTIME_VERSION_MINOR 14)
+        if (NOT Python3_VERSION_MAJOR EQUAL 3 OR NOT Python3_VERSION_MINOR EQUAL ${PYTHON_RUNTIME_VERSION_MINOR})
+            message(FATAL_ERROR
+                "Python version mismatch: build system found Python ${Python3_VERSION} "
+                "but the bundled runtime is 3.${PYTHON_RUNTIME_VERSION_MINOR}.x. "
+                "Install Python 3.${PYTHON_RUNTIME_VERSION_MINOR} or update the bundled runtime version "
+                "in deps/+PythonRuntime/PythonRuntime.cmake.")
+        endif ()
+        message(STATUS "Python runtime bundle: ${PYTHON_RUNTIME_DIR}")
+    else ()
+        set(PYTHON_RUNTIME_AVAILABLE FALSE)
+        message(STATUS "Python runtime bundle: NOT FOUND (end users will need Python installed)")
+    endif ()
+else ()
+    message(STATUS "Python pre-processor: OFF")
 endif ()
 
 set(TOP_LEVEL_PROJECT_DIR ${PROJECT_SOURCE_DIR})

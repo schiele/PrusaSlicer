@@ -6,11 +6,10 @@
 #include "GLGizmoRotate.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/ImGuiWrapper.hpp"
-#include "slic3r/GUI/GUI_ObjectManipulation.hpp"
-
-#include "slic3r/GUI/GUI_App.hpp"
+#include "slic3r/GUI/I18N.hpp"
 #include "slic3r/GUI/GUI.hpp"
-#include "slic3r/GUI/Plater.hpp"
+#include "slic3r/GUI/GLShader.hpp"
+#include "slic3r/GUI/OpenGLManager.hpp"
 // #include "slic3r/GUI/Jobs/RotoptimizeJob.hpp"
 
 #include "libslic3r/PresetBundle.hpp"
@@ -90,9 +89,9 @@ std::string GLGizmoRotate::get_tooltip() const
                                                             : "";
 }
 
-bool GLGizmoRotate::on_mouse(const wxMouseEvent &mouse_event)
+bool GLGizmoRotate::on_mouse(const MouseInput &mouse)
 {
-    return use_grabbers(mouse_event);
+    return use_grabbers(mouse);
 }
 
 void GLGizmoRotate::dragging(const UpdateData &data)
@@ -188,23 +187,22 @@ void GLGizmoRotate::on_render()
 #if !SLIC3R_OPENGL_ES
     if (!OpenGLManager::get_gl_info().is_core_profile())
     {
-        const float scale = wxGetApp().imgui()->get_style_scaling();
+        const float scale = m_imgui->get_style_scaling();
         glsafe(::glLineWidth((m_hover_id != -1) ? 2.0f * scale : 1.5f * scale));
     }
 #endif // !SLIC3R_OPENGL_ES
 
 #if SLIC3R_OPENGL_ES
-    GLShaderProgram *shader = wxGetApp().get_shader("dashed_lines");
+    GLShaderProgram *shader = m_parent.get_shader("dashed_lines");
 #else
-    GLShaderProgram *shader = OpenGLManager::get_gl_info().is_core_profile()
-                                  ? wxGetApp().get_shader("dashed_thick_lines")
-                                  : wxGetApp().get_shader("flat");
+    GLShaderProgram *shader = OpenGLManager::get_gl_info().is_core_profile() ? m_parent.get_shader("dashed_thick_lines")
+                                                                             : m_parent.get_shader("flat");
 #endif // SLIC3R_OPENGL_ES
     if (shader != nullptr)
     {
         shader->start_using();
 
-        const Camera &camera = wxGetApp().plater()->get_camera();
+        const Camera &camera = m_parent.get_camera();
         const Transform3d view_model_matrix = camera.get_view_matrix() * m_grabbers.front().matrix;
         shader->set_uniform("view_model_matrix", view_model_matrix);
         shader->set_uniform("projection_matrix", camera.get_projection_matrix());
@@ -262,7 +260,7 @@ void GLGizmoRotate::init_data_from_selection(const Selection &selection)
 
 void GLGizmoRotate3D::on_render_input_window(float x, float y, float bottom_limit)
 {
-    if (wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology() != ptSLA)
+    if (m_parent.preset_bundle()->printers.get_edited_preset().printer_technology() != ptSLA)
         return;
 
     RotoptimzeWindow popup{m_imgui, m_rotoptimizewin_state, {x, y, bottom_limit}};
@@ -561,9 +559,9 @@ GLGizmoRotate3D::GLGizmoRotate3D(GLCanvas3D &parent, const std::string &icon_fil
     load_rotoptimize_state();
 }
 
-bool GLGizmoRotate3D::on_mouse(const wxMouseEvent &mouse_event)
+bool GLGizmoRotate3D::on_mouse(const MouseInput &mouse)
 {
-    if (mouse_event.Dragging() && m_dragging)
+    if (mouse.dragging && m_dragging)
     {
         // Apply new temporary rotations
         TransformationType transformation_type;
@@ -571,7 +569,7 @@ bool GLGizmoRotate3D::on_mouse(const wxMouseEvent &mouse_event)
             transformation_type = TransformationType::World_Relative_Joint;
         else
         {
-            switch (wxGetApp().obj_manipul()->get_coordinates_type())
+            switch (m_parent.get_coordinates_type())
             {
             default:
             case ECoordinatesType::World:
@@ -591,11 +589,11 @@ bool GLGizmoRotate3D::on_mouse(const wxMouseEvent &mouse_event)
             }
             }
         }
-        if (mouse_event.AltDown())
+        if (mouse.alt)
             transformation_type.set_independent();
         m_parent.get_selection().rotate(get_rotation(), transformation_type);
     }
-    return use_grabbers(mouse_event);
+    return use_grabbers(mouse);
 }
 
 void GLGizmoRotate3D::data_changed(bool is_serializing)

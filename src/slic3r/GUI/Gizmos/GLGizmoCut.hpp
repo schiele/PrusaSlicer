@@ -176,8 +176,8 @@ class GLGizmoCut3D : public GLGizmoBase
     public:
         PartSelection() = default;
         PartSelection(const ModelObject *mo, const Transform3d &cut_matrix, int instance_idx, const Vec3d &center,
-                      const Vec3d &normal, const CommonGizmosDataObjects::ObjectClipper &oc);
-        PartSelection(const ModelObject *mo, int instance_idx_in);
+                      const Vec3d &normal, const CommonGizmosDataObjects::ObjectClipper &oc, double sla_shift_z = 0.);
+        PartSelection(const ModelObject *mo, int instance_idx_in, double sla_shift_z = 0.);
         ~PartSelection() { m_model.clear_objects(); }
 
         struct Part
@@ -188,8 +188,8 @@ class GLGizmoCut3D : public GLGizmoBase
             bool is_modifier;
         };
 
-        void render(const Vec3d *normal, GLModel &sphere_model);
-        void toggle_selection(const Vec2d &mouse_pos);
+        void render(const Vec3d *normal, GLModel &sphere_model, const Camera &camera, GLShaderProgram *shader);
+        void toggle_selection(const Vec2d &mouse_pos, const Camera &camera);
         void turn_over_selection();
         ModelObject *model_object() { return m_model.objects.front(); }
         bool valid() const { return m_valid; }
@@ -215,7 +215,7 @@ class GLGizmoCut3D : public GLGizmoBase
         std::vector<Vec3d> m_contour_points;         // Debugging
         std::vector<std::vector<Vec3d>> m_debug_pts; // Debugging
 
-        void add_object(const ModelObject *object);
+        void add_object(const ModelObject *object, double sla_shift_z = 0.);
     };
 
     PartSelection m_part_selection;
@@ -276,7 +276,7 @@ public:
     /// </summary>
     /// <param name="mouse_event">Keep information about mouse click</param>
     /// <returns>Return True when use the information otherwise False.</returns>
-    bool on_mouse(const wxMouseEvent &mouse_event) override;
+    bool on_mouse(const MouseInput &mouse) override;
 
     void shift_cut(double delta);
     void rotate_vec3d_around_plane_center(Vec3d &vec);
@@ -384,7 +384,7 @@ private:
 
     void apply_color_clip_plane_colors();
     void render_cut_plane();
-    static void render_model(GLModel &model, const ColorRGBA &color, Transform3d view_model_matrix);
+    void render_model(GLModel &model, const ColorRGBA &color, Transform3d view_model_matrix);
     void render_line(GLModel &line_model, const ColorRGBA &color, Transform3d view_model_matrix, float width);
     void render_rotation_snapping(GrabberID axis, const ColorRGBA &color);
     void render_grabber_connection(const ColorRGBA &color, Transform3d view_matrix, double line_len_koef = 1.0);

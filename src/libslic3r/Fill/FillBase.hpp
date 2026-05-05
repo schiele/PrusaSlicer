@@ -127,6 +127,9 @@ public:
 
     // infill / perimeter overlap, in unscaled coordinates
     coordf_t overlap;
+    // Width of the innermost perimeter, in unscaled coordinates.
+    // Used by rectilinear/monotonic to limit hole stretch for tangent-bead clipping.
+    coordf_t perimeter_width{0};
     // in radians, ccw, 0 = East
     float angle;
     // Counterbore bridge fill direction override (radians). When >= 0, used instead

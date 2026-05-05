@@ -1356,12 +1356,7 @@ static inline std::tuple<Polygons, Polygons, Polygons, Polygons, float> detect_o
             // Extrusion width accounts for the roundings of the extrudates.
             // It is the maximum widh of the extrudate.
             float fw = float(layerm->flow(frExternalPerimeter).scaled_width());
-            // enforce_layers only applies when supports are actually being generated
-            // (auto or painted); without either, it should not create standalone support.
-            const bool has_enforcers = std::any_of(annotations.enforcers_layers.begin(),
-                                                   annotations.enforcers_layers.end(),
-                                                   [](const Polygons &p) { return !p.empty(); });
-            lower_layer_offset = ((support_auto || has_enforcers) &&
+            lower_layer_offset = (support_auto &&
                                   layer_id < (size_t) object_config.support_material_enforce_layers.value)
                                      ?
                                      // Enforce a full possible support, ignore the overhang angle.

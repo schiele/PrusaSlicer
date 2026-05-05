@@ -7,6 +7,7 @@
 #define slic3r_ImGuiWrapper_hpp_
 
 #include "ImGuiPureWrap.hpp"
+#include "InputEvents.hpp"
 
 #include <wx/string.h>
 
@@ -72,8 +73,8 @@ public:
 
     void set_language(const std::string &language);
     void set_scaling(float font_size, float scale_style, float scale_both);
-    bool update_mouse_data(wxMouseEvent &evt);
-    bool update_key_data(wxKeyEvent &evt);
+    bool update_mouse_data(const MouseInput &mouse);
+    bool update_key_data(const KeyInput &key);
 
     float get_font_size() const { return m_font_size; }
     float get_style_scaling() const { return m_style_scaling; }

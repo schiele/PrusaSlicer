@@ -112,7 +112,8 @@ public:
     // Rotation is disabled for wipe tower in arrangement
     void transform(const Vec2d &transl, double /*rot*/) override
     {
-        GLCanvas3D::WipeTowerInfo::apply_wipe_tower(m_orig_tr + transl, m_orig_rot, this->bed_index);
+        GLCanvas3D::WipeTowerInfo::apply_wipe_tower(wxGetApp().plater()->model(), m_orig_tr + transl, m_orig_rot,
+                                                    this->bed_index);
     }
 
     void imbue_data(arr2::AnyWritable &datastore) const override

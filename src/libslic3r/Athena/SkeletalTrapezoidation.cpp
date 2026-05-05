@@ -912,12 +912,12 @@ void SkeletalTrapezoidation::generateTransitionMids(ptr_vector_t<std::list<Trans
             coord_t mid_R = beading_strategy.getTransitionThickness(transition_lower_bead_count) / 2;
             if (mid_R > end_R)
             {
-                BOOST_LOG_TRIVIAL(error) << "transition on segment lies outside of segment!";
+                BOOST_LOG_TRIVIAL(trace) << "transition on segment lies outside of segment!";
                 mid_R = end_R;
             }
             if (mid_R < start_R)
             {
-                BOOST_LOG_TRIVIAL(error) << "transition on segment lies outside of segment!";
+                BOOST_LOG_TRIVIAL(trace) << "transition on segment lies outside of segment!";
                 mid_R = start_R;
             }
             coord_t mid_pos = int64_t(edge_size) * int64_t(mid_R - start_R) / int64_t(end_R - start_R);
@@ -1718,6 +1718,17 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
             double loop_width_factor = 2.0 - overlap_pct;
             coord_t split_width = (coord_t) ((double) new_center_width / loop_width_factor);
 
+            // With perimeter overlap, block the split when each resulting bead would
+            // be too narrow to form continuous perimeters. Narrow split beads create
+            // fragmented diamond artifacts at skeleton transition zones because
+            // adjacent nodes disagree on whether to split, producing isolated loops.
+            // Floor is max(spacing, 90% nozzle width): spacing alone drops too low
+            // at high perimeter counts. 90% matches the default overlap spacing ratio
+            // (~89%), providing margin against boundary-straddling splits.
+            // Without overlap (nominal_spacing >= nominal_width), no guard needed.
+            coord_t min_split_width = std::max(nominal_spacing, nominal_width * 9 / 10);
+            bool split_viable = (nominal_spacing >= nominal_width) || (split_width >= min_split_width);
+
             // Compare which is closer to nominal width: one fat bead or two split beads.
             // Bias toward splitting - an over-wide bead prints worse than a slightly
             // under-wide pair, so two beads win unless one bead is clearly better.
@@ -1728,7 +1739,7 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
 
             // Split bias: two beads win unless one bead deviates less than HALF
             // as much as two beads (i.e., one bead must be dramatically better)
-            if (two_bead_deviation < one_bead_deviation * 2)
+            if (split_viable && two_bead_deviation < one_bead_deviation * 2)
             {
                 split_center_into_loop = true;
 

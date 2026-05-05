@@ -1028,10 +1028,10 @@ PRINT_CONFIG_CLASS_DEFINE(
         (ConfigOptionFloatOrPercent, perimeter_perimeter_overlap))((ConfigOptionFloatOrPercent, bridge_infill_overlap))(
         (ConfigOptionFloatOrPercent, bridge_infill_perimeter_overlap))((ConfigOptionFloat, infill_speed))(
         (ConfigOptionBool, interlock_perimeters_enabled))((ConfigOptionInt, interlock_perimeter_count))(
-        (ConfigOptionInt, interlock_solid_layers_top))((ConfigOptionInt, interlock_solid_layers_bottom))(
-        (ConfigOptionPercent, interlock_perimeter_strength))((ConfigOptionFloatOrPercent, interlock_perimeter_overlap))(
-        (ConfigOptionInt, interlocking_perimeter_extruder))((ConfigOptionEnum<InterlockFlowDetection>,
-                                                             interlock_flow_detection))
+        (ConfigOptionInt, interlock_regular_perimeters))((ConfigOptionInt, interlock_solid_layers_top))(
+        (ConfigOptionInt, interlock_solid_layers_bottom))((ConfigOptionPercent, interlock_perimeter_strength))(
+        (ConfigOptionFloatOrPercent, interlock_perimeter_overlap))((ConfigOptionInt, interlocking_perimeter_extruder))(
+        (ConfigOptionEnum<InterlockFlowDetection>, interlock_flow_detection))
     // Ironing options
     ((ConfigOptionBool, ironing))((ConfigOptionEnum<IroningType>, ironing_type))(
         (ConfigOptionPercent, ironing_flowrate))((ConfigOptionFloat, ironing_spacing))((ConfigOptionFloat,
@@ -1206,7 +1206,10 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
         (ConfigOptionFloats, print_nozzle_diameters))((ConfigOptionBools, print_high_flow_nozzle))(
         (ConfigOptionBool, only_retract_when_crossing_perimeters))((ConfigOptionBool, ooze_prevention))(
         (ConfigOptionString, output_filename_format))((ConfigOptionFloat, perimeter_acceleration))(
-        (ConfigOptionStrings, post_process))((ConfigOptionBool, prefer_clockwise_movements))(
+        (ConfigOptionStrings, post_process))((ConfigOptionBool, preprocessing_enabled_filament))(
+        (ConfigOptionBool, preprocessing_enabled_print))((ConfigOptionBool, preprocessing_enabled_printer))(
+        (ConfigOptionStrings, preprocessing_scripts_filament))((ConfigOptionStrings, preprocessing_scripts_print))(
+        (ConfigOptionStrings, preprocessing_scripts_printer))((ConfigOptionBool, prefer_clockwise_movements))(
         (ConfigOptionString, printer_model))((ConfigOptionString, printer_notes))((ConfigOptionFloat, resolution))(
         (ConfigOptionFloat, gcode_resolution))((ConfigOptionFloats, retract_before_travel))(
         (ConfigOptionBools, retract_layer_change))((ConfigOptionFloat, skirt_distance))(

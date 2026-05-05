@@ -8,7 +8,7 @@
 #include <optional>
 #include "libslic3r/Point.hpp" // Vec2d, Transform3d
 #include "slic3r/Utils/RaycastManager.hpp"
-#include "wx/event.h" // wxMouseEvent
+#include "slic3r/GUI/InputEvents.hpp"
 #include <functional>
 
 namespace Slic3r
@@ -64,7 +64,7 @@ constexpr double UP_LIMIT = 0.9;
 /// Mouse event handler, when move(drag&drop) volume over model surface
 /// NOTE: Dragged volume has to be selected. And also has to be hovered on start of dragging.
 /// </summary>
-/// <param name="mouse_event">Contain type of event and mouse position</param>
+/// <param name="mouse">Contain type of event and mouse position</param>
 /// <param name="camera">Actual viewport of camera</param>
 /// <param name="surface_drag">Structure which keep information about dragging</param>
 /// <param name="canvas">Contain gl_volumes and selection</param>
@@ -72,9 +72,9 @@ constexpr double UP_LIMIT = 0.9;
 /// Refresh state inside of function </param>
 /// <param name="up_limit">When set than use correction of up vector</param>
 /// <returns>True when event is processed otherwise false</returns>
-bool on_mouse_surface_drag(const wxMouseEvent &mouse_event, const Camera &camera,
-                           std::optional<SurfaceDrag> &surface_drag, GLCanvas3D &canvas,
-                           RaycastManager &raycast_manager, const std::optional<double> &up_limit = {});
+bool on_mouse_surface_drag(const GUI::MouseInput &mouse, const Camera &camera, std::optional<SurfaceDrag> &surface_drag,
+                           GLCanvas3D &canvas, RaycastManager &raycast_manager,
+                           const std::optional<double> &up_limit = {});
 
 /// <summary>
 /// Calculate translation of volume onto surface of model

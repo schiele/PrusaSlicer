@@ -81,7 +81,7 @@ public:
     virtual ~GLGizmoBrimEars() = default;
     void data_changed(bool is_serializing) override;
     void set_brim_data();
-    bool on_mouse(const wxMouseEvent &mouse_event) override;
+    bool on_mouse(const MouseInput &mouse) override;
     bool gizmo_event(SLAGizmoEventType action, const Vec2d &mouse_position, bool shift_down, bool alt_down,
                      bool control_down);
     void delete_selected_points();

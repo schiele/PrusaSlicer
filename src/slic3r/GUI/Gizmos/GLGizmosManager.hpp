@@ -148,7 +148,7 @@ private:
     /// <returns>TRUE when take responsibility for event otherwise FALSE.
     /// On true, event should not be process by others.
     /// On false, event should be process by others.</returns>
-    bool gizmos_toolbar_on_mouse(const wxMouseEvent &mouse_event);
+    bool gizmos_toolbar_on_mouse(const MouseInput &mouse);
 
 public:
     explicit GLGizmosManager(GLCanvas3D &parent);
@@ -238,10 +238,10 @@ public:
 
     std::string get_tooltip() const;
 
-    bool on_mouse(const wxMouseEvent &mouse_event);
-    bool on_mouse_wheel(const wxMouseEvent &evt);
-    bool on_char(wxKeyEvent &evt);
-    bool on_key(wxKeyEvent &evt);
+    bool on_mouse(const MouseInput &mouse);
+    bool on_mouse_wheel(const MouseInput &mouse);
+    bool on_char(const KeyInput &key);
+    bool on_key(const KeyInput &key);
 
     void update_after_undo_redo(const UndoRedo::Snapshot &snapshot);
 

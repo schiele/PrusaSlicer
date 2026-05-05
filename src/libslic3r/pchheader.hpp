@@ -138,3 +138,5 @@
 #include "libslic3r_version.h"
 
 #include <admesh/stl.h>
+
+#include "libslic3r/EngineGuard.hpp"

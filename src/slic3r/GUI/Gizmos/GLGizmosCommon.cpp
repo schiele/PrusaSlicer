@@ -385,7 +385,8 @@ void ObjectClipper::set_position_by_ratio(double pos, bool keep_normal)
     int active_inst = get_pool()->selection_info()->get_active_instance();
     double z_shift = get_pool()->selection_info()->get_sla_shift();
 
-    Vec3d normal = (keep_normal && m_clp) ? m_clp->get_normal() : -wxGetApp().plater()->get_camera().get_dir_forward();
+    Vec3d normal = (keep_normal && m_clp) ? m_clp->get_normal()
+                                          : -get_pool()->get_canvas()->get_camera().get_dir_forward();
     const Vec3d &center = mo->instances[active_inst]->get_offset() + Vec3d(0., 0., z_shift);
     float dist = normal.dot(center);
 

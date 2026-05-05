@@ -5,9 +5,11 @@
 ///|/
 #include "GLGizmoMeasure.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
-#include "slic3r/GUI/GUI_App.hpp"
-#include "slic3r/GUI/Plater.hpp"
+#include "slic3r/GUI/GLShader.hpp"
+#include "slic3r/GUI/OpenGLManager.hpp"
 #include "slic3r/GUI/GUI_ObjectManipulation.hpp"
+#include "slic3r/GUI/EventTypes.hpp"
+#include "slic3r/GUI/EventBridge.hpp"
 
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/MeasureUtils.hpp"
@@ -372,32 +374,26 @@ GLGizmoMeasure::GLGizmoMeasure(GLCanvas3D &parent, const std::string &icon_filen
     m_cylinder.model.init_from(std::move(cylinder_geometry));
 }
 
-bool GLGizmoMeasure::on_mouse(const wxMouseEvent &mouse_event)
+bool GLGizmoMeasure::on_mouse(const MouseInput &mouse)
 {
-    m_mouse_pos = {double(mouse_event.GetX()), double(mouse_event.GetY())};
+    m_mouse_pos = {mouse.x, mouse.y};
 
-    if (mouse_event.Moving())
+    if (mouse.type == MouseEventType::Motion && !mouse.dragging)
     {
-        // only for sure
         m_mouse_left_down = false;
         return false;
     }
-    else if (mouse_event.Dragging())
+    else if (mouse.dragging)
     {
-        // Enable/Disable panning/rotating the 3D scene
-        // Ctrl is pressed or the mouse is not hovering a selected volume
-        bool unlock_dragging = mouse_event.CmdDown() ||
-                               (m_hover_id == -1 &&
-                                !m_parent.get_selection().contains_volume(m_parent.get_first_hover_volume_idx()));
-        // mode is not center selection or mouse is not hovering a center
-        unlock_dragging &= !mouse_event.ShiftDown() ||
+        bool unlock_dragging = mouse.cmd || (m_hover_id == -1 && !m_parent.get_selection().contains_volume(
+                                                                     m_parent.get_first_hover_volume_idx()));
+        unlock_dragging &= !mouse.shift ||
                            (m_hover_id != SEL_SPHERE_1_ID && m_hover_id != SEL_SPHERE_2_ID && m_hover_id != POINT_ID);
         return !unlock_dragging;
     }
-    else if (mouse_event.LeftDown())
+    else if (mouse.type == MouseEventType::LeftDown)
     {
-        // let the event pass through to allow panning/rotating the 3D scene
-        if (mouse_event.CmdDown())
+        if (mouse.cmd)
             return false;
 
         if (m_hover_id != -1)
@@ -571,7 +567,7 @@ bool GLGizmoMeasure::on_mouse(const wxMouseEvent &mouse_event)
         if (m_parent.get_first_hover_volume_idx() >= 0)
             m_mouse_left_down = true;
     }
-    else if (mouse_event.LeftUp())
+    else if (mouse.type == MouseEventType::LeftUp)
     {
         if (m_mouse_left_down)
         {
@@ -583,13 +579,12 @@ bool GLGizmoMeasure::on_mouse(const wxMouseEvent &mouse_event)
             // avoid closing the gizmo if the user clicks outside of any volume
             return true;
     }
-    else if (mouse_event.RightDown())
+    else if (mouse.type == MouseEventType::RightDown)
     {
-        // let the event pass through to allow panning/rotating the 3D scene
-        if (mouse_event.CmdDown())
+        if (mouse.cmd)
             return false;
     }
-    else if (mouse_event.Leaving())
+    else if (mouse.type == MouseEventType::Leave)
         m_mouse_left_down = false;
 
     return false;
@@ -718,7 +713,7 @@ std::string GLGizmoMeasure::on_get_name() const
 bool GLGizmoMeasure::on_is_activable() const
 {
     const Selection &selection = m_parent.get_selection();
-    bool res = (wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology() == ptSLA)
+    bool res = (m_parent.preset_bundle()->printers.get_edited_preset().printer_technology() == ptSLA)
                    ? selection.is_single_full_instance()
                    : selection.is_single_full_instance() || selection.is_single_volume() ||
                          selection.is_single_modifier();
@@ -740,7 +735,7 @@ void GLGizmoMeasure::on_render()
 
     update_if_needed();
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
     const float inv_zoom = (float) camera.get_inv_zoom();
 
     Vec3f position_on_model;
@@ -958,7 +953,7 @@ void GLGizmoMeasure::on_render()
     if (!m_curr_feature.has_value() && !m_selected_features.first.feature.has_value())
         return;
 
-    GLShaderProgram *shader = wxGetApp().get_shader("gouraud_light");
+    GLShaderProgram *shader = m_parent.get_shader("gouraud_light");
     if (shader == nullptr)
         return;
 
@@ -1416,7 +1411,7 @@ void GLGizmoMeasure::render_dimensioning()
         m_selected_features.first.feature->get_type() != Measure::SurfaceFeatureType::Circle)
         return;
 
-    GLShaderProgram *shader = wxGetApp().get_shader("flat");
+    GLShaderProgram *shader = m_parent.get_shader("flat");
     if (shader == nullptr)
         return;
 
@@ -1425,7 +1420,7 @@ void GLGizmoMeasure::render_dimensioning()
         if ((v2 - v1).squaredNorm() < 0.000001 || distance < 0.001f)
             return;
 
-        const Camera &camera = wxGetApp().plater()->get_camera();
+        const Camera &camera = m_parent.get_camera();
         const Matrix4d projection_view_matrix = camera.get_projection_matrix().matrix() *
                                                 camera.get_view_matrix().matrix();
         const std::array<int, 4> &viewport = camera.get_viewport();
@@ -1460,9 +1455,9 @@ void GLGizmoMeasure::render_dimensioning()
             shader->stop_using();
 
 #if SLIC3R_OPENGL_ES
-            shader = wxGetApp().get_shader("dashed_lines");
+            shader = m_parent.get_shader("dashed_lines");
 #else
-        shader = wxGetApp().get_shader("dashed_thick_lines");
+        shader = m_parent.get_shader("dashed_thick_lines");
 #endif // SLIC3R_OPENGL_ES
             if (shader == nullptr)
                 return;
@@ -1475,7 +1470,7 @@ void GLGizmoMeasure::render_dimensioning()
 #if !SLIC3R_OPENGL_ES
         }
         else
-            glsafe(::glLineWidth(2.0f * wxGetApp().imgui()->get_style_scaling()));
+            glsafe(::glLineWidth(2.0f * m_imgui->get_style_scaling()));
 #endif // !SLIC3R_OPENGL_ES
 
         // stem
@@ -1494,7 +1489,7 @@ void GLGizmoMeasure::render_dimensioning()
 #endif // !SLIC3R_OPENGL_ES
             shader->stop_using();
 
-            shader = wxGetApp().get_shader("flat");
+            shader = m_parent.get_shader("flat");
             if (shader == nullptr)
                 return;
 
@@ -1502,7 +1497,7 @@ void GLGizmoMeasure::render_dimensioning()
 #if !SLIC3R_OPENGL_ES
         }
         else
-            glsafe(::glLineWidth(1.0f * wxGetApp().imgui()->get_style_scaling()));
+            glsafe(::glLineWidth(1.0f * m_imgui->get_style_scaling()));
 #endif // !SLIC3R_OPENGL_ES
 
         // arrow 1
@@ -1517,11 +1512,11 @@ void GLGizmoMeasure::render_dimensioning()
                                     : ss_to_ndc_matrix * Geometry::translation_transform(v2ss_3) * q12ss);
         m_dimensioning.triangle.render();
 
-        const bool use_inches = wxGetApp().app_config->get_bool("use_inches");
+        const bool use_inches = m_parent.app_config()->get_bool("use_inches");
         const double curr_value = use_inches ? ObjectManipulation::mm_to_in * distance : distance;
         const std::string curr_value_str = format_double(curr_value);
         const std::string units = use_inches ? _u8L("in") : _u8L("mm");
-        const float im_scale = wxGetApp().imgui()->get_style_scaling();
+        const float im_scale = m_imgui->get_style_scaling();
         const float value_str_width = 20.0f * im_scale + ImGui::CalcTextSize(curr_value_str.c_str()).x;
         static double edit_value = 0.0;
 
@@ -1576,7 +1571,7 @@ void GLGizmoMeasure::render_dimensioning()
                     return;
 
                 const double ratio = new_value / old_value;
-                wxGetApp().plater()->take_snapshot(_L("Scale"));
+                m_parent.event_poster()->postEvent(CanvasEventType::TakeSnapshot, _u8L("Scale"));
 
                 struct TrafoData
                 {
@@ -1650,8 +1645,8 @@ void GLGizmoMeasure::render_dimensioning()
                 const Vec3d old_center = selection.get_bounding_box().center();
                 selection.setup_cache();
                 selection.scale(ratio * Vec3d::Ones(), type);
-                wxGetApp().plater()->canvas3D()->do_scale(""); // avoid storing another snapshot
-                wxGetApp().obj_manipul()->set_dirty();
+                m_parent.do_scale("");
+                m_parent.event_poster()->postEvent(CanvasEventType::ManipulationDirty);
 
                 // scale dimensioning
                 const Vec3d new_center = selection.get_bounding_box().center();
@@ -1718,7 +1713,7 @@ void GLGizmoMeasure::render_dimensioning()
         const bool on_e2_side = !on_e1_side && v_proje1.norm() > e1e2.norm();
         if (on_e1_side || on_e2_side)
         {
-            const Camera &camera = wxGetApp().plater()->get_camera();
+            const Camera &camera = m_parent.get_camera();
             const Matrix4d projection_view_matrix = camera.get_projection_matrix().matrix() *
                                                     camera.get_view_matrix().matrix();
             const std::array<int, 4> &viewport = camera.get_viewport();
@@ -1797,7 +1792,7 @@ void GLGizmoMeasure::render_dimensioning()
             m_dimensioning.arc.init_from(std::move(init_data));
         }
 
-        const Camera &camera = wxGetApp().plater()->get_camera();
+        const Camera &camera = m_parent.get_camera();
 #if !SLIC3R_OPENGL_ES
         if (OpenGLManager::get_gl_info().is_core_profile())
         {
@@ -1805,9 +1800,9 @@ void GLGizmoMeasure::render_dimensioning()
             shader->stop_using();
 
 #if SLIC3R_OPENGL_ES
-            shader = wxGetApp().get_shader("dashed_lines");
+            shader = m_parent.get_shader("dashed_lines");
 #else
-        shader = wxGetApp().get_shader("dashed_thick_lines");
+        shader = m_parent.get_shader("dashed_thick_lines");
 #endif // SLIC3R_OPENGL_ES
             if (shader == nullptr)
                 return;
@@ -1821,7 +1816,7 @@ void GLGizmoMeasure::render_dimensioning()
 #if !SLIC3R_OPENGL_ES
         }
         else
-            glsafe(::glLineWidth(2.0f * wxGetApp().imgui()->get_style_scaling()));
+            glsafe(::glLineWidth(2.0f * m_imgui->get_style_scaling()));
 #endif // !SLIC3R_OPENGL_ES
 
         // arc
@@ -1835,7 +1830,7 @@ void GLGizmoMeasure::render_dimensioning()
 #endif // !SLIC3R_OPENGL_ES
             shader->stop_using();
 
-            shader = wxGetApp().get_shader("flat");
+            shader = m_parent.get_shader("flat");
             if (shader == nullptr)
                 return;
 
@@ -1843,7 +1838,7 @@ void GLGizmoMeasure::render_dimensioning()
 #if !SLIC3R_OPENGL_ES
         }
         else
-            glsafe(::glLineWidth(1.0f * wxGetApp().imgui()->get_style_scaling()));
+            glsafe(::glLineWidth(1.0f * m_imgui->get_style_scaling()));
 #endif // !SLIC3R_OPENGL_ES
 
         // arrows
@@ -2245,7 +2240,7 @@ void GLGizmoMeasure::on_render_input_window(float x, float y, float bottom_limit
 
     // Stay off-screen until we have a reasonable height (not 32px fake size)
     // DPI-scaled threshold (100px at 100% DPI)
-    const float height_threshold = 100.0f * wxGetApp().imgui()->get_style_scaling();
+    const float height_threshold = 100.0f * m_imgui->get_style_scaling();
     if (m_popup_render_count == 0 || m_popup_height < height_threshold)
     {
         // Position just above visible area to get accurate size
@@ -2281,7 +2276,7 @@ void GLGizmoMeasure::on_render_input_window(float x, float y, float bottom_limit
         last_w = win_w; // Save the width once we have it
     }
     // Use saved width or estimate if first frame
-    float x_pos = x - (last_w > 0 ? last_w : 350.0f * wxGetApp().imgui()->get_style_scaling());
+    float x_pos = x - (last_w > 0 ? last_w : 350.0f * m_imgui->get_style_scaling());
         ImGui::SetWindowPos(ImVec2(x_pos, y), ImGuiCond_Once);
             if (last_h != win_h || last_y != y) {
         // ask canvas for another frame to render the window in the correct position
@@ -2495,7 +2490,7 @@ void GLGizmoMeasure::on_render_input_window(float x, float y, float bottom_limit
         ImGui::EndTable();
     }
 
-    const bool use_inches = wxGetApp().app_config->get_bool("use_inches");
+    const bool use_inches = m_parent.app_config()->get_bool("use_inches");
     const std::string units = use_inches ? " " + _u8L("in") : " " + _u8L("mm");
 
     ImGui::Separator();

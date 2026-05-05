@@ -13,9 +13,10 @@
 #include <glad/gl.h>
 #endif
 
-#include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/Camera.hpp"
-#include "slic3r/GUI/Plater.hpp"
+#include "slic3r/GUI/I18N.hpp"
+#include "slic3r/GUI/EventTypes.hpp"
+#include "slic3r/GUI/EventBridge.hpp"
 #include "slic3r/GUI/OpenGLManager.hpp"
 #include "slic3r/Utils/UndoRedo.hpp"
 #include "libslic3r/Model.hpp"
@@ -85,12 +86,15 @@ GLGizmoPainterBase::ClippingPlaneDataWrapper GLGizmoPainterBase::get_clipping_pl
 
 void GLGizmoPainterBase::render_triangles(const Selection &selection) const
 {
-    auto *shader = wxGetApp().get_shader("gouraud");
+    // Use the same model shader as _render_objects so painted triangles
+    // share the same depth values as the base object.
+    auto *shader = m_parent.get_model_shader();
     if (!shader)
         return;
     shader->start_using();
     shader->set_uniform("slope.actived", false);
     shader->set_uniform("print_volume.type", 0);
+    shader->set_uniform("use_color_clip_plane", false);
     shader->set_uniform("clipping_plane", this->get_clipping_plane_data().clp_dataf);
     ScopeGuard guard(
         [shader]()
@@ -115,7 +119,7 @@ void GLGizmoPainterBase::render_triangles(const Selection &selection) const
         if (is_left_handed)
             glsafe(::glFrontFace(GL_CW));
 
-        const Camera &camera = wxGetApp().plater()->get_camera();
+        const Camera &camera = m_parent.get_camera();
         const Transform3d &view_matrix = camera.get_view_matrix();
         shader->set_uniform("view_model_matrix", view_matrix * trafo_matrix);
         shader->set_uniform("projection_matrix", camera.get_projection_matrix());
@@ -129,7 +133,10 @@ void GLGizmoPainterBase::render_triangles(const Selection &selection) const
         // wrong transformation matrix is used for "Clipping of view".
         shader->set_uniform("volume_world_matrix", trafo_matrix);
 
-        m_triangle_selectors[mesh_id]->render(m_imgui, trafo_matrix);
+        m_triangle_selectors[mesh_id]->set_shader_getters([this](const std::string &name)
+                                                          { return m_parent.get_shader(name); },
+                                                          [this]() { return m_parent.get_current_shader(); });
+        m_triangle_selectors[mesh_id]->render(m_imgui, trafo_matrix, m_parent.get_camera());
         if (is_left_handed)
             glsafe(::glFrontFace(GL_CCW));
     }
@@ -141,7 +148,7 @@ void GLGizmoPainterBase::render_cursor()
     const ModelObject *mo = m_c->selection_info()->model_object();
     const Selection &selection = m_parent.get_selection();
     const ModelInstance *mi = mo->instances[selection.get_instance_idx()];
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
 
     // Precalculate transformations of individual meshes.
     std::vector<Transform3d> trafo_matrices;
@@ -186,12 +193,12 @@ void GLGizmoPainterBase::render_cursor_circle()
     const float cnv_inv_height = 1.0f / cnv_height;
 
     const Vec2d center = m_parent.get_local_mouse_position();
-    const float zoom = float(wxGetApp().plater()->get_camera().get_zoom());
+    const float zoom = float(m_parent.get_camera().get_zoom());
     const float radius = m_cursor_radius * zoom;
 
 #if !SLIC3R_OPENGL_ES
     if (!OpenGLManager::get_gl_info().is_core_profile())
-        glsafe(::glLineWidth(1.5f * wxGetApp().imgui()->get_style_scaling()));
+        glsafe(::glLineWidth(1.5f * m_imgui->get_style_scaling()));
 #endif // !SLIC3R_OPENGL_ES
 
     glsafe(::glDisable(GL_DEPTH_TEST));
@@ -259,11 +266,10 @@ void GLGizmoPainterBase::render_cursor_circle()
     }
 
 #if SLIC3R_OPENGL_ES
-    GLShaderProgram *shader = wxGetApp().get_shader("dashed_lines");
+    GLShaderProgram *shader = m_parent.get_shader("dashed_lines");
 #else
-    GLShaderProgram *shader = OpenGLManager::get_gl_info().is_core_profile()
-                                  ? wxGetApp().get_shader("dashed_thick_lines")
-                                  : wxGetApp().get_shader("flat");
+    GLShaderProgram *shader = OpenGLManager::get_gl_info().is_core_profile() ? m_parent.get_shader("dashed_thick_lines")
+                                                                             : m_parent.get_shader("flat");
 #endif // SLIC3R_OPENGL_ES
     if (shader != nullptr)
     {
@@ -287,7 +293,7 @@ void GLGizmoPainterBase::render_cursor_circle()
         if (OpenGLManager::get_gl_info().is_core_profile())
         {
 #endif // !SLIC3R_OPENGL_ES
-            const std::array<int, 4> &viewport = wxGetApp().plater()->get_camera().get_viewport();
+            const std::array<int, 4> &viewport = m_parent.get_camera().get_viewport();
             shader->set_uniform("viewport_size", Vec2d(double(viewport[2]), double(viewport[3])));
             shader->set_uniform("width", 0.25f);
             shader->set_uniform("gap_size", 0.0f);
@@ -309,7 +315,7 @@ void GLGizmoPainterBase::render_cursor_sphere(const Transform3d &trafo) const
         s_sphere->init_from(its_make_sphere(1.0, double(PI) / 12.0));
     }
 
-    GLShaderProgram *shader = wxGetApp().get_shader("flat");
+    GLShaderProgram *shader = m_parent.get_shader("flat");
     if (shader == nullptr)
         return;
 
@@ -324,7 +330,7 @@ void GLGizmoPainterBase::render_cursor_sphere(const Transform3d &trafo) const
 
     shader->start_using();
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
     Transform3d view_model_matrix = camera.get_view_matrix() * trafo *
                                     Geometry::translation_transform(m_rr.hit.cast<double>()) *
                                     complete_scaling_matrix_inverse *
@@ -399,10 +405,10 @@ void GLGizmoPainterBase::render_cursor_height_range(const Transform3d &trafo) co
     if (!z_range_geometry.is_empty())
         z_range_model.init_from(std::move(z_range_geometry));
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
     const Transform3d view_model_matrix = camera.get_view_matrix();
 
-    GLShaderProgram *shader = wxGetApp().get_shader("mm_contour");
+    GLShaderProgram *shader = m_parent.get_shader("mm_contour");
     if (shader == nullptr)
         return;
 
@@ -463,7 +469,7 @@ std::vector<std::vector<GLGizmoPainterBase::ProjectedMousePosition>> GLGizmoPain
         }
     }
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
     std::vector<ProjectedMousePosition> mesh_hit_points;
     mesh_hit_points.reserve(mouse_positions.size());
 
@@ -704,7 +710,7 @@ bool GLGizmoPainterBase::gizmo_event(SLAGizmoEventType action, const Vec2d &mous
         if (action == SLAGizmoEventType::LeftDown || action == SLAGizmoEventType::RightDown)
         {
             // Get the current mouse hit position
-            const Camera &camera = wxGetApp().plater()->get_camera();
+            const Camera &camera = m_parent.get_camera();
             const Selection &selection = m_parent.get_selection();
             const ModelObject *mo = m_c->selection_info()->model_object();
             const ModelInstance *mi = mo->instances[selection.get_instance_idx()];
@@ -748,8 +754,7 @@ bool GLGizmoPainterBase::gizmo_event(SLAGizmoEventType action, const Vec2d &mous
 
                     // Take snapshot for undo
                     wxString action_name = _L("Paint line");
-                    Plater::TakeSnapshot snapshot(wxGetApp().plater(), action_name,
-                                                  UndoRedo::SnapshotType::GizmoAction);
+                    m_parent.take_gizmo_snapshot(std::string(action_name.ToUTF8().data()));
                     update_model_object();
                 }
 
@@ -791,7 +796,7 @@ bool GLGizmoPainterBase::gizmo_event(SLAGizmoEventType action, const Vec2d &mous
                                                                   : this->get_right_button_state_type();
         }
 
-        const Camera &camera = wxGetApp().plater()->get_camera();
+        const Camera &camera = m_parent.get_camera();
         const Selection &selection = m_parent.get_selection();
         const ModelObject *mo = m_c->selection_info()->model_object();
         const ModelInstance *mi = mo->instances[selection.get_instance_idx()];
@@ -944,7 +949,7 @@ bool GLGizmoPainterBase::gizmo_event(SLAGizmoEventType action, const Vec2d &mous
         if (m_triangle_selectors.empty())
             return false;
 
-        const Camera &camera = wxGetApp().plater()->get_camera();
+        const Camera &camera = m_parent.get_camera();
         const Selection &selection = m_parent.get_selection();
         const ModelObject *mo = m_c->selection_info()->model_object();
         const ModelInstance *mi = mo->instances[selection.get_instance_idx()];
@@ -1013,7 +1018,7 @@ bool GLGizmoPainterBase::gizmo_event(SLAGizmoEventType action, const Vec2d &mous
     {
         // Take snapshot and update ModelVolume data.
         wxString action_name = this->handle_snapshot_action_name(control_down, m_button_down);
-        Plater::TakeSnapshot snapshot(wxGetApp().plater(), action_name, UndoRedo::SnapshotType::GizmoAction);
+        m_parent.take_gizmo_snapshot(std::string(action_name.ToUTF8().data()));
         update_model_object();
 
         m_button_down = Button::None;
@@ -1024,84 +1029,55 @@ bool GLGizmoPainterBase::gizmo_event(SLAGizmoEventType action, const Vec2d &mous
     return false;
 }
 
-bool GLGizmoPainterBase::on_mouse(const wxMouseEvent &mouse_event)
+bool GLGizmoPainterBase::on_mouse(const MouseInput &mouse)
 {
-    // wxCoord == int --> wx/types.h
-    Vec2i mouse_coord(mouse_event.GetX(), mouse_event.GetY());
+    Vec2i mouse_coord((int) mouse.x, (int) mouse.y);
     Vec2d mouse_pos = mouse_coord.cast<double>();
 
-    // Shift is used for erasing, Ctrl starts line mode
-    bool shift_down = mouse_event.ShiftDown();
-
-    if (mouse_event.Moving())
+    if (mouse.type == MouseEventType::Motion && !mouse.dragging)
     {
-        gizmo_event(SLAGizmoEventType::Moving, mouse_pos, mouse_event.ShiftDown(), mouse_event.AltDown(), false);
+        gizmo_event(SLAGizmoEventType::Moving, mouse_pos, mouse.shift, mouse.alt, false);
         return false;
     }
 
-    // when control is down we allow scene pan and rotation even when clicking
-    // over some object
-    bool control_down = mouse_event.CmdDown();
-    bool grabber_contains_mouse = (get_hover_id() != -1);
+    bool control_down = mouse.cmd;
 
     const Selection &selection = m_parent.get_selection();
     int selected_object_idx = selection.get_object_idx();
-    if (mouse_event.LeftDown())
+    if (mouse.type == MouseEventType::LeftDown)
     {
-        if (gizmo_event(SLAGizmoEventType::LeftDown, mouse_pos, mouse_event.ShiftDown(), mouse_event.AltDown(),
-                        control_down))
-            // the gizmo got the event and took some action, there is no need
-            // to do anything more
+        if (gizmo_event(SLAGizmoEventType::LeftDown, mouse_pos, mouse.shift, mouse.alt, control_down))
             return true;
     }
-    else if (mouse_event.RightDown())
+    else if (mouse.type == MouseEventType::RightDown)
     {
-        if (selected_object_idx != -1 && gizmo_event(SLAGizmoEventType::RightDown, mouse_pos, mouse_event.ShiftDown(),
-                                                     mouse_event.AltDown(), control_down))
-            // event was taken care of
+        if (selected_object_idx != -1 &&
+            gizmo_event(SLAGizmoEventType::RightDown, mouse_pos, mouse.shift, mouse.alt, control_down))
             return true;
     }
-    else if (mouse_event.Dragging())
+    else if (mouse.dragging)
     {
         if (m_parent.get_move_volume_id() != -1)
-            // don't allow dragging objects with the Sla gizmo on
             return true;
-        if (gizmo_event(SLAGizmoEventType::Dragging, mouse_pos, mouse_event.ShiftDown(), mouse_event.AltDown(),
-                        control_down))
+        if (gizmo_event(SLAGizmoEventType::Dragging, mouse_pos, mouse.shift, mouse.alt, control_down))
         {
-            // the gizmo got the event and took some action, no need to do
-            // anything more here
             m_parent.set_as_dirty();
             return true;
         }
-        // if(control_down && (mouse_event.LeftIsDown() || mouse_event.RightIsDown()))
-        // {
-        //     // CTRL has been pressed while already dragging -> stop current action
-        //     if (mouse_event.LeftIsDown())
-        //         gizmo_event(SLAGizmoEventType::LeftUp, mouse_pos, mouse_event.ShiftDown(), mouse_event.AltDown(), true);
-        //     else if (mouse_event.RightIsDown())
-        //         gizmo_event(SLAGizmoEventType::RightUp, mouse_pos, mouse_event.ShiftDown(), mouse_event.AltDown(), true);
-        //     return false;
-        // }
     }
-    else if (mouse_event.LeftUp())
+    else if (mouse.type == MouseEventType::LeftUp)
     {
         if (!m_parent.is_mouse_dragging())
         {
-            // in case SLA/FDM gizmo is selected, we just pass the LeftUp
-            // event and stop processing - neither object moving or selecting
-            // is suppressed in that case
-            gizmo_event(SLAGizmoEventType::LeftUp, mouse_pos, mouse_event.ShiftDown(), mouse_event.AltDown(),
-                        control_down);
+            gizmo_event(SLAGizmoEventType::LeftUp, mouse_pos, mouse.shift, mouse.alt, control_down);
             return true;
         }
     }
-    else if (mouse_event.RightUp())
+    else if (mouse.type == MouseEventType::RightUp)
     {
         if (!m_parent.is_mouse_dragging())
         {
-            gizmo_event(SLAGizmoEventType::RightUp, mouse_pos, mouse_event.ShiftDown(), mouse_event.AltDown(),
-                        control_down);
+            gizmo_event(SLAGizmoEventType::RightUp, mouse_pos, mouse.shift, mouse.alt, control_down);
             return true;
         }
     }
@@ -1157,8 +1133,8 @@ bool GLGizmoPainterBase::on_is_activable() const
 {
     const Selection &selection = m_parent.get_selection();
 
-    if (wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology() != ptFFF ||
-        !selection.is_single_full_instance() || wxGetApp().get_mode() == comSimple)
+    if (m_parent.preset_bundle()->printers.get_edited_preset().printer_technology() != ptFFF ||
+        !selection.is_single_full_instance() || m_parent.get_mode() == comSimple)
         return false;
 
     // Check that none of the selected volumes is outside. Only SLA auxiliaries (supports) are allowed outside.
@@ -1169,8 +1145,8 @@ bool GLGizmoPainterBase::on_is_activable() const
 
 bool GLGizmoPainterBase::on_is_selectable() const
 {
-    return (wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology() == ptFFF &&
-            wxGetApp().get_mode() != comSimple);
+    return (m_parent.preset_bundle()->printers.get_edited_preset().printer_technology() == ptFFF &&
+            m_parent.get_mode() != comSimple);
 }
 
 CommonGizmosDataID GLGizmoPainterBase::on_get_requirements() const
@@ -1237,7 +1213,7 @@ ColorRGBA TriangleSelectorGUI::get_seed_fill_color(const ColorRGBA &base_color)
     return saturate(base_color, 0.75f);
 }
 
-void TriangleSelectorGUI::render(ImGuiWrapper *imgui, const Transform3d &matrix)
+void TriangleSelectorGUI::render(ImGuiWrapper *imgui, const Transform3d &matrix, const Camera &camera)
 {
     // Colors indexed by state value (0-9). 0=unused, 1=ENFORCER, 2=BLOCKER, 3=ORGANIC, 4=GRID, 5-9=extended.
     static const std::array<ColorRGBA, 10> state_colors = {{
@@ -1259,11 +1235,11 @@ void TriangleSelectorGUI::render(ImGuiWrapper *imgui, const Transform3d &matrix)
         m_update_render_data = false;
     }
 
-    auto *shader = wxGetApp().get_current_shader();
+    auto *shader = m_get_current_shader ? m_get_current_shader() : nullptr;
     if (!shader)
         return;
 
-    assert(shader->get_name() == "gouraud");
+    assert(shader->get_name() == "gouraud" || shader->get_name() == "phong");
 
     for (auto iva :
          {std::make_pair(&m_iva_enforcers, state_colors[1]), std::make_pair(&m_iva_blockers, state_colors[2]),
@@ -1289,7 +1265,7 @@ void TriangleSelectorGUI::render(ImGuiWrapper *imgui, const Transform3d &matrix)
         m_iva_seed_fills[i].render();
     }
 
-    render_paint_contour(matrix);
+    render_paint_contour(matrix, camera);
 
 #ifdef PREFLIGHT_TRIANGLE_SELECTOR_DEBUG
     if (imgui)
@@ -1483,16 +1459,16 @@ void TriangleSelectorGUI::render_debug(ImGuiWrapper *imgui)
             m_varrays[i].init_from(std::move(varrays_data[i]));
     }
 
-    GLShaderProgram *curr_shader = wxGetApp().get_current_shader();
+    GLShaderProgram *curr_shader = m_get_current_shader ? m_get_current_shader() : nullptr;
     if (curr_shader != nullptr)
         curr_shader->stop_using();
 
-    GLShaderProgram *shader = wxGetApp().get_shader("flat");
+    GLShaderProgram *shader = m_get_shader ? m_get_shader("flat") : nullptr;
     if (shader != nullptr)
     {
         shader->start_using();
 
-        const Camera &camera = wxGetApp().plater()->get_camera();
+        const Camera &camera = m_parent.get_camera();
         shader->set_uniform("view_model_matrix", camera.get_view_matrix());
         shader->set_uniform("projection_matrix", camera.get_projection_matrix());
 
@@ -1549,19 +1525,18 @@ void TriangleSelectorGUI::update_paint_contour()
         m_paint_contour.init_from(std::move(init_data));
 }
 
-void TriangleSelectorGUI::render_paint_contour(const Transform3d &matrix)
+void TriangleSelectorGUI::render_paint_contour(const Transform3d &matrix, const Camera &camera)
 {
-    auto *curr_shader = wxGetApp().get_current_shader();
+    auto *curr_shader = m_get_current_shader ? m_get_current_shader() : nullptr;
     if (curr_shader != nullptr)
         curr_shader->stop_using();
 
-    auto *contour_shader = wxGetApp().get_shader("mm_contour");
+    auto *contour_shader = m_get_shader ? m_get_shader("mm_contour") : nullptr;
     if (contour_shader != nullptr)
     {
         contour_shader->start_using();
 
         contour_shader->set_uniform("offset", OpenGLManager::get_gl_info().is_mesa() ? 0.0005 : 0.00001);
-        const Camera &camera = wxGetApp().plater()->get_camera();
         contour_shader->set_uniform("view_model_matrix", camera.get_view_matrix() * matrix);
         contour_shader->set_uniform("projection_matrix", camera.get_projection_matrix());
 
@@ -1588,7 +1563,7 @@ void GLGizmoPainterBase::draw_line_between_points(const Vec3f &start, const Vec3
                                                    mo->volumes[mesh_idx]->get_matrix_no_offset();
 
     const TriangleSelector::ClippingPlane clp = get_clipping_plane_in_volume_coordinates(trafo_matrix);
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
 
     // Use DoublePointCursor to paint between points
     std::unique_ptr<TriangleSelector::Cursor> cursor = TriangleSelector::DoublePointCursor::cursor_factory(
@@ -1606,7 +1581,7 @@ void GLGizmoPainterBase::update_line_preview(const Vec2d &mouse_position)
     if (!m_line_start_set)
         return;
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
     const Selection &selection = m_parent.get_selection();
     const ModelObject *mo = m_c->selection_info()->model_object();
     const ModelInstance *mi = mo->instances[selection.get_instance_idx()];
@@ -1686,7 +1661,7 @@ void GLGizmoPainterBase::render_line_preview() const
     if (!m_line_preview.is_initialized())
         return;
 
-    GLShaderProgram *shader = wxGetApp().get_shader("flat");
+    GLShaderProgram *shader = m_parent.get_shader("flat");
     if (!shader)
         return;
 
@@ -1702,8 +1677,8 @@ void GLGizmoPainterBase::render_line_preview() const
     glsafe(::glDisable(GL_DEPTH_TEST));
 
     shader->start_using();
-    shader->set_uniform("view_model_matrix", wxGetApp().plater()->get_camera().get_view_matrix() * trafo_matrix);
-    shader->set_uniform("projection_matrix", wxGetApp().plater()->get_camera().get_projection_matrix());
+    shader->set_uniform("view_model_matrix", m_parent.get_camera().get_view_matrix() * trafo_matrix);
+    shader->set_uniform("projection_matrix", m_parent.get_camera().get_projection_matrix());
 
     // Use paint color for preview based on which button started the line
     ColorRGBA color;
@@ -1722,7 +1697,7 @@ void GLGizmoPainterBase::render_line_preview() const
     }
 
     // Make line more opaque and thicker when snap is active
-    const float scale = wxGetApp().imgui()->get_style_scaling();
+    const float scale = m_imgui->get_style_scaling();
     if (m_z_snap_active)
     {
         color.a(1.0f);                       // Fully opaque when snapped

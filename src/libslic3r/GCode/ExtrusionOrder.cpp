@@ -299,6 +299,8 @@ std::vector<IslandExtrusions> extract_island_extrusions(const LayerSlice &lslice
         result.push_back(IslandExtrusions{&region});
         IslandExtrusions &island_extrusions{result.back()};
         island_extrusions.infill_first = print.config().infill_first;
+        island_extrusions.island_area_mm2 = static_cast<float>(std::abs(island.boundary.area()) * SCALING_FACTOR *
+                                                               SCALING_FACTOR);
 
         if (print.config().infill_first)
         {

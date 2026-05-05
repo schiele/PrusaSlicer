@@ -4,11 +4,10 @@
 ///|/
 #include "GLGizmoAlign.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
-#include "slic3r/GUI/GUI_App.hpp"
-#include "slic3r/GUI/Plater.hpp"
 #include "slic3r/GUI/Camera.hpp"
-#include "slic3r/GUI/GUI_ObjectManipulation.hpp"
-#include "slic3r/GUI/GUI_ObjectList.hpp"
+#include "slic3r/GUI/I18N.hpp"
+#include "slic3r/GUI/EventTypes.hpp"
+#include "slic3r/GUI/EventBridge.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmosCommon.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmosManager.hpp"
 #include "slic3r/GUI/Selection.hpp"
@@ -101,9 +100,9 @@ void GLGizmoAlign::on_set_state()
                 ModelObject *obj = model.objects[m_source.object_idx];
                 if (obj != nullptr && m_source.instance_idx < static_cast<int>(obj->instances.size()))
                 {
-                    wxGetApp().plater()->take_snapshot(_L("Align to Face"));
+                    m_parent.event_poster()->postEvent(CanvasEventType::TakeSnapshot, _u8L("Align to Face"));
                     obj->invalidate_bounding_box();
-                    m_parent.post_event(SimpleEvent(EVT_GLCANVAS_INSTANCE_MOVED));
+                    m_parent.event_poster()->postEvent(CanvasEventType::InstanceMoved);
                 }
             }
         }
@@ -163,7 +162,7 @@ static bool is_relief_object(const ModelObject *obj)
 
 bool GLGizmoAlign::raycast_face(const Vec2d &mouse_pos, FaceData &face_out)
 {
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
     const Selection &selection = m_parent.get_selection();
     const Model &model = *selection.get_model();
 
@@ -399,7 +398,7 @@ void GLGizmoAlign::apply_alignment()
             obj->instances[m_source.instance_idx]->set_transformation(new_transformation);
     }
 
-    wxGetApp().obj_manipul()->set_dirty();
+    m_parent.event_poster()->postEvent(CanvasEventType::ManipulationDirty);
     m_parent.set_as_dirty();
 }
 
@@ -575,9 +574,9 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
     if (m_source.object_idx == m_target.object_idx)
         return;
 
-    wxGetApp().plater()->take_snapshot(_(snapshot_name));
+    m_parent.event_poster()->postEvent(CanvasEventType::TakeSnapshot, I18N::translate_utf8(snapshot_name));
 
-    Model &model = wxGetApp().plater()->model();
+    Model &model = *m_parent.get_model();
 
     if (m_source.object_idx >= static_cast<int>(model.objects.size()) ||
         m_target.object_idx >= static_cast<int>(model.objects.size()))
@@ -659,7 +658,7 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
 
             if (tgt_vol == nullptr)
             {
-                auto *notif = wxGetApp().plater()->get_notification_manager();
+                auto *notif = m_parent.get_notification_manager();
                 notif->push_notification(NotificationType::BooleanOperationFailed,
                                          NotificationManager::NotificationLevel::WarningNotificationLevel,
                                          std::string("Target object has no solid part to weld into."));
@@ -709,7 +708,7 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
                         new_vol->set_transformation(vol_trafo);
                         new_vol->name = src_obj->name + " (welded)";
 
-                        auto *notif = wxGetApp().plater()->get_notification_manager();
+                        auto *notif = m_parent.get_notification_manager();
                         notif->push_notification(NotificationType::BooleanOperationFailed,
                                                  NotificationManager::NotificationLevel::WarningNotificationLevel,
                                                  std::string("Boolean union failed: ") + e.what());
@@ -726,7 +725,7 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
                         new_vol->set_transformation(vol_trafo);
                         new_vol->name = src_obj->name + " (welded)";
 
-                        auto *notif = wxGetApp().plater()->get_notification_manager();
+                        auto *notif = m_parent.get_notification_manager();
                         notif->push_notification(NotificationType::BooleanOperationFailed,
                                                  NotificationManager::NotificationLevel::WarningNotificationLevel,
                                                  std::string("Boolean union failed with unknown error."));
@@ -750,7 +749,7 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
 
             if (tgt_vol == nullptr)
             {
-                auto *notif = wxGetApp().plater()->get_notification_manager();
+                auto *notif = m_parent.get_notification_manager();
                 notif->push_notification(NotificationType::BooleanOperationFailed,
                                          NotificationManager::NotificationLevel::WarningNotificationLevel,
                                          std::string("Target object has no solid part to subtract from."));
@@ -798,7 +797,7 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
                         new_vol->set_transformation(vol_trafo);
                         new_vol->name = src_obj->name + " (subtract)";
 
-                        auto *notif = wxGetApp().plater()->get_notification_manager();
+                        auto *notif = m_parent.get_notification_manager();
                         notif->push_notification(NotificationType::BooleanOperationFailed,
                                                  NotificationManager::NotificationLevel::WarningNotificationLevel,
                                                  std::string("Boolean subtract failed: ") + e.what());
@@ -813,7 +812,7 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
                         new_vol->set_transformation(vol_trafo);
                         new_vol->name = src_obj->name + " (subtract)";
 
-                        auto *notif = wxGetApp().plater()->get_notification_manager();
+                        auto *notif = m_parent.get_notification_manager();
                         notif->push_notification(NotificationType::BooleanOperationFailed,
                                                  NotificationManager::NotificationLevel::WarningNotificationLevel,
                                                  std::string("Boolean subtract failed with unknown error."));
@@ -860,8 +859,8 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
         if (m_parent.get_csg_preview())
             m_parent.get_csg_preview()->invalidate_all();
 
-        wxGetApp().plater()->update();
-        wxGetApp().obj_list()->update_after_undo_redo();
+        m_parent.event_poster()->postEvent(CanvasEventType::PlaterUpdate);
+        m_parent.event_poster()->postEvent(CanvasEventType::ObjectListUpdateAfterUndoRedo);
         m_parent.set_as_dirty();
         wxEndBusyCursor();
     }
@@ -875,7 +874,7 @@ void GLGizmoAlign::accept_as_volume(ModelVolumeType volume_type, const std::stri
 
 bool GLGizmoAlign::intersect_target_plane(const Vec2d &mouse_pos, Vec3d &hit_point)
 {
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
     Vec3d ray_origin, ray_dir;
     CameraUtils::ray_from_screen_pos(camera, mouse_pos, ray_origin, ray_dir);
 
@@ -894,16 +893,15 @@ bool GLGizmoAlign::intersect_target_plane(const Vec2d &mouse_pos, Vec3d &hit_poi
     return true;
 }
 
-bool GLGizmoAlign::on_mouse(const wxMouseEvent &mouse_event)
+bool GLGizmoAlign::on_mouse(const MouseInput &mouse)
 {
     if (m_state != On)
         return false;
 
-    Vec2d mouse_pos(mouse_event.GetX(), mouse_event.GetY());
+    Vec2d mouse_pos(mouse.x, mouse.y);
 
-    // Track mouse movement to update snap point indicators during face selection.
-    // Skip synthetic (0,0) events from VM/RDP mouse drivers that would clear snap state.
-    if (mouse_event.Moving() && (m_align_state == EState::Idle || m_align_state == EState::SourceSelected) &&
+    if (mouse.type == MouseEventType::Motion &&
+        (m_align_state == EState::Idle || m_align_state == EState::SourceSelected) &&
         (mouse_pos.x() != 0.0 || mouse_pos.y() != 0.0))
     {
         update_hover_snap_points(mouse_pos);
@@ -911,7 +909,7 @@ bool GLGizmoAlign::on_mouse(const wxMouseEvent &mouse_event)
         return false; // Don't consume - let canvas handle hover highlighting
     }
 
-    if (mouse_event.LeftDown())
+    if (mouse.type == MouseEventType::LeftDown)
     {
         if (m_align_state == EState::Idle)
         {
@@ -1009,7 +1007,7 @@ bool GLGizmoAlign::on_mouse(const wxMouseEvent &mouse_event)
             if (ImGui::GetIO().WantCaptureMouse)
                 return false;
 
-            if (mouse_event.ShiftDown())
+            if (mouse.shift)
             {
                 Vec3d hit;
                 if (intersect_target_plane(mouse_pos, hit))
@@ -1031,7 +1029,7 @@ bool GLGizmoAlign::on_mouse(const wxMouseEvent &mouse_event)
         }
     }
 
-    if (mouse_event.Dragging() && mouse_event.LeftIsDown() && m_align_state == EState::Aligned)
+    if (mouse.dragging && mouse.left_down && m_align_state == EState::Aligned)
     {
         if (m_plane_dragging)
         {
@@ -1087,7 +1085,7 @@ bool GLGizmoAlign::on_mouse(const wxMouseEvent &mouse_event)
         return false;
     }
 
-    if (mouse_event.LeftUp())
+    if (mouse.type == MouseEventType::LeftUp)
     {
         if (m_plane_dragging)
         {
@@ -1128,7 +1126,7 @@ void GLGizmoAlign::on_render()
             // Draw snap ring around hovered snap points
             if (sp.hovered && m_snap_ring_model.is_initialized())
             {
-                const Camera &camera = wxGetApp().plater()->get_camera();
+                const Camera &camera = m_parent.get_camera();
                 auto viewport = camera.get_viewport();
                 double pixel_size;
                 if (camera.get_type() == Camera::EType::Perspective)
@@ -1167,7 +1165,7 @@ void GLGizmoAlign::on_render()
                 const Transform3d &view_matrix = camera.get_view_matrix();
                 const Transform3d &projection_matrix = camera.get_projection_matrix();
 
-                GLShaderProgram *shader = wxGetApp().get_shader("gouraud_light");
+                GLShaderProgram *shader = m_parent.get_shader("gouraud_light");
                 if (shader != nullptr)
                 {
                     shader->start_using();
@@ -1206,7 +1204,7 @@ void GLGizmoAlign::on_render()
             // Draw snap ring around the snapped point
             if (snapped && m_snap_ring_model.is_initialized())
             {
-                const Camera &camera = wxGetApp().plater()->get_camera();
+                const Camera &camera = m_parent.get_camera();
                 auto viewport = camera.get_viewport();
                 double pixel_size;
                 if (camera.get_type() == Camera::EType::Perspective)
@@ -1243,7 +1241,7 @@ void GLGizmoAlign::on_render()
                 const Transform3d &view_matrix = camera.get_view_matrix();
                 const Transform3d &projection_matrix = camera.get_projection_matrix();
 
-                GLShaderProgram *shader = wxGetApp().get_shader("gouraud_light");
+                GLShaderProgram *shader = m_parent.get_shader("gouraud_light");
                 if (shader != nullptr)
                 {
                     shader->start_using();
@@ -1316,11 +1314,11 @@ void GLGizmoAlign::render_face_indicator(const FaceData &face, const ColorRGBA &
     rot.col(2) = z_axis;
     trafo.linear() = rot * Eigen::Scaling(static_cast<double>(disc_radius));
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
     const Transform3d &view_matrix = camera.get_view_matrix();
     const Transform3d &projection_matrix = camera.get_projection_matrix();
 
-    GLShaderProgram *shader = wxGetApp().get_shader("gouraud_light");
+    GLShaderProgram *shader = m_parent.get_shader("gouraud_light");
     if (shader != nullptr)
     {
         shader->start_using();
@@ -1341,7 +1339,7 @@ void GLGizmoAlign::render_face_indicator(const FaceData &face, const ColorRGBA &
 
 Vec2d GLGizmoAlign::project_to_screen(const Vec3d &world_pos) const
 {
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
     Point pt = CameraUtils::project(camera, world_pos);
     return Vec2d(static_cast<double>(pt.x()), static_cast<double>(pt.y()));
 }
@@ -1851,7 +1849,7 @@ void GLGizmoAlign::render_snap_indicator(const Vec3d &position, const Vec3d &nor
     }
 
     // Compute a world-space size that appears as a fixed screen-space size
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
     const auto &viewport = camera.get_viewport();
     double pixel_size;
     if (camera.get_type() == Camera::EType::Perspective)
@@ -1889,7 +1887,7 @@ void GLGizmoAlign::render_snap_indicator(const Vec3d &position, const Vec3d &nor
     const Transform3d &view_matrix = camera.get_view_matrix();
     const Transform3d &projection_matrix = camera.get_projection_matrix();
 
-    GLShaderProgram *shader = wxGetApp().get_shader("gouraud_light");
+    GLShaderProgram *shader = m_parent.get_shader("gouraud_light");
     if (shader != nullptr)
     {
         shader->start_using();

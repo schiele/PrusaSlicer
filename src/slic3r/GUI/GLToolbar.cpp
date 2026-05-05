@@ -7,6 +7,7 @@
 #include "libslic3r/libslic3r.h"
 
 #include "GLToolbar.hpp"
+#include "InputEvents_wx.hpp"
 
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
@@ -534,30 +535,30 @@ void GLToolbar::render(const GLCanvas3D &parent)
     }
 }
 
-bool GLToolbar::on_mouse(wxMouseEvent &evt, GLCanvas3D &parent)
+bool GLToolbar::on_mouse(const MouseInput &mouse, GLCanvas3D &parent)
 {
     if (!m_enabled)
         return false;
 
-    const Vec2d mouse_pos((double) evt.GetX(), (double) evt.GetY());
+    const Vec2d mouse_pos(mouse.x, mouse.y);
     bool processed = false;
 
     // mouse anywhere
-    if (!evt.Dragging() && !evt.Leaving() && !evt.Entering() && m_mouse_capture.parent != nullptr)
+    if (!mouse.dragging && mouse.type != MouseEventType::Leave && mouse.type != MouseEventType::Enter &&
+        m_mouse_capture.parent != nullptr)
     {
-        if (m_mouse_capture.any() && (evt.LeftUp() || evt.MiddleUp() || evt.RightUp()))
+        if (m_mouse_capture.any() && (mouse.type == MouseEventType::LeftUp || mouse.type == MouseEventType::MiddleUp ||
+                                      mouse.type == MouseEventType::RightUp))
         {
-            // prevents loosing selection into the scene if mouse down was done inside the toolbar and mouse up was down outside it,
-            // as when switching between views
             m_mouse_capture.reset();
             return true;
         }
         m_mouse_capture.reset();
     }
 
-    if (evt.Moving())
+    if (mouse.type == MouseEventType::Motion && !mouse.dragging)
         update_hover_state(mouse_pos, parent);
-    else if (evt.LeftUp())
+    else if (mouse.type == MouseEventType::LeftUp)
     {
         if (m_mouse_capture.left)
         {
@@ -567,7 +568,7 @@ bool GLToolbar::on_mouse(wxMouseEvent &evt, GLCanvas3D &parent)
         else
             return false;
     }
-    else if (evt.MiddleUp())
+    else if (mouse.type == MouseEventType::MiddleUp)
     {
         if (m_mouse_capture.middle)
         {
@@ -577,7 +578,7 @@ bool GLToolbar::on_mouse(wxMouseEvent &evt, GLCanvas3D &parent)
         else
             return false;
     }
-    else if (evt.RightUp())
+    else if (mouse.type == MouseEventType::RightUp)
     {
         if (m_mouse_capture.right)
         {
@@ -587,10 +588,9 @@ bool GLToolbar::on_mouse(wxMouseEvent &evt, GLCanvas3D &parent)
         else
             return false;
     }
-    else if (evt.Dragging())
+    else if (mouse.dragging)
     {
         if (m_mouse_capture.any())
-            // if the button down was done on this toolbar, prevent from dragging into the scene
             processed = true;
         else
             return false;
@@ -600,7 +600,7 @@ bool GLToolbar::on_mouse(wxMouseEvent &evt, GLCanvas3D &parent)
     if (item_id != -1)
     {
         // mouse inside toolbar
-        if (evt.LeftDown() || evt.LeftDClick())
+        if (mouse.type == MouseEventType::LeftDown || mouse.type == MouseEventType::LeftDClick)
         {
             m_mouse_capture.left = true;
             m_mouse_capture.parent = &parent;
@@ -608,17 +608,16 @@ bool GLToolbar::on_mouse(wxMouseEvent &evt, GLCanvas3D &parent)
             if (item_id != -2 && !m_items[item_id]->is_separator() && !m_items[item_id]->is_disabled() &&
                 (m_pressed_toggable_id == -1 || m_items[item_id]->get_last_action_type() == GLToolbarItem::Left))
             {
-                // mouse is inside an icon
                 do_action(GLToolbarItem::Left, item_id, parent, true);
                 parent.set_as_dirty();
             }
         }
-        else if (evt.MiddleDown())
+        else if (mouse.type == MouseEventType::MiddleDown)
         {
             m_mouse_capture.middle = true;
             m_mouse_capture.parent = &parent;
         }
-        else if (evt.RightDown())
+        else if (mouse.type == MouseEventType::RightDown)
         {
             m_mouse_capture.right = true;
             m_mouse_capture.parent = &parent;
@@ -626,7 +625,6 @@ bool GLToolbar::on_mouse(wxMouseEvent &evt, GLCanvas3D &parent)
             if (item_id != -2 && !m_items[item_id]->is_separator() && !m_items[item_id]->is_disabled() &&
                 (m_pressed_toggable_id == -1 || m_items[item_id]->get_last_action_type() == GLToolbarItem::Right))
             {
-                // mouse is inside an icon
                 do_action(GLToolbarItem::Right, item_id, parent, true);
                 parent.set_as_dirty();
             }

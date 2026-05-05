@@ -48,8 +48,16 @@ public:
     explicit TriangleSelectorGUI(const TriangleMesh &mesh) : TriangleSelector(mesh) {}
     virtual ~TriangleSelectorGUI() = default;
 
-    virtual void render(ImGuiWrapper *imgui, const Transform3d &matrix);
-    void render(const Transform3d &matrix) { this->render(nullptr, matrix); }
+    using ShaderGetterFn = std::function<GLShaderProgram *(const std::string &)>;
+    using CurrentShaderGetterFn = std::function<GLShaderProgram *()>;
+    void set_shader_getters(ShaderGetterFn get_shader, CurrentShaderGetterFn get_current_shader)
+    {
+        m_get_shader = std::move(get_shader);
+        m_get_current_shader = std::move(get_current_shader);
+    }
+
+    virtual void render(ImGuiWrapper *imgui, const Transform3d &matrix, const Camera &camera);
+    void render(const Transform3d &matrix, const Camera &camera) { this->render(nullptr, matrix, camera); }
 
     void request_update_render_data() { m_update_render_data = true; }
 
@@ -61,6 +69,8 @@ public:
 
 protected:
     bool m_update_render_data = false;
+    ShaderGetterFn m_get_shader;
+    CurrentShaderGetterFn m_get_current_shader;
 
     static ColorRGBA get_seed_fill_color(const ColorRGBA &base_color);
 
@@ -82,7 +92,7 @@ protected:
     GLModel m_paint_contour;
 
     void update_paint_contour();
-    void render_paint_contour(const Transform3d &matrix);
+    void render_paint_contour(const Transform3d &matrix, const Camera &camera);
 };
 
 // Following class is a base class for a gizmo with ability to paint on mesh
@@ -122,7 +132,7 @@ public:
     /// <param name="mouse_event">Keep information about mouse click</param>
     /// <returns>Return True when use the information and don't want to
     /// propagate it otherwise False.</returns>
-    bool on_mouse(const wxMouseEvent &mouse_event) override;
+    bool on_mouse(const MouseInput &mouse) override;
 
 protected:
     virtual void render_triangles(const Selection &selection) const;

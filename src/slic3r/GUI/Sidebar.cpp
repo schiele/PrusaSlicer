@@ -1579,6 +1579,7 @@ wxPanel *PrintSettingsPanel::BuildLayersContent()
         auto *interlock_group = CreateFlatStaticBoxSizer(content, _L("Interlocking"));
         CreateSettingRow(content, interlock_group, "interlock_perimeters_enabled", _L("Enable interlock perimeters"));
         CreateSettingRow(content, interlock_group, "interlock_perimeter_count", _L("Interlock perimeter count"));
+        CreateSettingRow(content, interlock_group, "interlock_regular_perimeters", _L("Perimeters while interlocking"));
         CreateSettingRow(content, interlock_group, "interlock_solid_layers_top", _L("Solid layers above"));
         CreateSettingRow(content, interlock_group, "interlock_solid_layers_bottom", _L("Solid layers below"));
         CreateSettingRow(content, interlock_group, "interlock_perimeter_overlap", _L("Interlock perimeter overlap"));
@@ -2888,6 +2889,7 @@ void PrintSettingsPanel::ApplyToggleLogic()
     // Interlocking perimeters dependencies
     bool interlock_enabled = config.opt_bool("interlock_perimeters_enabled");
     ToggleOption("interlock_perimeter_count", interlock_enabled);
+    ToggleOption("interlock_regular_perimeters", interlock_enabled);
     ToggleOption("interlock_solid_layers_top", interlock_enabled);
     ToggleOption("interlock_solid_layers_bottom", interlock_enabled);
     ToggleOption("interlock_perimeter_overlap", interlock_enabled);

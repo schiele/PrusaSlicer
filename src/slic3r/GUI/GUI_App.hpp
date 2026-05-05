@@ -419,6 +419,11 @@ public:
     GLShaderProgram *get_shader(const std::string &shader_name) { return m_opengl_mgr.get_shader(shader_name); }
     GLShaderProgram *get_current_shader() { return m_opengl_mgr.get_current_shader(); }
 
+    // Per-pixel lit utility shader (phong_light) respecting the user preference, with gouraud_light fallback
+    GLShaderProgram *get_utility_shader();
+    // Per-pixel lit model shader (phong) respecting the user preference, with gouraud fallback
+    GLShaderProgram *get_model_shader();
+
     bool is_gl_version_greater_or_equal_to(unsigned int major, unsigned int minor) const
     {
         return m_opengl_mgr.get_gl_info().is_version_greater_or_equal_to(major, minor);

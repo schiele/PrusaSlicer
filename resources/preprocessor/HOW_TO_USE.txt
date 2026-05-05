@@ -1,0 +1,348 @@
+preFlight Pre-Processor Scripts
+================================
+
+Pre-processor scripts give you structured access to your sliced G-code
+before the preview renders. You can inspect and modify layers, moves,
+feedrates, temperatures, fan speeds, and more using Python.
+
+Security
+--------
+Preprocessing scripts are Python programs that run with FULL ACCESS
+to your computer - filesystem, network, subprocesses, and everything
+else Python can do. This is the same trust model as post-processing
+scripts in other slicers.
+
+preFlight requires explicit consent before any scripts can run.
+The first time you enable preprocessing, a security warning explains
+the risk and asks for confirmation. You can revoke consent at any
+time via Configuration > Preferences > Preprocessing.
+
+Only use scripts you trust. Review third-party scripts before adding
+them to your profiles.
+
+Getting Started
+---------------
+1. Open Print Settings, Filament, or Printer Settings
+2. Go to the Preprocessing tab
+3. Check "Enable preprocessing" (you will be prompted to accept
+   the security consent on first use)
+4. Click "Add Script..." to select a .py script from anywhere
+   on your computer (samples are in resources/preprocessor/samples/)
+5. Slice a model - preFlight runs your selected scripts before
+   rendering the preview
+6. Changes appear in both the preview and the exported G-code
+
+Scripts from all three profiles (Print, Filament, Printer) run
+together at slice time. The execution order between categories is
+configurable in Configuration > Preferences > Preprocessing.
+Within each category, scripts run in the order listed.
+
+Writing a Script
+----------------
+Every script must define a process() function:
+
+    import preFlight
+    from preFlight import MoveType, ExtrusionRole
+
+    def process(gcode: preFlight.GCode):
+        for layer in gcode.layers:
+            for move in layer.moves:
+                if move.type == MoveType.Extrude:
+                    if move.role == ExtrusionRole.ExternalPerimeter:
+                        move.feedrate *= 0.9  # slow outer walls by 10%
+
+The type annotation (: preFlight.GCode) is optional but enables
+IDE autocomplete. See "IDE Setup" below.
+
+API Reference
+-------------
+
+Module Constants:
+  preFlight.version           - preFlight version string (e.g. "0.9.13")
+
+Enums:
+  MoveType                    - Type of G-code move
+    .Noop                       no operation
+    .Retract                    filament retraction
+    .Unretract                  filament unretraction
+    .Seam                       seam point
+    .ToolChange                 tool change (T command)
+    .ColorChange                color change event
+    .PausePrint                 pause print event
+    .CustomGCode                custom G-code event
+    .Travel                     non-extrusion travel
+    .Wipe                       nozzle wipe
+    .Extrude                    extrusion move
+
+  ExtrusionRole               - Feature type of an extrusion move
+    .NoRole                     no role assigned
+    .Perimeter                  inner perimeter
+    .ExternalPerimeter          outer perimeter (visible wall)
+    .OverhangPerimeter          perimeter over unsupported area
+    .InterlockingPerimeter      interlocking boundary perimeter
+    .InternalInfill             sparse internal fill
+    .SolidInfill                solid fill (not top/bottom)
+    .TopSolidInfill             top surface fill
+    .Ironing                    ironing pass
+    .BridgeInfill               bridging fill over gaps
+    .GapFill                    thin gap fill between features
+    .Skirt                      skirt/brim outline
+    .SupportMaterial            support structure
+    .SupportMaterialInterface   support interface layer
+    .WipeTower                  wipe tower purge
+    .Custom                     custom G-code region
+
+  CustomEventType             - Type of custom G-code event
+    .ColorChange                M600 color change
+    .PausePrint                 M601 pause
+    .ToolChange                 tool change event
+    .Template                   template custom G-code
+    .Custom                     user custom G-code
+
+GCode Object (gcode):
+  Properties (read-only):
+    gcode.layers                - list of Layer objects
+    gcode.moves                 - flat list of all Move objects
+    gcode.max_print_height      - maximum Z height (mm)
+    gcode.z_offset              - Z offset (mm)
+    gcode.bed_shape             - bed outline as [(x,y), ...] tuples
+    gcode.spiral_vase_mode      - True if spiral vase mode is active
+    gcode.extruder_count        - number of extruders
+    gcode.extruder_colors       - list of hex color strings (#FF8000)
+    gcode.filament_diameters    - list of filament diameters (mm)
+    gcode.filament_densities    - list of filament densities (g/cm3)
+    gcode.time_estimate_normal  - estimated print time, normal mode (seconds)
+    gcode.time_estimate_stealth - estimated print time, stealth mode (seconds)
+    gcode.first_layer_time      - first layer time (seconds)
+    gcode.filament_cost         - cost per extruder
+    gcode.time_cost             - machine time cost rate
+    gcode.currency_symbol       - currency symbol (e.g. "$")
+    gcode.preset_print          - active print profile name
+    gcode.preset_filament       - list of active filament profile names
+    gcode.preset_printer        - active printer profile name
+    gcode.filament_by_role      - dict of ExtrusionRole -> FilamentUsage
+    gcode.filament_by_extruder  - dict of extruder_id -> FilamentUsage
+    gcode.filament_by_color_change - list of volumes (mm3) per color segment
+    gcode.custom_events         - list of CustomEvent objects
+    gcode.role_metrics          - dict of ExtrusionRole -> {max_commands_per_sec, max_layer}
+    gcode.overall_metrics       - dict {max_commands_per_sec, max_layer}
+    gcode.conflict              - {object1, object2, height, layer} or None
+    gcode.line_count            - total lines in the virtual G-code file
+
+  Properties (read/write):
+    gcode.annotation            - global annotation string appended to
+                                  all modified G1 lines when script exits
+
+  Settings (read-only, 400+ slicer settings via dot or bracket notation):
+    gcode.settings.nozzle_diameter
+    gcode.settings.layer_height
+    gcode.settings.temperature
+    gcode.settings.travel_speed
+    gcode.settings.bed_shape
+    gcode.settings["retract_length"]
+    ... (all PrintConfig keys available)
+
+  Methods:
+    gcode.get_line(line_id)     - read raw G-code line (1-based)
+    gcode.rewrite(line_id, text, comment="")
+                                - replace a raw G-code line
+    gcode.insert(line_id, text, position="after", comment="")
+                                - inject G-code before/after a line
+    gcode.find_line(text)       - first line containing text (0 = not found)
+    gcode.find_lines(text)      - all lines containing text
+    gcode.find_moves(type=, role=, extruder=, z_min=, z_max=)
+                                - query moves by criteria (all optional)
+    gcode.remove_moves(predicate)
+                                - remove moves matching lambda, returns count
+
+Move Object (move):
+  Read/write (propagate to G-code):
+    move.feedrate               - commanded speed (mm/s) -> F parameter
+    move.delta_e                - filament displacement (mm) -> E parameter
+    move.fan_speed              - fan percentage (0-100) -> M106 insertion
+    move.temperature            - hotend temperature (C) -> M104 insertion
+
+  Read/write (preview only, no G-code propagation):
+    move.width                  - extrusion line width (mm)
+    move.height                 - layer/extrusion height (mm)
+    move.annotation             - per-move annotation (overrides gcode.annotation)
+
+  Read-only:
+    move.type                   - MoveType enum value
+    move.role                   - ExtrusionRole enum value
+    move.x, move.y, move.z     - position (mm)
+    move.extruder_id            - active extruder (0-based)
+    move.actual_feedrate        - after acceleration limits (mm/s)
+    move.mm3_per_mm             - volumetric rate constant
+    move.volumetric_rate        - feedrate * mm3_per_mm (mm3/s)
+    move.actual_volumetric_rate - actual volumetric rate (mm3/s)
+    move.color_id               - sequential color change counter
+    move.layer_id               - which layer this move belongs to
+    move.gcode_line_id          - source line in the G-code (1-based)
+    move.internal_only          - True for G2/G3 arc internal segments
+    move.time                   - move duration (seconds, normal mode)
+    move.time_stealth           - move duration (seconds, stealth mode)
+
+  Motion analysis (from time estimation):
+    move.distance               - XYZ path length (mm)
+    move.junction_angle         - angle from previous move (degrees, signed)
+    move.acceleration           - effective acceleration (mm/s2, normal mode)
+    move.acceleration_stealth   - effective acceleration (mm/s2, stealth mode)
+    move.max_entry_speed        - junction-limited entry speed (mm/s, normal)
+    move.max_entry_speed_stealth - junction-limited entry speed (mm/s, stealth)
+
+  Fill region properties (from slicing geometry):
+    move.region_area            - mm^2 of the fill region (island area for
+                                  perimeters, fill surface area for infill,
+                                  0 for support/skirt/wipe tower)
+    move.fill_pattern           - infill pattern name ("Rectilinear", "Gyroid",
+                                  etc., "" for non-fill moves)
+
+Layer Object (layer):
+  Properties (read-only):
+    layer.id                    - layer number
+    layer.z                     - Z height (mm)
+    layer.height                - layer height (mm) - delta from previous
+    layer.moves                 - list of Move objects in this layer
+    layer.time                  - total layer time (seconds, normal mode)
+
+  Methods:
+    layer.prepend(gcode, comment="")
+                                - insert G-code before first move in layer
+    layer.append(gcode, comment="")
+                                - insert G-code after last move in layer
+    layer.moves_by_type(move_type)
+                                - filter moves by MoveType
+    layer.moves_by_role(role)   - filter moves by ExtrusionRole
+    layer.extrusion_length()    - total filament extruded (mm)
+    layer.travel_distance()     - total travel distance (mm)
+
+FilamentUsage Object:
+    .meters                     - filament length (m)
+    .grams                      - filament weight (g)
+    .volume_mm3                 - filament volume (mm3)
+    .cost                       - filament cost
+
+CustomEvent Object:
+    .z                          - Z height of event
+    .type                       - CustomEventType value
+    .extruder                   - extruder index
+    .color                      - color string
+    .extra                      - custom G-code text
+
+IDE Setup (VS Code)
+-------------------
+The preFlight.py file in this folder provides type stubs for the
+entire preprocessing API. It enables full autocomplete in any IDE
+that supports Python type hints.
+
+To get Intellisense working:
+
+1. Install the Pylance extension (Extensions > search "Pylance")
+2. Copy preFlight.py into the same folder as your script, OR
+   open the preprocessor folder in VS Code (File > Open Folder)
+3. Add the type annotation to your process function:
+
+       import preFlight
+       def process(gcode: preFlight.GCode):
+
+4. Type gcode. and Pylance shows all properties and methods
+5. Type gcode.settings. to see all 400+ slicer settings
+6. Type move. to see all move properties with types
+
+The preFlight.py stub file is included in both the preprocessor/
+and samples/ folders so Intellisense works regardless of where
+your script lives. The actual implementation is compiled C++ -
+preFlight.py only provides type information for your editor.
+
+Console Output and Debugging
+-----------------------------
+Scripts can use print() to output messages. To see this output,
+run preFlight from the console executable:
+
+  c:\preFlight\preFlight-console.exe
+
+To capture all output (including errors) to a file:
+
+  c:\preFlight\preFlight-console.exe > C:\preFlight\debug.txt 2>&1
+
+This redirects both stdout and stderr into debug.txt, which you
+can monitor in your editor while slicing. Script errors, warnings,
+and print() output all appear here.
+
+Samples
+-------
+WARNING: The scripts in samples/ are EXAMPLES ONLY. They contain
+hardcoded values (speeds, temperatures, PA values, flow limits, etc.)
+that are NOT tuned for your printer or materials. Running them without
+modification WILL produce unexpected results and may damage prints.
+
+To use a sample: copy it, read the constants at the top, calibrate
+every value for your specific setup, and test on a simple model first.
+
+Available samples:
+
+  Practical scripts (modify G-code):
+    flow_limiter.py           - cap volumetric flow per feature type
+    overhang_optimizer.py     - speed/fan/temp tuning on overhangs
+    pressure_advance.py       - per-feature PA (Marlin/Klipper/RRF)
+    adaptive_pressure_advance.py - speed/flow/corner-aware PA (Marlin/Klipper/RRF)
+    temperature_tower.py      - auto-generate temp towers from any model
+    fan_curves.py             - height + feature based fan control
+    first_layer_tuner.py      - speed ramp across first layer
+    edge_slowdown.py          - slow down near bed edges
+    extrusion_multiplier.py   - per-feature flow ratio
+    accel_by_feature.py       - per-feature M204 acceleration
+    retraction_optimizer.py   - context-aware retraction tuning
+    multi_material_purge.py   - color-distance-aware purge reduction
+    motion_optimizer.py       - clamp unreachable feedrates + annotate moves
+    small_area_flow.py        - reduce flow/speed in small features to prevent bulging
+
+  Analysis scripts (read-only, no G-code changes):
+    print_analyzer.py         - print statistics and feature breakdown
+    numpy_analysis.py         - vectorized analysis with numpy (requires pip install)
+
+  Demo / reference:
+    m73_progress.py           - proof-of-concept M73 insertion (use built-in instead)
+    api_test.py               - exercises all 146 API bindings with PASS/FAIL report
+
+Testing
+-------
+Add samples/api_test.py to any profile's Preprocessing tab to run
+a comprehensive test of every API binding. It tests all move
+properties, layer methods, queries, write operations, and enums.
+Results are printed to the console - run preFlight-console.exe
+or capture to a file:
+
+  c:\preFlight\preFlight-console.exe > C:\preFlight\debug.txt 2>&1
+
+The test makes small, targeted modifications (a handful of moves)
+marked with PPTEST: comments so you can verify propagation in
+the exported G-code.
+
+Version Checking
+----------------
+If your script needs a specific preFlight version, check at the
+top of process() and bail out with a message if it's too old:
+
+    import preFlight
+
+    def process(gcode: preFlight.GCode):
+        if tuple(int(x) for x in preFlight.version.split(".")) < (0, 9, 14):
+            print(f"[my_script] Requires preFlight 0.9.14+ (running {preFlight.version})")
+            return
+        # ... rest of script
+
+See motion_optimizer.py for a working example.
+
+Notes
+-----
+- All feedrate values are in mm/s (not mm/min). The API converts
+  automatically when writing to G-code (F parameter = mm/s * 60).
+- Read-only scripts (no modifications) have zero G-code overhead.
+- print() output goes to preFlight-console's stdout.
+- Script errors are logged but don't abort the slice.
+- Press Cancel Slicing to interrupt a running script.
+- move.temperature reads 0 on printers with autoemit_temperature_commands
+  disabled (e.g. Klipper). Setting move.temperature still works and
+  will insert an M104 command.

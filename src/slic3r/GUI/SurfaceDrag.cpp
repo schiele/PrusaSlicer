@@ -26,13 +26,6 @@ namespace
 // Maximal distance is also enlarge by size of emboss depth
 constexpr Slic3r::MinMax<double> surface_distance_sq{1e-4, 10.}; // [in mm]
 
-/// <summary>
-/// Extract position of mouse from mouse event
-/// </summary>
-/// <param name="mouse_event">Event</param>
-/// <returns>Position</returns>
-Vec2d mouse_position(const wxMouseEvent &mouse_event);
-
 bool start_dragging(const Vec2d &mouse_pos, const Camera &camera, std::optional<SurfaceDrag> &surface_drag,
                     GLCanvas3D &canvas, RaycastManager &raycast_manager, const std::optional<double> &up_limit);
 
@@ -78,40 +71,34 @@ namespace Slic3r::GUI
     return sqrt(from_scale_sq / to_scale_sq);
 }
 
-bool on_mouse_surface_drag(const wxMouseEvent &mouse_event, const Camera &camera,
-                           std::optional<SurfaceDrag> &surface_drag, GLCanvas3D &canvas,
-                           RaycastManager &raycast_manager, const std::optional<double> &up_limit)
+bool on_mouse_surface_drag(const GUI::MouseInput &mouse, const Camera &camera, std::optional<SurfaceDrag> &surface_drag,
+                           GLCanvas3D &canvas, RaycastManager &raycast_manager, const std::optional<double> &up_limit)
 {
-    // Fix when leave window during dragging
-    // Fix when click right button
-    if (surface_drag.has_value() && !mouse_event.Dragging())
+    Vec2d mouse_pos((int) mouse.x, (int) mouse.y);
+
+    if (surface_drag.has_value() && !mouse.dragging)
     {
-        // write transformation from UI into model
         canvas.do_move(L("Move over surface"));
         wxGetApp().obj_manipul()->set_dirty();
 
-        // allow moving with object again
         canvas.enable_moving(true);
         canvas.enable_picking(true);
         surface_drag.reset();
 
-        // only left up is correct
-        // otherwise it is fix state and return false
-        return mouse_event.LeftUp();
+        return mouse.type == GUI::MouseEventType::LeftUp;
     }
 
-    if (mouse_event.Moving())
+    if (mouse.type == GUI::MouseEventType::Motion)
         return false;
 
-    if (mouse_event.LeftDown())
-        return start_dragging(mouse_position(mouse_event), camera, surface_drag, canvas, raycast_manager, up_limit);
+    if (mouse.type == GUI::MouseEventType::LeftDown)
+        return start_dragging(mouse_pos, camera, surface_drag, canvas, raycast_manager, up_limit);
 
-    // Dragging starts out of window
     if (!surface_drag.has_value())
         return false;
 
-    if (mouse_event.Dragging())
-        return dragging(mouse_position(mouse_event), camera, *surface_drag, canvas, raycast_manager, up_limit);
+    if (mouse.dragging)
+        return dragging(mouse_pos, camera, *surface_drag, canvas, raycast_manager, up_limit);
 
     return false;
 }
@@ -502,13 +489,6 @@ void dragging_rotate_gizmo(double gizmo_angle, std::optional<float> &current_ang
 // private implementation
 namespace
 {
-
-Vec2d mouse_position(const wxMouseEvent &mouse_event)
-{
-    // wxCoord == int --> wx/types.h
-    Vec2i mouse_coord(mouse_event.GetX(), mouse_event.GetY());
-    return mouse_coord.cast<double>();
-}
 
 bool start_dragging(const Vec2d &mouse_pos, const Camera &camera, std::optional<SurfaceDrag> &surface_drag,
                     GLCanvas3D &canvas, RaycastManager &raycast_manager, const std::optional<double> &up_limit)

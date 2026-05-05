@@ -1109,10 +1109,11 @@ ExtrusionEntityCollection make_brim(const Print &print, PrintTryCancel try_cance
     Polygons islands = top_level_outer_brim_islands(top_level_objects_with_brim, scaled_resolution);
     BrimAreas brim_areas = top_level_outer_brim_area(print, top_level_objects_with_brim, bottom_layers_expolygons,
                                                      float(flow.scaled_spacing()));
-    // Build islands_area from all brim region types
+    // Build islands_area from all brim region types (used to trim support base overlap)
     ExPolygons islands_area_ex = brim_areas.regular_brim;
     append(islands_area_ex, brim_areas.auto_ears);
     append(islands_area_ex, brim_areas.clippable);
+    append(islands_area_ex, brim_areas.painted_preclipped);
 
     islands_area = to_polygons(islands_area_ex);
 

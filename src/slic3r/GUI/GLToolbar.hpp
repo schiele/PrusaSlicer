@@ -12,6 +12,7 @@
 
 #include "GLTexture.hpp"
 #include "Event.hpp"
+#include "InputEvents.hpp"
 #include "libslic3r/Point.hpp"
 
 class wxEvtHandler;
@@ -359,7 +360,7 @@ public:
     void render(const GLCanvas3D &parent);
     void render_arrow(const GLCanvas3D &parent, GLToolbarItem *highlighted_item);
 
-    bool on_mouse(wxMouseEvent &evt, GLCanvas3D &parent);
+    bool on_mouse(const MouseInput &mouse, GLCanvas3D &parent);
     // get item pointer for highlighter timer
     GLToolbarItem *get_item(const std::string &item_name);
 

@@ -52,7 +52,7 @@ public:
             triangle_indices_size = 0;
     }
 
-    void render(size_t triangle_indices_idx) const;
+    void render(size_t triangle_indices_idx, GLShaderProgram *shader) const;
 
     std::vector<float> vertices;
     std::vector<std::vector<int>> triangle_indices;
@@ -87,7 +87,7 @@ public:
 
     ~TriangleSelectorMmGui() override = default;
 
-    void render(ImGuiWrapper *imgui, const Transform3d &matrix) override;
+    void render(ImGuiWrapper *imgui, const Transform3d &matrix, const Camera &camera) override;
 
 private:
     void update_render_data();

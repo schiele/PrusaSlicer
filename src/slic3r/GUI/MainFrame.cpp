@@ -1866,10 +1866,9 @@ static wxMenu *generate_help_menu()
 {
     wxMenu *helpMenu = new wxMenu();
 
-    append_menu_item(
-        helpMenu, wxID_ANY, wxString::Format(_L("%s &Website"), SLIC3R_APP_NAME),
-        wxString::Format(_L("Open the %s website in your browser"), SLIC3R_APP_NAME), [](wxCommandEvent &)
-        { wxGetApp().open_browser_with_warning_dialog("https://github.com/oozebot/preFlight", nullptr, false); });
+    append_menu_item(helpMenu, wxID_ANY, wxString::Format(_L("%s &Website"), SLIC3R_APP_NAME),
+                     wxString::Format(_L("Open the %s website in your browser"), SLIC3R_APP_NAME), [](wxCommandEvent &)
+                     { wxGetApp().open_browser_with_warning_dialog("https://preflight3d.com/", nullptr, false); });
     // // TRN Item from "Help" menu
     // append_menu_item(helpMenu, wxID_ANY, wxString::Format(_L("&Quick Start"), SLIC3R_APP_NAME),
     //     wxString::Format(_L("Open the %s website in your browser"), SLIC3R_APP_NAME),

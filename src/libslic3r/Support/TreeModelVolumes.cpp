@@ -130,9 +130,26 @@ TreeModelVolumes::TreeModelVolumes(const PrintObject &print_object, const BuildV
             [&](const tbb::blocked_range<size_t> &range)
             {
                 for (size_t layer_idx = range.begin(); layer_idx < range.end(); ++layer_idx)
-                    outlines[layer_idx] =
-                        polygons_simplify(to_polygons(print_object.get_layer(layer_idx - num_raft_layers)->lslices),
-                                          mesh_settings.resolution, polygons_strictly_simple);
+                {
+                    // Ensure correct winding (CCW contours, CW holes) so that
+                    // downstream union/offset operations preserve holes correctly.
+                    const ExPolygons &lslices = print_object.get_layer(layer_idx - num_raft_layers)->lslices;
+                    Polygons polys;
+                    for (const ExPolygon &expoly : lslices)
+                    {
+                        Polygon contour = expoly.contour;
+                        if (!contour.is_counter_clockwise())
+                            contour.reverse();
+                        polys.emplace_back(std::move(contour));
+                        for (Polygon hole : expoly.holes)
+                        {
+                            if (hole.is_counter_clockwise())
+                                hole.reverse();
+                            polys.emplace_back(std::move(hole));
+                        }
+                    }
+                    outlines[layer_idx] = polygons_simplify(polys, mesh_settings.resolution, polygons_strictly_simple);
+                }
             });
     }
 #endif
@@ -522,24 +539,57 @@ void TreeModelVolumes::calculateCollision(const coord_t radius, const LayerIndex
             collision_areas_offsetted.allocate(std::max<LayerIndex>(0, data.begin() - z_distance_bottom_layers),
                                                std::min<LayerIndex>(outlines.size(),
                                                                     data.end() + z_distance_top_layers));
-            tbb::parallel_for(
-                tbb::blocked_range<LayerIndex>(collision_areas_offsetted.begin(), collision_areas_offsetted.end()),
-                [&outlines, &machine_border = std::as_const(m_machine_border), offset_value = radius + xy_distance,
-                 &collision_areas_offsetted, &throw_on_cancel](const tbb::blocked_range<LayerIndex> &range)
-                {
-                    for (LayerIndex layer_idx = range.begin(); layer_idx != range.end(); ++layer_idx)
-                    {
-                        Polygons collision_areas = machine_border;
-                        append(collision_areas, outlines[layer_idx]);
-                        // jtRound is not needed here, as the overshoot can not cause errors in the algorithm, because no assumptions are made about the model.
-                        // if a key does not exist when it is accessed it is added!
-                        collision_areas_offsetted[layer_idx] = offset_value == 0
-                                                                   ? union_(collision_areas)
-                                                                   : offset(union_ex(collision_areas), offset_value,
-                                                                            JoinType::Miter, 1.2);
-                        throw_on_cancel();
-                    }
-                });
+            tbb::parallel_for(tbb::blocked_range<LayerIndex>(collision_areas_offsetted.begin(),
+                                                             collision_areas_offsetted.end()),
+                              [&outlines, &machine_border = std::as_const(m_machine_border),
+                               offset_value = radius + xy_distance, &collision_areas_offsetted,
+                               &throw_on_cancel](const tbb::blocked_range<LayerIndex> &range)
+                              {
+                                  for (LayerIndex layer_idx = range.begin(); layer_idx != range.end(); ++layer_idx)
+                                  {
+                                      Polygons collision_areas = machine_border;
+                                      append(collision_areas, outlines[layer_idx]);
+                                      if (offset_value == 0)
+                                          collision_areas_offsetted[layer_idx] = union_(collision_areas);
+                                      else
+                                      {
+                                          // Build ExPolygons directly from correctly-wound outlines
+                                          // to preserve holes. The standard union_ex loses holes in
+                                          // Clipper2 due to its two-pass approach.
+                                          ExPolygons ca_ex;
+                                          {
+                                              // Separate CCW contours and CW holes
+                                              Polygons contours, holes;
+                                              for (const Polygon &p : collision_areas)
+                                                  (p.is_counter_clockwise() ? contours : holes).emplace_back(p);
+                                              // Assign each hole to the contour that contains it.
+                                              // Erase assigned holes to prevent duplicates.
+                                              for (Polygon &contour : contours)
+                                              {
+                                                  ExPolygon expoly;
+                                                  expoly.contour = std::move(contour);
+                                                  auto it = holes.begin();
+                                                  while (it != holes.end())
+                                                  {
+                                                      if (expoly.contour.contains(it->points.front()))
+                                                      {
+                                                          expoly.holes.emplace_back(std::move(*it));
+                                                          it = holes.erase(it);
+                                                      }
+                                                      else
+                                                          ++it;
+                                                  }
+                                                  ca_ex.emplace_back(std::move(expoly));
+                                              }
+                                              if (ca_ex.empty())
+                                                  ca_ex = union_ex(collision_areas);
+                                          }
+                                          collision_areas_offsetted[layer_idx] = to_polygons(
+                                              offset_ex(ca_ex, offset_value, JoinType::Miter, 1.2));
+                                      }
+                                      throw_on_cancel();
+                                  }
+                              });
 
             // 2) Sum over top / bottom ranges.
             const bool processing_last_mesh = outline_idx == layer_outline_indices.size();

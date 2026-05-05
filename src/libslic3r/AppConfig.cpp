@@ -41,8 +41,8 @@ static const std::string MODEL_PREFIX = "model:";
 // are phased out, then we will revert to the original name.
 // For 2.6.0-alpha1 we have switched back to the original. The file should contain data for AppUpdater.cpp
 // Version check URL removed
-static const std::string VERSION_CHECK_URL = "http://pkg.ooze.bot/preFlight.latest";
-static const std::string RELEASE_NOTES_URL = "http://pkg.ooze.bot/preFlight.notes";
+static const std::string VERSION_CHECK_URL = "https://preflight3d.com/latest.version";
+static const std::string RELEASE_NOTES_URL = "https://preflight3d.com/release.notes";
 // Url to index archive zip that contains latest indicies
 // Index archive URL removed
 static const std::string INDEX_ARCHIVE_URL = ""; // Disabled for preFlight
@@ -82,8 +82,6 @@ void AppConfig::set_defaults()
         // If set, the "- default -" selections of print/filament/printer are suppressed, if there is a valid preset available.
         if (get("no_defaults").empty())
             set("no_defaults", "1");
-        if (get("no_templates").empty())
-            set("no_templates", "0");
         if (get("show_incompatible_presets").empty())
             set("show_incompatible_presets", "0");
 
@@ -121,6 +119,11 @@ void AppConfig::set_defaults()
 #endif // __APPLE__
             );
 
+        if (get("preprocessing_consent_accepted").empty())
+            set("preprocessing_consent_accepted", "0");
+        if (get("preprocessing_category_order").empty())
+            set("preprocessing_category_order", "print,filament,printer");
+
         if (get("remember_output_path").empty())
             set("remember_output_path", "1");
 
@@ -149,6 +152,14 @@ void AppConfig::set_defaults()
         if (get("use_environment_map").empty())
             set("use_environment_map", "0");
 #endif // ENABLE_ENVIRONMENT_MAP
+
+        // "auto" detects GPU at startup: discrete -> "enhanced", integrated -> "basic"
+        if (get("canvas_lighting_quality").empty())
+            set("canvas_lighting_quality", "auto");
+
+        // MSAA sample count: "auto" tries highest available, "0" disables
+        if (get("canvas_msaa").empty())
+            set("canvas_msaa", "auto");
 
         if (get("use_inches").empty())
             set("use_inches", "0");
@@ -461,8 +472,7 @@ std::string AppConfig::load(const std::string &path)
         {
             // Report the initial error of parsing preFlight.ini.
             // Error while parsing config file. We'll customize the error message and rethrow to be displayed.
-            // ! But to avoid the use of _utf8 (related to use of wxWidgets)
-            // we will rethrow this exception from the place of load() call, if returned value wouldn't be empty
+            // Rethrow from the caller's context so the UI layer can display it
             return ex.what();
         }
     }

@@ -274,7 +274,7 @@ static std::vector<std::pair<TreeSupportSettings, std::vector<size_t>>> group_me
                 Polygons overhangs;
                 // For how many layers full overhangs shall be supported.
                 const bool enforced_layer = layer_id < effective_enforce_layers;
-                if (support_auto || enforced_layer)
+                if (support_auto)
                 {
                     float lower_layer_offset;
                     if (enforced_layer)
@@ -314,9 +314,26 @@ static std::vector<std::pair<TreeSupportSettings, std::vector<size_t>>> group_me
                     //enforcers_layers[layer_id] = union_(enforcers_layers[layer_id]);
                     //check_self_intersections(enforcers_layers[layer_id], "generate_overhangs - enforcers");
                     //check_self_intersections(to_polygons(lower_layer.lslices), "generate_overhangs - lowerlayers");
-                    if (Polygons enforced_overhangs = intersection(
-                            raw_overhangs_calculated ? raw_overhangs : diff(current_layer.lslices, lower_layer.lslices),
-                            enforcers_layers[layer_id] /*, ApplySafetyOffset::Yes */);
+                    // Use a half-perimeter offset to filter micro-overhangs on curved
+                    // surfaces. Without this, every layer boundary on a curve registers
+                    // as an overhang, generating support on non-overhang painted areas.
+                    Polygons enforcer_raw_overhangs;
+                    if (raw_overhangs_calculated)
+                        enforcer_raw_overhangs = raw_overhangs;
+                    else if (enforced_layer)
+                        // Enforced layers: exact diff with no angle threshold, but
+                        // still limited to painted areas by the intersection below.
+                        enforcer_raw_overhangs = diff(current_layer.lslices, lower_layer.lslices);
+                    else
+                    {
+                        float ep_width = 0;
+                        for (const LayerRegion *layerm : lower_layer.regions())
+                            ep_width += layerm->flow(frExternalPerimeter).scaled_width();
+                        ep_width /= std::max<size_t>(1, lower_layer.region_count());
+                        enforcer_raw_overhangs = diff(current_layer.lslices,
+                                                      offset(lower_layer.lslices, 0.5 * ep_width));
+                    }
+                    if (Polygons enforced_overhangs = intersection(enforcer_raw_overhangs, enforcers_layers[layer_id]);
                         !enforced_overhangs.empty())
                     {
                         // Use config value. Must filter before enforcer_overhang_offset expansion,
@@ -329,11 +346,6 @@ static std::vector<std::pair<TreeSupportSettings, std::vector<size_t>>> group_me
                             if (enforced_overhangs.empty())
                                 continue; // All enforcers filtered out as too small
                         }
-                        //FIXME this is a hack to make enforcers work on steep overhangs.
-                        //check_self_intersections(enforced_overhangs, "generate_overhangs - enforced overhangs1");
-                        //Polygons enforced_overhangs_prev = enforced_overhangs;
-                        //check_self_intersections(to_polygons(union_ex(enforced_overhangs)), "generate_overhangs - enforced overhangs11");
-                        //check_self_intersections(offset(union_ex(enforced_overhangs),
                         //FIXME enforcer_overhang_offset is a fudge constant!
                         enforced_overhangs = diff(offset(union_ex(enforced_overhangs), enforcer_overhang_offset),
                                                   lower_layer.lslices);
@@ -1515,7 +1527,6 @@ static void generate_initial_areas(const PrintObject &print_object, const TreeMo
                 // it would not have a roof if the overhang is offset by support roof horizontal expansion instead. (At least this is the current behavior of the regular support)
                 Polygons overhang_regular;
                 {
-                    // When support_offset = 0 safe_offset_inc will only be the difference between overhang_raw and relevant_forbidden, that has to be calculated anyway.
                     overhang_regular = safe_offset_inc(overhang_raw, mesh_group_settings.support_offset,
                                                        relevant_forbidden,
                                                        config.min_radius * 1.75 + config.xy_min_distance, 0, 1);

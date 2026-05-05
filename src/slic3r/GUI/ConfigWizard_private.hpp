@@ -28,6 +28,7 @@
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "slic3r/Utils/PresetUpdaterWrapper.hpp"
+#include "slic3r/Utils/ProfileServer.hpp"
 #include "BedShapeDialog.hpp"
 #include "GUI.hpp"
 #include "GUI_App.hpp"
@@ -238,7 +239,12 @@ struct PageUpdateManager : ConfigWizardPage
     std::unique_ptr<RepositoryUpdateUIManager> manager;
     bool is_active{false};
 
+    // Vendor selection checkboxes (populated from loaded bundles)
+    wxScrolledWindow *vendor_scroll{nullptr};
+    std::map<std::string, wxCheckBox *> vendor_checkboxes;
+
     PageUpdateManager(ConfigWizard *parent);
+    void populate_vendor_list();
 };
 
 struct PagePrinters : ConfigWizardPage
@@ -354,11 +360,10 @@ struct PageMaterials : ConfigWizardPage
     int compatible_printers_width = {100};
     std::string empty_printers_label;
     bool first_paint = {false};
+    bool vendor_first = {true}; // false = Type>Vendor, true = Vendor>Type
+    wxStaticText *col1_label = {nullptr};
+    wxStaticText *col2_label = {nullptr};
     static const std::string EMPTY;
-    static const std::string TEMPLATES;
-    // notify user first time they choose template profile
-    bool template_shown = {false};
-    bool notification_shown = {false};
     int last_hovered_item = {-1};
 
     PageMaterials(ConfigWizard *parent, Materials *materials, wxString title, wxString shortname, wxString list1name);
@@ -439,19 +444,8 @@ struct Materials
     {
         for (auto preset : presets)
         {
-            const Preset &prst = *(preset);
-            const Preset &prntr = *printer;
-            if (((printer == nullptr && printer_name == PageMaterials::EMPTY) ||
-                 (printer != nullptr && is_compatible_with_printer(PresetWithVendorProfile(prst, prst.vendor),
-                                                                   PresetWithVendorProfile(prntr, prntr.vendor)))) &&
-                (type.empty() || get_type(preset) == type) && (vendor.empty() || get_vendor(preset) == vendor) &&
-                prst.vendor && !prst.vendor->templates_profile)
-            {
-                cb(preset);
-            }
-            else if ((printer == nullptr && printer_name == PageMaterials::TEMPLATES) && prst.vendor &&
-                     prst.vendor->templates_profile && (type.empty() || get_type(preset) == type) &&
-                     (vendor.empty() || get_vendor(preset) == vendor))
+            // Show all filaments that match the type and vendor filters
+            if ((type.empty() || get_type(preset) == type) && (vendor.empty() || get_vendor(preset) == vendor))
             {
                 cb(preset);
             }
@@ -656,15 +650,16 @@ struct ConfigWizard::priv
 {
     ConfigWizard *q;
     ConfigWizard::RunReason run_reason = RR_USER;
-    AppConfig appconfig_new;   // Backing for vendor/model/variant and material selections in the GUI
-    BundleMap bundles;         // Holds all loaded config bundles, the key is the vendor names.
-                               // Materials refers to Presets in those bundles by pointers.
-                               // Also we update the is_visible flag in printer Presets according to the
-                               // PrinterPickers state.
-    Materials filaments;       // Holds available filament presets and their types & vendors
-    Materials sla_materials;   // Ditto for SLA materials
-    PresetAliases aliases_fff; // Map of alias to material presets
-    PresetAliases aliases_sla; // Map of alias to material presets
+    AppConfig appconfig_new;                  // Backing for vendor/model/variant and material selections in the GUI
+    BundleMap bundles;                        // Holds all loaded config bundles, the key is the vendor names.
+                                              // Materials refers to Presets in those bundles by pointers.
+                                              // Also we update the is_visible flag in printer Presets according to the
+                                              // PrinterPickers state.
+    Materials filaments;                      // Holds available filament presets and their types & vendors
+    std::vector<Preset> standalone_filaments; // Loaded directly from Filaments.ini
+    Materials sla_materials;                  // Ditto for SLA materials
+    PresetAliases aliases_fff;                // Map of alias to material presets
+    PresetAliases aliases_sla;                // Map of alias to material presets
     std::unique_ptr<DynamicPrintConfig> custom_config; // Backing for custom printer definition
     bool any_fff_selected{false};                      // Used to decide whether to display Filaments page
     bool any_sla_selected{false};                      // Used to decide whether to display SLA Materials page
@@ -672,15 +667,12 @@ struct ConfigWizard::priv
     bool custom_printer_in_bundle{false};              // Older custom printer already exists when wizard starts
     // Set to true if there are none FFF printers on the main FFF page. If true, only SLA printers are shown (not even custom printers)
     bool only_sla_mode{false};
-    bool template_profile_selected{
-        false}; // This bool has one purpose - to tell that template profile should be installed if its not (because it cannot be added to appconfig)
 
     wxScrolledWindow *hscroll = nullptr;
     wxBoxSizer *hscroll_sizer = nullptr;
     wxBoxSizer *btnsizer = nullptr;
     ConfigWizardPage *page_current = nullptr;
     ConfigWizardIndex *index = nullptr;
-    wxButton *btn_sel_all = nullptr;
     wxButton *btn_prev = nullptr;
     wxButton *btn_next = nullptr;
     wxButton *btn_finish = nullptr;
@@ -724,6 +716,9 @@ struct ConfigWizard::priv
 
     bool is_config_from_archive{false};
 
+    // Online vendor index from profiles.preflight3d.com/index.json
+    ProfileServer::VendorIndex vendor_index;
+
     // Pointers to all pages (regardless or whether currently part of the ConfigWizardIndex)
     std::vector<ConfigWizardPage *> all_pages;
 
@@ -733,6 +728,11 @@ struct ConfigWizard::priv
     void init_dialog_size();
 
     void load_vendors();
+    void load_filaments_ini();
+    // Downloads resource files (thumbnails, bed models, textures) for a vendor
+    void download_vendor_resources(const std::string &vendor_id);
+    // Vendors selected by user on the Configure Vendors page
+    std::set<std::string> selected_vendor_ids;
     void add_page(ConfigWizardPage *page);
     void enable_next(bool enable);
     void set_start_page(ConfigWizard::StartPage start_page);
@@ -743,16 +743,10 @@ struct ConfigWizard::priv
 
     void on_custom_setup(const bool custom_wanted);
     void on_printer_pick(PagePrinters *page, const PrinterPickerEvent &evt);
-    void select_default_materials_for_printer_model(const VendorProfile::PrinterModel &printer_model,
-                                                    Technology technology);
-    void select_default_materials_for_printer_models(
-        Technology technology, const std::set<const VendorProfile::PrinterModel *> &printer_models);
-    void on_3rdparty_install(const VendorProfile *vendor, bool install);
 
     bool can_finish();
     bool can_go_next();
     bool can_show_next();
-    bool can_select_all();
     bool on_bnt_finish();
     bool check_and_install_missing_materials(Technology technology,
                                              const std::string &only_for_model_id = std::string());
@@ -771,13 +765,8 @@ struct ConfigWizard::priv
 
     Repository *get_repo(const std::string &repo_id);
 
-    // Fills vendors_for_repo in respect to repo_id
-    // and return true if any of vendors_for_repo is installed (is in app_config)
-    bool any_installed_vendor_for_repo(const std::string &repo_id, std::vector<const VendorProfile *> &);
-
     bool can_clear_printer_pages();
     void clear_printer_pages();
-    void load_pages_from_archive();
 };
 
 } // namespace GUI

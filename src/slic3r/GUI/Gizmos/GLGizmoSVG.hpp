@@ -117,7 +117,7 @@ protected:
     /// </summary>
     /// <param name="mouse_event">Information about mouse</param>
     /// <returns>Propagete normaly return false.</returns>
-    bool on_mouse(const wxMouseEvent &mouse_event) override;
+    bool on_mouse(const MouseInput &mouse) override;
 
     bool wants_enter_leave_snapshots() const override;
     std::string get_gizmo_entering_text() const override;
@@ -144,9 +144,9 @@ private:
     void draw_model_type();
 
     // process mouse event
-    bool on_mouse_for_rotation(const wxMouseEvent &mouse_event);
-    bool on_mouse_for_translate(const wxMouseEvent &mouse_event);
-    void on_mouse_confirm_edit(const wxMouseEvent &mouse_event);
+    bool on_mouse_for_rotation(const MouseInput &mouse);
+    bool on_mouse_for_translate(const MouseInput &mouse);
+    void on_mouse_confirm_edit(const MouseInput &mouse);
 
     void volume_transformation_changed();
 

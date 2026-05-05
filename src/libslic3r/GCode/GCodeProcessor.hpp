@@ -144,6 +144,18 @@ struct GCodeProcessorResult
         unsigned int layer_id{0};
         bool internal_only{false};
 
+        // Pre-processor API fields (populated during time estimation)
+        float distance{0.0f};       // mm (path length: XYZ distance, or E distance for extrusion-only moves)
+        float junction_angle{0.0f}; // degrees (angle from previous move to this move, signed: + right, - left)
+        std::array<float, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> acceleration{0.0f,
+                                                                                                        0.0f}; // mm/s^2
+        std::array<float, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> max_entry_speed{
+            0.0f, 0.0f}; // mm/s
+
+        // Fill region properties (preprocessing API)
+        float region_area{0.0f}; // mm^2 (island boundary for perimeters, fill surface for infill)
+        int fill_pattern{-1};    // InfillPattern enum value, -1 = not a fill
+
         float volumetric_rate() const { return feedrate * mm3_per_mm; }
         float actual_volumetric_rate() const { return actual_feedrate * mm3_per_mm; }
     };
@@ -235,6 +247,8 @@ public:
         Wipe_End,
         Height,
         Width,
+        Region_Area,
+        Fill_Pattern,
         Layer_Change,
         Color_Change,
         Pause_Print,
@@ -600,8 +614,10 @@ private:
     float m_forced_width;  // mm
     float m_forced_height; // mm
     float m_mm3_per_mm;
-    float m_fan_speed; // percentage
-    float m_z_offset;  // mm
+    float m_fan_speed;   // percentage
+    float m_region_area; // mm^2
+    int m_fill_pattern;  // InfillPattern enum value
+    float m_z_offset;    // mm
     GCodeExtrusionRole m_extrusion_role;
     unsigned char m_extruder_id;
     ExtruderColors m_extruder_colors;
@@ -619,6 +635,11 @@ private:
     bool m_use_volumetric_e;
     SeamsDetector m_seams_detector;
     OptionsZCorrector m_options_z_corrector;
+
+    // Previous move direction for junction angle calculation (mode-independent)
+    float m_prev_move_dir_x{0.0f};
+    float m_prev_move_dir_y{0.0f};
+    bool m_prev_move_has_direction{false};
     size_t m_last_default_color_id;
     float m_kissslicer_toolchange_time_correction;
     bool m_single_extruder_multi_material;
@@ -642,9 +663,16 @@ private:
     EProducer m_producer;
 
     TimeProcessor m_time_processor;
+    // Accumulated across incremental calculate_time batches; single bulk insertion in final call
+    std::vector<TimeMachine::ActualSpeedMove> m_accumulated_speed_moves;
     UsedFilaments m_used_filaments;
 
     Print *m_print{nullptr};
+
+#ifdef SLIC3R_PYTHON_PREPROCESSOR
+    bool m_preprocessing_consent{false};
+    std::string m_preprocessing_category_order{"print,filament,printer"};
+#endif
 
     GCodeProcessorResult m_result;
     static unsigned int s_result_id;
@@ -657,6 +685,10 @@ public:
 
     void apply_config(const PrintConfig &config);
     void set_print(Print *print) { m_print = print; }
+#ifdef SLIC3R_PYTHON_PREPROCESSOR
+    void set_preprocessing_consent(bool consent) { m_preprocessing_consent = consent; }
+    void set_preprocessing_category_order(const std::string &order) { m_preprocessing_category_order = order; }
+#endif
     bgcode::binarize::BinaryData &get_binary_data() { return m_binarizer.get_binary_data(); }
     const bgcode::binarize::BinaryData &get_binary_data() const { return m_binarizer.get_binary_data(); }
 

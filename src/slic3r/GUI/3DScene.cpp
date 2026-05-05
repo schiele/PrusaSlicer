@@ -100,17 +100,26 @@ void glAssertRecentCallImpl(const char *file_name, unsigned int line, const char
 namespace Slic3r
 {
 
+static const GLRenderContext *s_render_ctx = nullptr;
+
+void GLVolumeCollection::set_render_context(const GLRenderContext *ctx)
+{
+    s_render_ctx = ctx;
+}
+
 const float GLVolume::SinkingContours::HalfWidth = 0.25f;
 
 void GLVolume::SinkingContours::render()
 {
+    if (!s_render_ctx)
+        return;
     update();
 
-    GLShaderProgram *shader = GUI::wxGetApp().get_current_shader();
+    GLShaderProgram *shader = s_render_ctx->get_current_shader();
     if (shader == nullptr)
         return;
 
-    const GUI::Camera &camera = GUI::wxGetApp().plater()->get_camera();
+    const GUI::Camera &camera = *s_render_ctx->camera;
     shader->set_uniform("view_model_matrix", camera.get_view_matrix() * Geometry::translation_transform(m_shift));
     shader->set_uniform("projection_matrix", camera.get_projection_matrix());
     m_model.render();
@@ -118,8 +127,10 @@ void GLVolume::SinkingContours::render()
 
 void GLVolume::SinkingContours::update()
 {
+    if (!s_render_ctx || !s_render_ctx->model)
+        return;
     const int object_idx = m_parent.object_idx();
-    const Model &model = GUI::wxGetApp().plater()->model();
+    const Model &model = *s_render_ctx->model;
 
     if (object_idx < 0 || object_idx >= int(model.objects.size()) || !m_parent.is_sinking() ||
         m_parent.is_below_printbed())
@@ -174,18 +185,20 @@ void GLVolume::SinkingContours::update()
 
 void GLVolume::NonManifoldEdges::render()
 {
+    if (!s_render_ctx)
+        return;
     update();
 
 #if !SLIC3R_OPENGL_ES
     if (!GUI::OpenGLManager::get_gl_info().is_core_profile())
-        glsafe(::glLineWidth(2.0f * GUI::wxGetApp().imgui()->get_style_scaling()));
+        glsafe(::glLineWidth(2.0f * s_render_ctx->imgui->get_style_scaling()));
 #endif // !SLIC3R_OPENGL_ES
 
-    GLShaderProgram *shader = GUI::wxGetApp().get_current_shader();
+    GLShaderProgram *shader = s_render_ctx->get_current_shader();
     if (shader == nullptr)
         return;
 
-    const GUI::Camera &camera = GUI::wxGetApp().plater()->get_camera();
+    const GUI::Camera &camera = *s_render_ctx->camera;
     shader->set_uniform("view_model_matrix", camera.get_view_matrix() * m_parent.world_matrix());
     shader->set_uniform("projection_matrix", camera.get_projection_matrix());
 #if !SLIC3R_OPENGL_ES
@@ -210,7 +223,7 @@ void GLVolume::NonManifoldEdges::update()
 
     m_model.reset();
     const int object_idx = m_parent.object_idx();
-    const Model &model = GUI::wxGetApp().plater()->model();
+    const Model &model = *s_render_ctx->model;
     if (0 <= object_idx && object_idx < int(model.objects.size()))
     {
         const ModelObject *model_object = model.objects[object_idx];
@@ -398,13 +411,10 @@ BoundingBoxf3 GLVolume::transformed_convex_hull_bounding_box(const Transform3d &
 
 BoundingBoxf3 GLVolume::transformed_non_sinking_bounding_box(const Transform3d &trafo) const
 {
-    return GUI::wxGetApp()
-        .plater()
-        ->model()
-        .objects[object_idx()]
-        ->volumes[volume_idx()]
-        ->mesh()
-        .transformed_bounding_box(trafo, 0.0);
+    if (!s_render_ctx || !s_render_ctx->model)
+        return bounding_box().transformed(trafo);
+    return s_render_ctx->model->objects[object_idx()]->volumes[volume_idx()]->mesh().transformed_bounding_box(trafo,
+                                                                                                              0.0);
 }
 
 const BoundingBoxf3 &GLVolume::transformed_non_sinking_bounding_box() const
@@ -455,10 +465,10 @@ void GLVolume::set_range(double min_z, double max_z)
 
 void GLVolume::render()
 {
-    if (!is_active)
+    if (!is_active || !s_render_ctx)
         return;
 
-    GLShaderProgram *shader = GUI::wxGetApp().get_current_shader();
+    GLShaderProgram *shader = s_render_ctx->get_current_shader();
     if (shader == nullptr)
         return;
 
@@ -748,24 +758,26 @@ GLVolumeWithIdAndZList volumes_to_render(const GLVolumePtrs &volumes, GLVolumeCo
 
 void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disable_cullface,
                                 const Transform3d &view_matrix, const Transform3d &projection_matrix,
-                                std::function<bool(const GLVolume &)> filter_func) const
+                                const GLRenderContext &ctx, std::function<bool(const GLVolume &)> filter_func) const
 {
     GLVolumeWithIdAndZList to_render = volumes_to_render(volumes, type, view_matrix, filter_func);
     if (to_render.empty())
         return;
 
-    GLShaderProgram *curr_shader = GUI::wxGetApp().get_current_shader();
-    GLShaderProgram *sink_shader = GUI::wxGetApp().get_shader("flat");
+    s_render_ctx = &ctx;
+
+    GLShaderProgram *curr_shader = ctx.get_current_shader();
+    GLShaderProgram *sink_shader = ctx.get_shader("flat");
 #if SLIC3R_OPENGL_ES
-    GLShaderProgram *edges_shader = GUI::wxGetApp().get_shader("dashed_lines");
+    GLShaderProgram *edges_shader = ctx.get_shader("dashed_lines");
 #else
     GLShaderProgram *edges_shader = GUI::OpenGLManager::get_gl_info().is_core_profile()
-                                        ? GUI::wxGetApp().get_shader("dashed_thick_lines")
-                                        : GUI::wxGetApp().get_shader("flat");
+                                        ? ctx.get_shader("dashed_thick_lines")
+                                        : ctx.get_shader("flat");
 #endif // SLIC3R_OPENGL_ES
-    GLShaderProgram *mmu_painted_shader = GUI::wxGetApp().get_shader("mm_color_preview");
+    GLShaderProgram *mmu_painted_shader = ctx.get_shader("mm_color_preview");
     if (!mmu_painted_shader)
-        mmu_painted_shader = GUI::wxGetApp().get_shader("mm_gouraud"); // fallback
+        mmu_painted_shader = ctx.get_shader("mm_gouraud"); // fallback
     if (curr_shader == nullptr || sink_shader == nullptr || edges_shader == nullptr || mmu_painted_shader == nullptr)
         return;
 
@@ -788,11 +800,11 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
     // each ModelVolume. The cache is invalidated based on changes in extruder_colors,
     // default extruder idx and timestamp of the painted data. The data belonging to objects
     // // which no longer exist are removed from the cache periodically.
-    const ModelObjectPtrs &model_objects = GUI::wxGetApp().model().objects;
-    const std::vector<ColorRGBA> extruders_colors = GUI::wxGetApp().plater()->get_extruder_colors_from_plater_config();
+    const ModelObjectPtrs &model_objects = ctx.model->objects;
+    const std::vector<ColorRGBA> extruders_colors = ctx.extruder_colors;
     const bool is_render_as_mmu_painted_enabled = !model_objects.empty() && !extruders_colors.empty();
 
-    const size_t extruder_count = GUI::wxGetApp().extruders_edited_cnt();
+    const size_t extruder_count = ctx.extruders_edited_cnt;
     if (m_mm_paint_cache.extruders_colors != extruders_colors || m_mm_paint_cache.extruder_count != extruder_count)
     {
         m_mm_paint_cache.extruders_colors = extruders_colors;
@@ -811,7 +823,9 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
         const Matrix3d view_normal_matrix = view_matrix.linear() * world_matrix_inv_transp;
         const int obj_idx = volume.first->object_idx();
         const int vol_idx = volume.first->volume_idx();
-        const bool has_painted_facets = obj_idx >= 0 && vol_idx >= 0 &&
+        // Bounds-check before indexing into model_objects/volumes
+        const bool has_painted_facets = obj_idx >= 0 && vol_idx >= 0 && obj_idx < int(model_objects.size()) &&
+                                        vol_idx < int(model_objects[obj_idx]->volumes.size()) &&
                                         (!model_objects[obj_idx]->volumes[vol_idx]->mm_segmentation_facets.empty() ||
                                          (!model_objects[obj_idx]->volumes[vol_idx]->color_mixing_facets.empty() &&
                                           !model_objects[obj_idx]->volumes[vol_idx]->color_mixing_palette.empty()));
@@ -859,8 +873,7 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
                 glsafe(::glFrontFace(GL_CW));
 
             const ModelVolume &model_volume = *model_objects[obj_idx]->volumes[vol_idx];
-            const size_t extruder_idx = ModelVolume::get_extruder_color_idx(model_volume,
-                                                                            GUI::wxGetApp().extruders_edited_cnt());
+            const size_t extruder_idx = ModelVolume::get_extruder_color_idx(model_volume, ctx.extruders_edited_cnt);
 
             // color_mixing wins over mm_segmentation when both are present: active CMYK
             // painting reflects the user's current intent, while mm_segmentation is the
@@ -923,8 +936,9 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
                 it->second.time_used = time_now;
 
             GUI::TriangleSelectorMmGui *ts = it->second.triangle_selector_mm.get();
-
-            ts->render(nullptr, world_matrix);
+            ts->set_shader_getters([&ctx](const std::string &name) { return ctx.get_shader(name); },
+                                   [&ctx]() { return ctx.get_current_shader(); });
+            ts->render(nullptr, world_matrix, *ctx.camera);
 
             if (is_left_handed)
                 glsafe(::glFrontFace(GL_CCW));
@@ -952,9 +966,9 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
             shader->set_uniform("slope.color", Vec3f(m_slope.color[0], m_slope.color[1], m_slope.color[2]));
 
 #if ENABLE_ENVIRONMENT_MAP
-            unsigned int environment_texture_id = GUI::wxGetApp().plater()->get_environment_texture_id();
+            unsigned int environment_texture_id = ctx.environment_texture_id;
             bool use_environment_texture = environment_texture_id > 0 &&
-                                           GUI::wxGetApp().app_config->get_bool("use_environment_map");
+                                           ctx.app_config->get_bool("use_environment_map");
             shader->set_uniform("use_environment_tex", use_environment_texture);
             if (use_environment_texture)
                 glsafe(::glBindTexture(GL_TEXTURE_2D, environment_texture_id));
@@ -1014,7 +1028,7 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
     if (edges_shader != nullptr)
     {
         edges_shader->start_using();
-        if (m_show_non_manifold_edges && GUI::wxGetApp().app_config->get_bool("non_manifold_edges"))
+        if (m_show_non_manifold_edges && ctx.app_config->get_bool("non_manifold_edges"))
         {
             for (GLVolumeWithIdAndZ &volume : to_render)
             {
@@ -1034,6 +1048,8 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
         glsafe(::glDisable(GL_BLEND));
         glsafe(::glDepthMask(true));
     }
+
+    s_render_ctx = nullptr;
 }
 
 void GLVolumeCollection::reset_outside_state()

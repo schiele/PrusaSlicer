@@ -577,7 +577,7 @@ void PresetArchiveDatabase::load_app_manifest_json()
     boost::system::error_code ec;
     if (!fs::exists(path, ec) || ec)
     {
-        copy_initial_manifest();
+        return;
     }
     boost::nowide::ifstream file(path.string());
     std::string data;
@@ -592,8 +592,8 @@ void PresetArchiveDatabase::load_app_manifest_json()
     }
     else
     {
-        assert(false);
         BOOST_LOG_TRIVIAL(error) << "Failed to read Archive Source Manifest at " << path;
+        return;
     }
     if (data.empty())
     {
@@ -684,19 +684,7 @@ void PresetArchiveDatabase::load_app_manifest_json()
 
 void PresetArchiveDatabase::copy_initial_manifest()
 {
-    const fs::path target_path = get_stored_manifest_path();
-    const fs::path source_path = fs::path(resources_dir()) / "profiles" / "ArchiveRepositoryManifest.json";
-    assert(fs::exists(source_path));
-    std::string error_message;
-    CopyFileResult cfr = Slic3r::copy_file(source_path.string(), target_path.string(), error_message, false);
-    assert(cfr == CopyFileResult::SUCCESS);
-    if (cfr != CopyFileResult::SUCCESS)
-    {
-        BOOST_LOG_TRIVIAL(error) << "Failed to copy ArchiveRepositoryManifest.json from resources.";
-        return;
-    }
-    static constexpr const auto perms = fs::owner_read | fs::owner_write | fs::group_read | fs::others_read;
-    fs::permissions(target_path, perms);
+    // Archive repository system is not used - ProfileServer handles profile downloads
 }
 
 void PresetArchiveDatabase::save_app_manifest_json() const

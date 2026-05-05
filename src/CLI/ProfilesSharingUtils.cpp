@@ -388,9 +388,7 @@ static std::string get_installed_print_and_filament_profiles(const PresetBundle 
 
             for (auto material_preset : material_presets)
             {
-                // ?! check visible and no-template presets only
-                if (!material_preset.is_visible ||
-                    (material_preset.vendor && material_preset.vendor->templates_profile))
+                if (!material_preset.is_visible)
                     continue;
 
                 const PresetWithVendorProfile material_preset_with_vendor_profile =

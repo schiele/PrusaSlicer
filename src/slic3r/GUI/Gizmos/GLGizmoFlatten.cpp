@@ -5,9 +5,10 @@
 ///|/
 #include "GLGizmoFlatten.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
-#include "slic3r/GUI/GUI_App.hpp"
-#include "slic3r/GUI/Plater.hpp"
-#include "slic3r/GUI/GUI_ObjectManipulation.hpp"
+#include "slic3r/GUI/I18N.hpp"
+#include "slic3r/GUI/GLShader.hpp"
+#include "slic3r/GUI/EventTypes.hpp"
+#include "slic3r/GUI/EventBridge.hpp"
 #include "slic3r/GUI/Gizmos/GLGizmosCommon.hpp"
 
 #include "libslic3r/Geometry/ConvexHull.hpp"
@@ -34,24 +35,23 @@ GLGizmoFlatten::GLGizmoFlatten(GLCanvas3D &parent, const std::string &icon_filen
 {
 }
 
-bool GLGizmoFlatten::on_mouse(const wxMouseEvent &mouse_event)
+bool GLGizmoFlatten::on_mouse(const MouseInput &mouse)
 {
-    if (mouse_event.LeftDown())
+    if (mouse.type == MouseEventType::LeftDown)
     {
         if (m_hover_id != -1)
         {
             Selection &selection = m_parent.get_selection();
             if (selection.is_single_full_instance())
             {
-                // Rotate the object so the normal points downward:
                 selection.flattening_rotate(m_planes[m_hover_id].normal);
                 m_parent.do_rotate(L("Gizmo-Place on Face"));
-                wxGetApp().obj_manipul()->set_dirty();
+                m_parent.event_poster()->postEvent(CanvasEventType::ManipulationDirty);
             }
             return true;
         }
     }
-    else if (mouse_event.LeftUp())
+    else if (mouse.type == MouseEventType::LeftUp)
         return m_hover_id != -1;
 
     return false;
@@ -99,7 +99,7 @@ void GLGizmoFlatten::on_render()
 {
     const Selection &selection = m_parent.get_selection();
 
-    GLShaderProgram *shader = wxGetApp().get_shader("flat");
+    GLShaderProgram *shader = m_parent.get_shader("flat");
     if (shader == nullptr)
         return;
 
@@ -113,7 +113,7 @@ void GLGizmoFlatten::on_render()
     if (selection.is_single_full_instance())
     {
         const Transform3d &inst_matrix = selection.get_first_volume()->get_instance_transformation().get_matrix();
-        const Camera &camera = wxGetApp().plater()->get_camera();
+        const Camera &camera = m_parent.get_camera();
         const Transform3d model_matrix = Geometry::translation_transform(
                                              selection.get_first_volume()->get_sla_shift_z() * Vec3d::UnitZ()) *
                                          inst_matrix;

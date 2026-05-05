@@ -6,7 +6,6 @@
 #include "TriangleSelectorMmGui.hpp"
 
 #include "slic3r/GUI/3DScene.hpp" // for the glsafe() macro
-#include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/OpenGLManager.hpp"
 
 #if SLIC3R_OPENGL_ES
@@ -18,12 +17,12 @@
 namespace Slic3r::GUI
 {
 
-void TriangleSelectorMmGui::render(ImGuiWrapper *imgui, const Transform3d &matrix)
+void TriangleSelectorMmGui::render(ImGuiWrapper *imgui, const Transform3d &matrix, const Camera &camera)
 {
     if (m_update_render_data)
         update_render_data();
 
-    auto *shader = wxGetApp().get_current_shader();
+    auto *shader = m_get_current_shader ? m_get_current_shader() : nullptr;
     if (!shader)
         return;
 
@@ -41,11 +40,11 @@ void TriangleSelectorMmGui::render(ImGuiWrapper *imgui, const Transform3d &matri
             else // Normal VBO
                 shader->set_uniform("uniform_color", color_idx == 0 ? m_default_volume_color : m_colors[color_idx - 1]);
 
-            m_gizmo_scene.render(color_idx);
+            m_gizmo_scene.render(color_idx, shader);
         }
     }
 
-    render_paint_contour(matrix);
+    render_paint_contour(matrix, camera);
     m_update_render_data = false;
 }
 
@@ -112,7 +111,7 @@ void GLMmSegmentationGizmo3DScene::release_geometry()
     this->clear();
 }
 
-void GLMmSegmentationGizmo3DScene::render(size_t triangle_indices_idx) const
+void GLMmSegmentationGizmo3DScene::render(size_t triangle_indices_idx, GLShaderProgram *shader) const
 {
     assert(triangle_indices_idx < this->triangle_indices_VBO_ids.size());
     assert(this->triangle_indices_sizes.size() == this->triangle_indices_VBO_ids.size());
@@ -127,7 +126,6 @@ void GLMmSegmentationGizmo3DScene::render(size_t triangle_indices_idx) const
     assert(this->vertices_VBO_id != 0);
     assert(this->triangle_indices_VBO_ids[triangle_indices_idx] != 0);
 
-    GLShaderProgram *shader = wxGetApp().get_current_shader();
     if (shader == nullptr)
         return;
 

@@ -17,6 +17,7 @@
 #include "BackgroundSlicingProcess.hpp"
 #include "OpenGLManager.hpp"
 #include "GLCanvas3D.hpp"
+#include "GLSurface_wx.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "DoubleSliderForGcode.hpp"
 #include "DoubleSliderForLayers.hpp"
@@ -55,6 +56,39 @@ namespace Slic3r
 namespace GUI
 {
 
+// Parse canvas_msaa AppConfig value to an int for create_wxglcanvas.
+// Returns -1 for auto, 0 for off, or 2/4/8/16 for explicit sample counts.
+static int get_msaa_sample_count()
+{
+    const AppConfig *config = wxGetApp().app_config;
+    if (!config)
+        return -1;
+    const std::string val = config->get("canvas_msaa");
+    if (val.empty() || val == "auto")
+    {
+#ifdef _WIN32
+        // Over RDP, auto-probing loops through 16x/8x/4x/2x, each creating a
+        // temporary WGL context that can saturate the GPU command queue. Use 2x
+        // directly so only a single probe occurs.
+        if (GetSystemMetrics(SM_REMOTESESSION))
+            return 2;
+#endif
+        return -1;
+    }
+    int n = std::atoi(val.c_str());
+    if (n == 2 || n == 4 || n == 8 || n == 16)
+    {
+#ifdef _WIN32
+        // High MSAA over RDP causes massive GPU load through the virtualization
+        // layer (16x = 16x fragment shader invocations per pixel), risking TDR.
+        if (GetSystemMetrics(SM_REMOTESESSION) && n > 4)
+            n = 4;
+#endif
+        return n;
+    }
+    return (n <= 0) ? 0 : -1;
+}
+
 View3D::View3D(wxWindow *parent, Bed3D &bed, Model *model, DynamicPrintConfig *config,
                BackgroundSlicingProcess *process)
     : m_canvas_widget(nullptr), m_canvas(nullptr)
@@ -79,14 +113,15 @@ bool View3D::init(wxWindow *parent, Bed3D &bed, Model *model, DynamicPrintConfig
     if (!Create(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, 0 /* disable wxTAB_TRAVERSAL */))
         return false;
 
-    const GUI_InitParams *const init_params = wxGetApp().init_params;
-    m_canvas_widget = OpenGLManager::create_wxglcanvas(*this,
-                                                       (init_params != nullptr) ? init_params->opengl_aa : false);
+    m_canvas_widget = OpenGLManager::create_wxglcanvas(*this, get_msaa_sample_count());
     if (m_canvas_widget == nullptr)
         return false;
 
-    m_canvas = new GLCanvas3D(m_canvas_widget, bed);
-    m_canvas->set_context(wxGetApp().init_glcontext(*m_canvas_widget));
+    m_canvas = new GLCanvas3D(m_canvas_widget, bed, wxGetApp().app_config, wxGetApp().imgui());
+    wxGLContext *gl_context = wxGetApp().init_glcontext(*m_canvas_widget);
+    m_gl_surface = std::make_unique<GLSurface_wx>(m_canvas_widget, gl_context);
+    m_canvas->set_surface(m_gl_surface.get());
+    m_canvas->set_canvas_role(GLCanvas3D::CanvasRole::View3D);
 
     m_canvas->allow_multisample(OpenGLManager::can_multisample());
 
@@ -230,14 +265,16 @@ bool Preview::init(wxWindow *parent, Bed3D &bed, Model *model)
     SetBackgroundColour(GetParent()->GetBackgroundColour());
 #endif // _WIN32
 
-    const GUI_InitParams *const init_params = wxGetApp().init_params;
-    m_canvas_widget = OpenGLManager::create_wxglcanvas(*this,
-                                                       (init_params != nullptr) ? init_params->opengl_aa : false);
+    m_canvas_widget = OpenGLManager::create_wxglcanvas(*this, get_msaa_sample_count());
     if (m_canvas_widget == nullptr)
         return false;
 
-    m_canvas = new GLCanvas3D(m_canvas_widget, bed);
-    m_canvas->set_context(wxGetApp().init_glcontext(*m_canvas_widget));
+    m_canvas = new GLCanvas3D(m_canvas_widget, bed, wxGetApp().app_config, wxGetApp().imgui());
+    wxGLContext *gl_context = wxGetApp().init_glcontext(*m_canvas_widget);
+    m_gl_surface = std::make_unique<GLSurface_wx>(m_canvas_widget, gl_context);
+    m_canvas->set_surface(m_gl_surface.get());
+    m_canvas->set_canvas_role(GLCanvas3D::CanvasRole::Preview);
+    m_canvas->set_right_margin_fn([this]() { return get_layers_slider_width(true); });
     m_canvas->allow_multisample(OpenGLManager::can_multisample());
     m_canvas->set_config(m_config);
     m_canvas->set_model(model);

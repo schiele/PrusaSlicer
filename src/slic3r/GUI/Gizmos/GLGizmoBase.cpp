@@ -5,6 +5,9 @@
 ///|/
 #include "GLGizmoBase.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
+#include "slic3r/GUI/GLShader.hpp"
+#include "slic3r/GUI/InputEvents_wx.hpp"
+#include "slic3r/GUI/EventTypes.hpp"
 
 #if SLIC3R_OPENGL_ES
 #include <glad/gles2.h>
@@ -12,9 +15,7 @@
 #include <glad/gl.h>
 #endif
 
-#include "slic3r/GUI/GUI_App.hpp"
-#include "slic3r/GUI/GUI_ObjectManipulation.hpp"
-#include "slic3r/GUI/Plater.hpp"
+#include "slic3r/GUI/EventBridge.hpp"
 
 // TODO: Display tooltips quicker on Linux
 
@@ -55,16 +56,16 @@ void GLGizmoBase::Grabber::register_raycasters_for_picking(int id)
     // registration will happen on next call to render()
 }
 
-void GLGizmoBase::Grabber::unregister_raycasters_for_picking()
+void GLGizmoBase::Grabber::unregister_raycasters_for_picking(GLCanvas3D &canvas)
 {
-    wxGetApp().plater()->canvas3D()->remove_raycasters_for_picking(SceneRaycaster::EType::Gizmo, picking_id);
+    canvas.remove_raycasters_for_picking(SceneRaycaster::EType::Gizmo, picking_id);
     picking_id = -1;
     raycasters = {nullptr};
 }
 
-void GLGizmoBase::Grabber::render(float size, const ColorRGBA &render_color)
+void GLGizmoBase::Grabber::render(float size, const ColorRGBA &render_color, const Camera &camera,
+                                  GLShaderProgram *shader, GLCanvas3D &canvas)
 {
-    GLShaderProgram *shader = wxGetApp().get_current_shader();
     if (shader == nullptr)
         return;
 
@@ -90,7 +91,6 @@ void GLGizmoBase::Grabber::render(float size, const ColorRGBA &render_color)
     s_cube.model.set_color(render_color);
     s_cone.model.set_color(render_color);
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
     shader->set_uniform("projection_matrix", camera.get_projection_matrix());
     const Transform3d &view_matrix = camera.get_view_matrix();
     const Matrix3d view_matrix_no_offset = view_matrix.matrix().block(0, 0, 3, 3);
@@ -153,7 +153,6 @@ void GLGizmoBase::Grabber::render(float size, const ColorRGBA &render_color)
 
     if (raycasters[0] == nullptr)
     {
-        GLCanvas3D &canvas = *wxGetApp().plater()->canvas3D();
         raycasters[0] = canvas.add_raycaster_for_picking(SceneRaycaster::EType::Gizmo, picking_id,
                                                          *s_cube.mesh_raycaster, elements_matrices[0]);
         if ((int(extensions) & int(GLGizmoBase::EGrabberExtension::PosX)) != 0)
@@ -192,7 +191,7 @@ GLGizmoBase::GLGizmoBase(GLCanvas3D &parent, const std::string &icon_filename, u
     , m_shortcut_key(NO_SHORTCUT_KEY_VALUE)
     , m_icon_filename(icon_filename)
     , m_sprite_id(sprite_id)
-    , m_imgui(wxGetApp().imgui())
+    , m_imgui(parent.get_imgui())
 {
 }
 
@@ -233,7 +232,7 @@ void GLGizmoBase::unregister_grabbers_for_picking()
 {
     for (size_t i = 0; i < m_grabbers.size(); ++i)
     {
-        m_grabbers[i].unregister_raycasters_for_picking();
+        m_grabbers[i].unregister_raycasters_for_picking(m_parent);
     }
 }
 
@@ -249,7 +248,7 @@ void GLGizmoBase::render_grabbers(float size) const
 
 void GLGizmoBase::render_grabbers(size_t first, size_t last, float size, bool force_hover) const
 {
-    GLShaderProgram *shader = wxGetApp().get_shader("gouraud_light");
+    GLShaderProgram *shader = m_parent.get_shader("gouraud_light");
     if (shader == nullptr)
         return;
     shader->start_using();
@@ -258,7 +257,8 @@ void GLGizmoBase::render_grabbers(size_t first, size_t last, float size, bool fo
     for (size_t i = first; i <= last; ++i)
     {
         if (m_grabbers[i].enabled)
-            m_grabbers[i].render(force_hover ? true : m_hover_id == (int) i, size);
+            m_grabbers[i].render(force_hover ? true : m_hover_id == (int) i, size, m_parent.get_camera(), shader,
+                                 m_parent);
     }
     glsafe(::glEnable(GL_CULL_FACE));
     shader->stop_using();
@@ -266,12 +266,11 @@ void GLGizmoBase::render_grabbers(size_t first, size_t last, float size, bool fo
 
 // help function to process grabbers
 // call start_dragging, stop_dragging, on_dragging
-bool GLGizmoBase::use_grabbers(const wxMouseEvent &mouse_event)
+bool GLGizmoBase::use_grabbers(const MouseInput &mouse)
 {
     bool is_dragging_finished = false;
-    if (mouse_event.Moving())
+    if (mouse.type == MouseEventType::Motion && !mouse.dragging)
     {
-        // it should not happen but for sure
         assert(!m_dragging);
         if (m_dragging)
             is_dragging_finished = true;
@@ -279,45 +278,40 @@ bool GLGizmoBase::use_grabbers(const wxMouseEvent &mouse_event)
             return false;
     }
 
-    if (mouse_event.LeftDown())
+    if (mouse.type == MouseEventType::LeftDown)
     {
         Selection &selection = m_parent.get_selection();
-        if (!selection.is_empty() && m_hover_id != -1 /* &&
-            (m_grabbers.empty() || m_hover_id < static_cast<int>(m_grabbers.size()))*/)
+        if (!selection.is_empty() && m_hover_id != -1)
         {
             selection.setup_cache();
 
             m_dragging = true;
             for (auto &grabber : m_grabbers)
                 grabber.dragging = false;
-            //            if (!m_grabbers.empty() && m_hover_id < int(m_grabbers.size()))
-            //                m_grabbers[m_hover_id].dragging = true;
 
             on_start_dragging();
 
-            // Let the plater know that the dragging started
-            m_parent.post_event(SimpleEvent(EVT_GLCANVAS_MOUSE_DRAGGING_STARTED));
+            m_parent.event_poster()->postEvent(CanvasEventType::MouseDraggingStarted);
             m_parent.set_as_dirty();
             return true;
         }
     }
     else if (m_dragging)
     {
-        // when mouse cursor leave window than finish actual dragging operation
-        bool is_leaving = mouse_event.Leaving();
-        if (mouse_event.Dragging())
+        bool is_leaving = (mouse.type == MouseEventType::Leave);
+        if (mouse.dragging)
         {
-            Point mouse_coord(mouse_event.GetX(), mouse_event.GetY());
+            Point mouse_coord((int) mouse.x, (int) mouse.y);
             auto ray = m_parent.mouse_ray(mouse_coord);
             UpdateData data(ray, mouse_coord);
 
             on_dragging(data);
 
-            wxGetApp().obj_manipul()->set_dirty();
+            m_parent.event_poster()->postEvent(CanvasEventType::ManipulationDirty);
             m_parent.set_as_dirty();
             return true;
         }
-        else if (mouse_event.LeftUp() || is_leaving || is_dragging_finished)
+        else if (mouse.type == MouseEventType::LeftUp || is_leaving || is_dragging_finished)
         {
             do_stop_dragging(is_leaving);
             return true;
@@ -344,12 +338,12 @@ void GLGizmoBase::do_stop_dragging(bool perform_mouse_cleanup)
     // Should be fixed.
     m_parent.get_gizmos_manager().update_data();
 
-    wxGetApp().obj_manipul()->set_dirty();
+    m_parent.event_poster()->postEvent(CanvasEventType::ManipulationDirty);
 
     // Let the plater know that the dragging finished, so a delayed
     // refresh of the scene with the background processing data should
     // be performed.
-    m_parent.post_event(SimpleEvent(EVT_GLCANVAS_MOUSE_DRAGGING_FINISHED));
+    m_parent.event_poster()->postEvent(CanvasEventType::MouseDraggingFinished);
     // updates camera target constraints
     m_parent.refresh_camera_scene_box();
 }

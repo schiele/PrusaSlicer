@@ -564,8 +564,8 @@ class _3MF_Importer : public _3MF_Base
     boost::optional<Semver> m_generator_version;
     // Raw Application metadata string (e.g. "OrcaSlicer-2.3.1", "PrusaSlicer-2.8.0")
     std::string m_generator_application;
-    // True if post_process scripts were found and suppressed during import
-    bool m_post_process_suppressed{false};
+    bool m_post_process_stripped{false};
+    bool m_scripts_suppressed{false};
     unsigned int m_fdm_supports_painting_version = 0;
     unsigned int m_seam_painting_version = 0;
     unsigned int m_mm_painting_version = 0;
@@ -605,7 +605,8 @@ public:
     unsigned int version() const { return m_version; }
     boost::optional<Semver> generator_version() const { return m_generator_version; }
     const std::string &generator_application() const { return m_generator_application; }
-    bool post_process_suppressed() const { return m_post_process_suppressed; }
+    bool post_process_stripped() const { return m_post_process_stripped; }
+    bool scripts_suppressed() const { return m_scripts_suppressed; }
 
 private:
     void _destroy_xml_parser();
@@ -1440,15 +1441,41 @@ void _3MF_Importer::_extract_print_config_from_archive(mz_zip_archive &archive, 
         //config_substitutions.substitutions = config.load_from_ini_string_commented(std::move(buffer), config_substitutions.rule);
         ConfigBase::load_from_gcode_string_legacy(config, buffer.data(), config_substitutions);
 
-        // Security: suppress post_process scripts embedded in 3MF files (CVE-2023-47268).
-        // A malicious 3MF can embed shell commands that execute on G-code export.
+        // Security: post_process scripts are shell commands - always strip (CVE-2023-47268).
         if (auto *post_process = config.opt<ConfigOptionStrings>("post_process");
             post_process != nullptr && !post_process->values.empty())
         {
-            BOOST_LOG_TRIVIAL(warning) << "Security: suppressed post_process scripts from 3MF file \""
-                                       << archive_filename << "\": " << post_process->serialize();
-            config.opt<ConfigOptionStrings>("post_process")->values.clear();
-            m_post_process_suppressed = true;
+            BOOST_LOG_TRIVIAL(warning) << "Security: stripped post_process scripts from 3MF file \"" << archive_filename
+                                       << "\"";
+            post_process->values.clear();
+            m_post_process_stripped = true;
+        }
+
+        // Preprocessing scripts are Python file paths - flag for trust dialog in the UI.
+        auto has_scripts = [&](const std::string &key) -> bool
+        {
+            auto *opt = config.opt<ConfigOptionStrings>(key);
+            return opt != nullptr && !opt->values.empty() &&
+                   std::any_of(opt->values.begin(), opt->values.end(), [](const std::string &v) { return !v.empty(); });
+        };
+        auto has_enabled = [&](const std::string &key) -> bool
+        {
+            auto *opt = config.opt<ConfigOptionBool>(key);
+            return opt != nullptr && opt->value;
+        };
+
+        bool has_preprocessing = false;
+        for (const auto &key :
+             {"preprocessing_scripts_print", "preprocessing_scripts_filament", "preprocessing_scripts_printer"})
+            has_preprocessing = has_preprocessing || has_scripts(key);
+        for (const auto &key :
+             {"preprocessing_enabled_print", "preprocessing_enabled_filament", "preprocessing_enabled_printer"})
+            has_preprocessing = has_preprocessing || has_enabled(key);
+
+        if (has_preprocessing)
+        {
+            BOOST_LOG_TRIVIAL(info) << "3MF file \"" << archive_filename << "\" contains preprocessing scripts";
+            m_scripts_suppressed = true;
         }
     }
 }
@@ -4643,7 +4670,7 @@ ProjectFileInfo is_project_3mf(const std::string &filename)
 
 bool load_3mf(const char *path, DynamicPrintConfig &config, ConfigSubstitutionContext &config_substitutions,
               Model *model, bool check_version, boost::optional<Semver> &generator_version,
-              std::string *generator_application, bool *post_process_suppressed)
+              std::string *generator_application, bool *scripts_suppressed, bool *post_process_stripped)
 {
     if (path == nullptr || model == nullptr)
         return false;
@@ -4657,8 +4684,10 @@ bool load_3mf(const char *path, DynamicPrintConfig &config, ConfigSubstitutionCo
     generator_version = importer.generator_version();
     if (generator_application)
         *generator_application = importer.generator_application();
-    if (post_process_suppressed)
-        *post_process_suppressed = importer.post_process_suppressed();
+    if (scripts_suppressed)
+        *scripts_suppressed = importer.scripts_suppressed();
+    if (post_process_stripped)
+        *post_process_stripped = importer.post_process_stripped();
 
     return res;
 }
@@ -4720,9 +4749,9 @@ S bimap_cvt(const boost::bimap<F, S> &bmap, F f, const S &def_value)
 /// </summary>
 const TextConfigurationSerialization::TypeToName TextConfigurationSerialization::type_to_name =
     boost::assign::list_of<TypeToName::relation>(EmbossStyle::Type::file_path, "file_name")(
-        EmbossStyle::Type::wx_win_font_descr,
-        "wxFontDescriptor_Windows")(EmbossStyle::Type::wx_lin_font_descr,
-                                    "wxFontDescriptor_Linux")(EmbossStyle::Type::wx_mac_font_descr,
+        EmbossStyle::Type::win_font_descr,
+        "wxFontDescriptor_Windows")(EmbossStyle::Type::lin_font_descr,
+                                    "wxFontDescriptor_Linux")(EmbossStyle::Type::mac_font_descr,
                                                               "wxFontDescriptor_MacOsX");
 
 const TextConfigurationSerialization::HorizontalAlignToName TextConfigurationSerialization::horizontal_align_to_name =

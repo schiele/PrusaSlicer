@@ -6,17 +6,18 @@
 
 #define INTENSITY_CORRECTION 0.6
 
-// Same light directions as mm_gouraud for consistent shape perception
 const vec3 LIGHT_TOP_DIR = vec3(-0.4574957, 0.4574957, 0.7624929);
 #define LIGHT_TOP_DIFFUSE    (0.5 * INTENSITY_CORRECTION)
-#define LIGHT_TOP_SPECULAR   (0.05 * INTENSITY_CORRECTION)
-#define LIGHT_TOP_SHININESS  20.0
 
 const vec3 LIGHT_FRONT_DIR = vec3(0.6985074, 0.1397015, 0.6985074);
 #define LIGHT_FRONT_DIFFUSE  (0.2 * INTENSITY_CORRECTION)
 
-// Higher ambient than mm_gouraud (0.3) so shadows don't crush colors
-#define INTENSITY_AMBIENT    0.55
+// Higher ambient to preserve painted color readability
+#define INTENSITY_AMBIENT    0.50
+#define SPECULAR_INTENSITY   0.20
+#define BLINN_SHININESS      32.0
+#define RIM_POWER            3.0
+#define RIM_INTENSITY        0.12
 
 const vec3  ZERO    = vec3(0.0, 0.0, 0.0);
 
@@ -48,16 +49,20 @@ void main()
         triangle_normal = -triangle_normal;
 
     vec3 eye_normal = normalize(view_normal_matrix * triangle_normal);
+    vec3 eye_position = (view_model_matrix * model_pos).xyz;
+    vec3 view_dir = normalize(-eye_position);
 
-    float NdotL = max(dot(eye_normal, LIGHT_TOP_DIR), 0.0);
+    float NdotL_top = max(dot(eye_normal, LIGHT_TOP_DIR), 0.0);
+    float diffuse = INTENSITY_AMBIENT + NdotL_top * LIGHT_TOP_DIFFUSE;
 
-    vec2 intensity = vec2(0.0);
-    intensity.x = INTENSITY_AMBIENT + NdotL * LIGHT_TOP_DIFFUSE;
-    vec3 position = (view_model_matrix * model_pos).xyz;
-    intensity.y = LIGHT_TOP_SPECULAR * pow(max(dot(-normalize(position), reflect(-LIGHT_TOP_DIR, eye_normal)), 0.0), LIGHT_TOP_SHININESS);
+    vec3 half_top = normalize(LIGHT_TOP_DIR + view_dir);
+    float NdotH_top = max(dot(eye_normal, half_top), 0.0);
+    float specular = SPECULAR_INTENSITY * pow(NdotH_top, BLINN_SHININESS);
 
-    NdotL = max(dot(eye_normal, LIGHT_FRONT_DIR), 0.0);
-    intensity.x += NdotL * LIGHT_FRONT_DIFFUSE;
+    float NdotL_front = max(dot(eye_normal, LIGHT_FRONT_DIR), 0.0);
+    diffuse += NdotL_front * LIGHT_FRONT_DIFFUSE;
 
-    out_color = vec4(vec3(intensity.y) + color * intensity.x, alpha);
+    float rim = pow(max(0.0, 1.0 - dot(view_dir, eye_normal)), RIM_POWER) * RIM_INTENSITY;
+
+    out_color = vec4(min(vec3(specular + rim) + color * diffuse, vec3(1.0)), alpha);
 }

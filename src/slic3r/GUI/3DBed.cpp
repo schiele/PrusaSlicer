@@ -721,7 +721,7 @@ void Bed3D::render_model(const Transform3d &view_matrix, const Transform3d &proj
 
     if (!m_model.model.get_filename().empty())
     {
-        GLShaderProgram *shader = wxGetApp().get_shader("gouraud_light");
+        GLShaderProgram *shader = wxGetApp().get_utility_shader();
         if (shader != nullptr)
         {
             shader->start_using();

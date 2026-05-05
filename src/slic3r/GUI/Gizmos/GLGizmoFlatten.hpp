@@ -58,7 +58,7 @@ public:
     /// </summary>
     /// <param name="mouse_event">Keep information about mouse click</param>
     /// <returns>Return True when use the information otherwise False.</returns>
-    bool on_mouse(const wxMouseEvent &mouse_event) override;
+    bool on_mouse(const MouseInput &mouse) override;
 
     void data_changed(bool is_serializing) override;
 

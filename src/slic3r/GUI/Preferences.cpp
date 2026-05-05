@@ -15,6 +15,8 @@
 #include "I18N.hpp"
 #include "format.hpp"
 #include "libslic3r/AppConfig.hpp"
+#include "libslic3r/PresetBundle.hpp"
+#include "Tab.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/CpuAffinity.hpp"
 #include "libslic3r/NvidiaProfile.hpp"
@@ -27,8 +29,19 @@
 #include "Search.hpp"
 
 #include "Widgets/SpinInput.hpp"
+#include "Widgets/UIColors.hpp"
 
+#include <sstream>
 #include <boost/dll/runtime_symbol_info.hpp>
+#include <boost/filesystem.hpp>
+#include <boost/filesystem/fstream.hpp>
+#ifdef _WIN32
+#include <shellapi.h>
+#else
+#include <fcntl.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 #ifdef WIN32
 #include <wx/msw/registry.h>
@@ -83,6 +96,21 @@ static const t_config_enum_values s_keys_map_CpuMaxThreadsMode = {
 };
 
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(CpuMaxThreadsMode)
+
+static const t_config_enum_values s_keys_map_CanvasLightingQuality = {
+    {"auto", CanvasLightingAuto},
+    {"basic", CanvasLightingBasic},
+    {"enhanced", CanvasLightingEnhanced},
+};
+
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(CanvasLightingQuality)
+
+static const t_config_enum_values s_keys_map_CanvasMsaaMode = {
+    {"auto", CanvasMsaaAuto}, {"0", CanvasMsaaOff}, {"2", CanvasMsaa2x},
+    {"4", CanvasMsaa4x},      {"8", CanvasMsaa8x},  {"16", CanvasMsaa16x},
+};
+
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(CanvasMsaaMode)
 
 namespace GUI
 {
@@ -392,10 +420,6 @@ void PreferencesDialog::build()
             L("Suppress \" - default - \" presets in the Print / Filament / Printer selections once there are any other valid presets available."),
             app_config->get_bool("no_defaults"));
 
-        append_bool_option(m_optgroup_general, "no_templates", L("Suppress \" Template \" filament presets"),
-                           L("Suppress \" Template \" filament presets in configuration wizard and sidebar visibility."),
-                           app_config->get_bool("no_templates"));
-
         append_bool_option(m_optgroup_general, "show_incompatible_presets",
                            L("Show incompatible print and filament presets"),
                            L("When checked, the print and filament presets are shown in the preset editor "
@@ -677,13 +701,38 @@ void PreferencesDialog::build()
 
         // CPU tab: thread cap (stability trade) plus P-core preference on hybrid Intel (can also improve
         // slicing speed by avoiding E-cores stalling parallel synchronization points).
-        m_optgroup_cpu = create_options_tab(L("CPU"), tabs);
+        m_optgroup_cpu = create_options_tab(L("Performance"), tabs);
         // Write through directly to AppConfig + live-apply on each change. This matches the pattern
         // used by "use_custom_toolbar_size" in the GUI tab and bypasses the m_values staging map, which
         // for whatever reason was not persisting these two keys in practice.
         m_optgroup_cpu->on_change = [](t_config_option_key opt_key, boost::any value)
         {
             auto *app_config = get_app_config();
+            if (opt_key == "canvas_lighting_quality")
+            {
+                int val_int = boost::any_cast<int>(value);
+                static const std::map<int, std::string> lighting_keys = {
+                    {CanvasLightingAuto, "auto"},
+                    {CanvasLightingBasic, "basic"},
+                    {CanvasLightingEnhanced, "enhanced"},
+                };
+                auto it = lighting_keys.find(val_int);
+                if (it != lighting_keys.end())
+                    app_config->set(opt_key, it->second);
+                return;
+            }
+            if (opt_key == "canvas_msaa")
+            {
+                int val_int = boost::any_cast<int>(value);
+                static const std::map<int, std::string> msaa_keys = {
+                    {CanvasMsaaAuto, "auto"}, {CanvasMsaaOff, "0"}, {CanvasMsaa2x, "2"},
+                    {CanvasMsaa4x, "4"},      {CanvasMsaa8x, "8"},  {CanvasMsaa16x, "16"},
+                };
+                auto it = msaa_keys.find(val_int);
+                if (it != msaa_keys.end())
+                    app_config->set(opt_key, it->second);
+                return;
+            }
             if (opt_key == "cpu_max_slicing_threads")
             {
                 int val_int = boost::any_cast<int>(value);
@@ -767,14 +816,52 @@ void PreferencesDialog::build()
                            app_config->get_bool("cpu_pcores_only"));
 #endif // SLIC3R_CPU_AFFINITY_SUPPORTED
 
+        m_optgroup_cpu->append_separator();
+
+        {
+            const std::string current = app_config->get("canvas_lighting_quality");
+            CanvasLightingQuality current_mode = CanvasLightingAuto;
+            if (current == "basic")
+                current_mode = CanvasLightingBasic;
+            else if (current == "enhanced")
+                current_mode = CanvasLightingEnhanced;
+
+            append_enum_option<CanvasLightingQuality>(
+                m_optgroup_cpu, "canvas_lighting_quality", L("Lighting quality"),
+                L("Controls per-pixel lighting on 3D models. Auto detects your GPU and picks "
+                  "the best option. Enhanced uses Blinn-Phong shading with specular highlights "
+                  "and rim lighting for a more realistic look. Basic uses flat Gouraud shading."),
+                new ConfigOptionEnum<CanvasLightingQuality>(current_mode),
+                {{"auto", L("Auto (detect GPU)")}, {"basic", L("Basic")}, {"enhanced", L("Enhanced")}});
+        }
+
+        {
+            const std::string current = app_config->get("canvas_msaa");
+            CanvasMsaaMode current_mode = CanvasMsaaAuto;
+            auto it = s_keys_map_CanvasMsaaMode.find(current);
+            if (it != s_keys_map_CanvasMsaaMode.end())
+                current_mode = static_cast<CanvasMsaaMode>(it->second);
+
+            append_enum_option<CanvasMsaaMode>(
+                m_optgroup_cpu, "canvas_msaa", L("Anti-aliasing (MSAA)"),
+                L("Controls multi-sample anti-aliasing for smooth edges. Auto tries the highest "
+                  "level your GPU supports. Higher values give smoother edges but use more GPU memory. "
+                  "Requires application restart to take effect."),
+                new ConfigOptionEnum<CanvasMsaaMode>(current_mode),
+                {{"auto", L("Auto (detect GPU)")},
+                 {"0", L("Off")},
+                 {"2", L("2x")},
+                 {"4", L("4x")},
+                 {"8", L("8x")},
+                 {"16", L("16x")}});
+        }
+
         // NVIDIA GPU: optional per-app driver profile fix. Only shown when an NVIDIA driver is
         // actually present on the machine, so AMD/Intel users don't see an irrelevant option.
         const bool has_nvidia = Slic3r::nvidia_driver_available();
         if (has_nvidia)
         {
             m_optgroup_cpu->append_separator();
-            // Pass the real factory default (false) as def_val so the tooltip advertises the correct
-            // default value. The saved state is restored below via set_value after activate.
             append_bool_option(m_optgroup_cpu, "cpu_nvidia_disable_threaded_opt",
                                L("Disable NVIDIA OpenGL Threaded Optimization"),
                                L("Writes a per-application NVIDIA driver profile for preFlight.exe that turns off "
@@ -790,7 +877,9 @@ void PreferencesDialog::build()
                 auto *sizer = new wxBoxSizer(wxHORIZONTAL);
                 auto *text = new wxStaticText(
                     parent, wxID_ANY,
-                    _L("If the automatic fix above does not take effect, apply it manually:\n"
+                    _L("Only needed if preFlight crashes during slicing. NVIDIA's Threaded Optimization "
+                       "can conflict with preFlight's parallel slicing engine.\n\n"
+                       "If the checkbox above does not fix the crash, apply it manually:\n"
                        "1. Open NVIDIA Control Panel.\n"
                        "2. Go to 3D Settings \u2192 Manage 3D Settings \u2192 Program Settings.\n"
                        "3. Select preFlight from the program list (click Add and browse to preFlight.exe if "
@@ -806,7 +895,7 @@ void PreferencesDialog::build()
 
         activate_options_tab(m_optgroup_cpu);
 
-        // Re-enable change events on the enum dropdown. Choice::set_selection() (called during BUILD)
+        // Re-enable change events on enum dropdowns. Choice::set_selection() (called during BUILD)
         // sets m_disable_change_event = true and never clears it, so without this call the dropdown's
         // on_change never fires. This mirrors the explicit set_value pattern notify_release uses.
         {
@@ -814,6 +903,23 @@ void PreferencesDialog::build()
             auto it = s_keys_map_CpuMaxThreadsMode.find(current);
             int val_int = it != s_keys_map_CpuMaxThreadsMode.end() ? it->second : CpuMaxThreadsAuto;
             if (Field *field = m_optgroup_cpu->get_field("cpu_max_slicing_threads"))
+                field->set_value(boost::any(val_int), false);
+        }
+        {
+            const std::string current = app_config->get("canvas_lighting_quality");
+            int val_int = CanvasLightingAuto;
+            if (current == "basic")
+                val_int = CanvasLightingBasic;
+            else if (current == "enhanced")
+                val_int = CanvasLightingEnhanced;
+            if (Field *field = m_optgroup_cpu->get_field("canvas_lighting_quality"))
+                field->set_value(boost::any(val_int), false);
+        }
+        {
+            const std::string current = app_config->get("canvas_msaa");
+            auto it = s_keys_map_CanvasMsaaMode.find(current);
+            int val_int = it != s_keys_map_CanvasMsaaMode.end() ? it->second : CanvasMsaaAuto;
+            if (Field *field = m_optgroup_cpu->get_field("canvas_msaa"))
                 field->set_value(boost::any(val_int), false);
         }
 
@@ -833,6 +939,364 @@ void PreferencesDialog::build()
                 field->toggle(false);
         }
 #endif // SLIC3R_CPU_AFFINITY_SUPPORTED
+
+        // Add "Preprocessing" tab - must match panel > scrolledwindow structure
+        // that the constructor's post-build loop expects (GetItem(0) must be wxScrolledWindow)
+        {
+            wxPanel *pp_tab = new wxPanel(tabs, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+                                          wxBK_LEFT | wxTAB_TRAVERSAL);
+            tabs->AddPage(pp_tab, _L("Preprocessing"));
+            pp_tab->SetFont(wxGetApp().normal_font());
+
+            auto *scrolled = new wxScrolledWindow(pp_tab);
+#ifdef _WIN32
+            wxGetApp().UpdateDarkUI(pp_tab);
+            wxGetApp().UpdateDarkUI(scrolled);
+#else
+            pp_tab->SetBackgroundColour(wxGetApp().get_window_default_clr());
+            scrolled->SetBackgroundColour(wxGetApp().get_window_default_clr());
+#endif
+
+            auto *content_sizer = new wxBoxSizer(wxVERTICAL);
+            int em = wxGetApp().em_unit();
+
+            auto *order_label = new wxStaticText(scrolled, wxID_ANY, _L("Script category execution order:"));
+            order_label->SetFont(wxGetApp().normal_font());
+
+#ifdef _WIN32
+            auto *order_listbox = new wxListBox(scrolled, wxID_ANY, wxDefaultPosition, wxSize(-1, 80), 0, nullptr,
+                                                wxBORDER_SIMPLE);
+            wxGetApp().UpdateDarkUI(order_listbox);
+#else
+            auto *order_border = new wxPanel(scrolled, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE);
+            wxColour order_border_clr = wxGetApp().get_label_clr_default();
+            order_border_clr = wxColour(order_border_clr.Red(), order_border_clr.Green(), order_border_clr.Blue(), 80);
+            order_border->SetBackgroundColour(order_border_clr);
+            auto *order_border_sizer = new wxBoxSizer(wxVERTICAL);
+            auto *order_listbox = new wxListBox(order_border, wxID_ANY, wxDefaultPosition, wxSize(-1, 80), 0, nullptr,
+                                                wxBORDER_NONE);
+            order_listbox->SetBackgroundColour(wxGetApp().get_window_default_clr());
+            order_listbox->SetForegroundColour(wxGetApp().get_label_clr_default());
+            order_border_sizer->Add(order_listbox, 1, wxEXPAND | wxALL, 1);
+            order_border->SetSizer(order_border_sizer);
+#endif
+            std::string order_str = app_config->get("preprocessing_category_order");
+            if (order_str.empty())
+                order_str = "print,filament,printer";
+            std::istringstream iss(order_str);
+            std::string cat;
+            while (std::getline(iss, cat, ','))
+            {
+                cat.erase(0, cat.find_first_not_of(" \t"));
+                cat.erase(cat.find_last_not_of(" \t") + 1);
+                if (cat == "print")
+                    order_listbox->Append(_L("Print"));
+                else if (cat == "filament")
+                    order_listbox->Append(_L("Filament"));
+                else if (cat == "printer")
+                    order_listbox->Append(_L("Printer"));
+            }
+
+            auto *order_btn_sizer = new wxBoxSizer(wxHORIZONTAL);
+            auto *btn_order_up = new ScalableButton(scrolled, wxID_ANY, "toolbar_arrow", _L("Move Up"), wxDefaultSize,
+                                                    wxDefaultPosition, wxBU_LEFT | wxBU_EXACTFIT);
+            auto *btn_order_down = new ScalableButton(scrolled, wxID_ANY, "toolbar_arrow_down", _L("Move Down"),
+                                                      wxDefaultSize, wxDefaultPosition, wxBU_LEFT | wxBU_EXACTFIT);
+            order_btn_sizer->Add(btn_order_up, 0, wxRIGHT, 5);
+            order_btn_sizer->Add(btn_order_down, 0);
+
+            auto sync_order = [this, order_listbox]()
+            {
+                std::string result;
+                for (unsigned int i = 0; i < order_listbox->GetCount(); ++i)
+                {
+                    wxString item = order_listbox->GetString(i);
+                    if (!result.empty())
+                        result += ",";
+                    if (item == _L("Print"))
+                        result += "print";
+                    else if (item == _L("Filament"))
+                        result += "filament";
+                    else if (item == _L("Printer"))
+                        result += "printer";
+                }
+                m_values["preprocessing_category_order"] = result;
+            };
+
+            btn_order_up->Bind(wxEVT_BUTTON,
+                               [order_listbox, sync_order](wxCommandEvent &)
+                               {
+                                   int sel = order_listbox->GetSelection();
+                                   if (sel > 0)
+                                   {
+                                       wxString item = order_listbox->GetString(sel);
+                                       order_listbox->Delete(sel);
+                                       order_listbox->Insert(item, sel - 1);
+                                       order_listbox->SetSelection(sel - 1);
+                                       sync_order();
+                                   }
+                               });
+
+            btn_order_down->Bind(wxEVT_BUTTON,
+                                 [order_listbox, sync_order](wxCommandEvent &)
+                                 {
+                                     int sel = order_listbox->GetSelection();
+                                     if (sel != wxNOT_FOUND && sel < (int) order_listbox->GetCount() - 1)
+                                     {
+                                         wxString item = order_listbox->GetString(sel);
+                                         order_listbox->Delete(sel);
+                                         order_listbox->Insert(item, sel + 1);
+                                         order_listbox->SetSelection(sel + 1);
+                                         sync_order();
+                                     }
+                                 });
+
+            auto *reset_btn = new wxButton(scrolled, wxID_ANY, _L("Reset Preprocessing Consent"));
+            reset_btn->Bind(
+                wxEVT_BUTTON,
+                [](wxCommandEvent &)
+                {
+                    MessageDialog confirm(nullptr,
+                                          _L("This will revoke your preprocessing consent.\n\n"
+                                             "All preprocessing will be disabled across your Print, Filament, "
+                                             "and Printer profiles. No Python scripts will run during slicing "
+                                             "until you re-enable preprocessing and accept the consent prompt "
+                                             "again.\n\n"
+                                             "Your saved profiles will not be modified, but preprocessing will "
+                                             "remain inactive until you consent again.\n\n"
+                                             "Do you want to revoke your preprocessing consent?"),
+                                          _L("Revoke Preprocessing Consent"), wxICON_WARNING | wxYES | wxNO);
+                    if (confirm.ShowModal() != wxID_YES)
+                        return;
+
+                    wxGetApp().app_config->set("preprocessing_consent_accepted", "0");
+
+                    auto *bundle = wxGetApp().preset_bundle;
+                    if (bundle)
+                    {
+                        auto &print_cfg = bundle->prints.get_edited_preset().config;
+                        if (print_cfg.has("preprocessing_enabled_print"))
+                            print_cfg.set_key_value("preprocessing_enabled_print", new ConfigOptionBool(false));
+
+                        auto &filament_cfg = bundle->filaments.get_edited_preset().config;
+                        if (filament_cfg.has("preprocessing_enabled_filament"))
+                            filament_cfg.set_key_value("preprocessing_enabled_filament", new ConfigOptionBool(false));
+
+                        auto &printer_cfg = bundle->printers.get_edited_preset().config;
+                        if (printer_cfg.has("preprocessing_enabled_printer"))
+                            printer_cfg.set_key_value("preprocessing_enabled_printer", new ConfigOptionBool(false));
+
+                        if (auto *tab = wxGetApp().get_tab(Preset::TYPE_PRINT))
+                            tab->reload_config();
+                        if (auto *tab = wxGetApp().get_tab(Preset::TYPE_FILAMENT))
+                            tab->reload_config();
+                        if (auto *tab = wxGetApp().get_tab(Preset::TYPE_PRINTER))
+                            tab->reload_config();
+                    }
+                });
+
+            // Python Console section
+            auto *console_label = new wxStaticText(scrolled, wxID_ANY, _L("Python packages"));
+            console_label->SetFont(wxGetApp().bold_font());
+
+            auto *console_desc =
+                new wxStaticText(scrolled, wxID_ANY,
+                                 _L("preFlight includes a built-in Python interpreter for preprocessing scripts. "
+                                    "The standard library is available by default. If your scripts require "
+                                    "additional packages (e.g. numpy), you can install them using pip.\n\n"
+                                    "To set up pip and install packages:\n"
+                                    "  1. Click \"Open Python Console\" below\n"
+                                    "  2. Run:  python python\\get-pip.py\n"
+                                    "  3. Install packages:  pip install numpy\n"
+                                    "  4. List packages:  pip list\n\n"
+                                    "Installed packages are stored inside preFlight's python directory "
+                                    "and are available to all preprocessing scripts."));
+            console_desc->Wrap(42 * em);
+
+            auto *btn_console = new wxButton(scrolled, wxID_ANY, _L("Open Python Console"));
+#ifdef _WIN32
+            wxGetApp().UpdateDarkUI(btn_console);
+#endif
+            btn_console->Bind(
+                wxEVT_BUTTON,
+                [](wxCommandEvent &)
+                {
+                    auto exe_dir = boost::dll::program_location().parent_path();
+#ifdef _WIN32
+                    auto python_dir = exe_dir / "python";
+
+                    auto python_exe = (python_dir / "python.exe").string();
+                    // Check that bundled Python exists
+                    if (!boost::filesystem::exists(python_exe))
+                    {
+                        MessageDialog(nullptr,
+                                      _L("Bundled Python runtime not found.\n\n"
+                                         "The python/ directory may be missing from your preFlight installation."),
+                                      _L("Python Console"), wxICON_ERROR | wxOK)
+                            .ShowModal();
+                        return;
+                    }
+                    // Check that the python directory is writable (pip installs to python/Lib/site-packages/)
+                    {
+                        auto test_file = python_dir / ".write_test";
+                        try
+                        {
+                            {
+                                boost::filesystem::ofstream ofs(test_file);
+                            }
+                            boost::filesystem::remove(test_file);
+                        }
+                        catch (...)
+                        {
+                            MessageDialog(nullptr,
+                                          _L("The python directory is not writable.\n\n"
+                                             "Package installation requires write access to the preFlight "
+                                             "directory. If preFlight is in a read-only location, move it "
+                                             "to a writable folder."),
+                                          _L("Python Console"), wxICON_WARNING | wxOK)
+                                .ShowModal();
+                        }
+                    }
+                    // Open a cmd window with the python directory in PATH and Scripts in PATH
+                    // so both python and pip (once installed) work directly.
+                    std::string cmd_args = "/k \"set PATH=" + python_dir.string() + ";" +
+                                           (python_dir / "Scripts").string() +
+                                           ";%PATH% && "
+                                           "cd /d " +
+                                           exe_dir.string() +
+                                           " && "
+                                           "title preFlight Python Console && "
+                                           "echo. && "
+                                           "echo preFlight Python Console && "
+                                           "echo ========================= && "
+                                           "echo. && "
+                                           "echo Type 'python' to start the interactive interpreter. && "
+                                           "echo. && "
+                                           "echo To install pip: python python\\get-pip.py && "
+                                           "echo To install a package: pip install numpy && "
+                                           "echo To list installed packages: pip list && "
+                                           "echo. \"";
+                    ShellExecuteA(nullptr, "open", "cmd.exe", cmd_args.c_str(), nullptr, SW_SHOW);
+#else
+                    auto python_dir = exe_dir / ".." / "python";
+                    auto python_bin = python_dir / "bin";
+                    if (!boost::filesystem::exists(python_bin / "python3"))
+                    {
+                        MessageDialog(nullptr, _L("Bundled Python runtime not found."), _L("Python Console"),
+                                      wxICON_ERROR | wxOK)
+                            .ShowModal();
+                        return;
+                    }
+
+                    // Write a temp launch script with a unique name (O_EXCL prevents
+                    // symlink attacks, unique_path prevents TOCTOU races).
+                    auto script_path = boost::filesystem::temp_directory_path() /
+                                       boost::filesystem::unique_path("preflight-console-%%%%-%%%%");
+#ifdef __APPLE__
+                    // Terminal.app requires .command extension to execute scripts
+                    script_path += ".command";
+#else
+                    script_path += ".sh";
+#endif
+                    // Use POSIX open with O_EXCL to prevent symlink following
+                    int fd = open(script_path.c_str(), O_CREAT | O_EXCL | O_WRONLY, 0700);
+                    if (fd < 0)
+                    {
+                        MessageDialog(nullptr, _L("Failed to create temporary console script."), _L("Python Console"),
+                                      wxICON_ERROR | wxOK)
+                            .ShowModal();
+                        return;
+                    }
+                    // Shell-escape paths: replace ' with '\'' for safe single-quoting
+                    auto shell_escape = [](const std::string &s) -> std::string
+                    {
+                        std::string result = "'";
+                        for (char c : s)
+                        {
+                            if (c == '\'')
+                                result += "'\\''";
+                            else
+                                result += c;
+                        }
+                        result += "'";
+                        return result;
+                    };
+                    std::string script_content = "#!/bin/bash\n"
+                                                 "export PATH=" +
+                                                 shell_escape(python_bin.string()) +
+                                                 ":\"$PATH\"\n"
+                                                 "cd " +
+                                                 shell_escape(exe_dir.string()) +
+                                                 "\n"
+                                                 "echo\n"
+                                                 "echo 'preFlight Python Console'\n"
+                                                 "echo '========================='\n"
+                                                 "echo\n"
+                                                 "echo 'Type python3 to start the interactive interpreter.'\n"
+                                                 "echo\n"
+                                                 "echo 'To install pip: python3 -m ensurepip'\n"
+                                                 "echo 'To install a package: pip3 install numpy'\n"
+                                                 "echo 'To list installed packages: pip3 list'\n"
+                                                 "echo\n"
+                                                 "rm -f " +
+                                                 shell_escape(script_path.string()) +
+                                                 "\n"
+                                                 "exec bash\n";
+                    write(fd, script_content.c_str(), script_content.size());
+                    close(fd);
+
+                    // Double-fork to prevent zombie accumulation without globally
+                    // altering SIGCHLD (which would break boost::process elsewhere).
+                    // The grandchild is reparented to init/systemd and auto-reaped.
+                    pid_t pid = fork();
+                    if (pid == 0)
+                    {
+                        pid_t pid2 = fork();
+                        if (pid2 == 0)
+                        {
+#ifdef __APPLE__
+                            execlp("open", "open", "-a", "Terminal", script_path.c_str(), nullptr);
+#else
+                            execlp("gnome-terminal", "gnome-terminal", "--", "bash", script_path.c_str(), nullptr);
+                            execlp("x-terminal-emulator", "x-terminal-emulator", "-e", "bash", script_path.c_str(),
+                                   nullptr);
+                            execlp("xterm", "xterm", "-e", "bash", script_path.c_str(), nullptr);
+#endif
+                            _exit(1);
+                        }
+                        _exit(0); // intermediate child exits immediately
+                    }
+                    else if (pid > 0)
+                    {
+                        waitpid(pid, nullptr, 0); // reap intermediate child (instant)
+                    }
+#endif
+                });
+
+            content_sizer->Add(order_label, 0, wxEXPAND | wxALL, em);
+#ifdef _WIN32
+            content_sizer->Add(order_listbox, 0, wxEXPAND | wxLEFT | wxRIGHT, em);
+#else
+            content_sizer->Add(order_border, 0, wxEXPAND | wxLEFT | wxRIGHT, em);
+#endif
+            content_sizer->Add(order_btn_sizer, 0, wxEXPAND | wxALL, em);
+            content_sizer->AddSpacer(em * 2);
+
+            content_sizer->Add(console_label, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, em);
+            content_sizer->Add(console_desc, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, em);
+            content_sizer->Add(btn_console, 0, wxLEFT | wxRIGHT | wxTOP, em);
+            content_sizer->AddSpacer(em * 2);
+
+            content_sizer->Add(reset_btn, 0, wxLEFT | wxRIGHT | wxBOTTOM, em);
+
+            scrolled->SetSizer(content_sizer);
+
+            // Outer sizer: scrolled window must be item 0 (constructor post-build loop expects this)
+            wxBoxSizer *tab_sizer = new wxBoxSizer(wxVERTICAL);
+            tab_sizer->Add(scrolled, 1, wxEXPAND);
+            tab_sizer->SetSizeHints(pp_tab);
+            pp_tab->SetSizer(tab_sizer);
+        }
 
 #if ENABLE_ENVIRONMENT_MAP
         // Add "Render" tab
@@ -1028,9 +1492,6 @@ void PreferencesDialog::accept(wxEvent &)
         wxGetApp().force_menu_update();
 #endif //_MSW_DARK_MODE
 #endif // _WIN32
-
-    if (m_values.find("no_templates") != m_values.end())
-        wxGetApp().plater()->force_filament_cb_update();
 
     wxGetApp().update_ui_from_settings();
     clear_cache();

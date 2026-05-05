@@ -10,10 +10,10 @@
 
 //#include "slic3r/GUI/3DScene.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
-#include "slic3r/GUI/GUI_App.hpp"
+#include "slic3r/GUI/GUI.hpp"
 #include "slic3r/GUI/ImGuiWrapper.hpp"
-#include "slic3r/GUI/Plater.hpp"
-#include "slic3r/GUI/GUI_ObjectList.hpp"
+#include "slic3r/GUI/EventTypes.hpp"
+#include "slic3r/GUI/EventBridge.hpp"
 #include "slic3r/Utils/UndoRedo.hpp"
 
 #if SLIC3R_OPENGL_ES
@@ -56,7 +56,7 @@ bool GLGizmoSeam::on_init()
     m_desc["seam_detection"] = _u8L("Seam detection") + ": ";
 
     // Load saved value from app config
-    std::string detection_str = wxGetApp().app_config->get("seam_detection_radius");
+    std::string detection_str = m_parent.app_config()->get("seam_detection_radius");
     m_seam_detection = detection_str.empty() ? 0.05f : std::stof(detection_str);
 
     // Set global value for SeamPlacer to use
@@ -206,7 +206,7 @@ void GLGizmoSeam::on_render_input_window(float x, float y, float bottom_limit)
     {
         if (ImGuiPureWrap::button(m_desc.at("reset_direction")))
         {
-            wxGetApp().CallAfter([this]() { m_c->object_clipper()->set_position_by_ratio(-1., false); });
+            m_parent.call_after([this]() { m_c->object_clipper()->set_position_by_ratio(-1., false); });
         }
     }
 
@@ -248,8 +248,8 @@ void GLGizmoSeam::on_render_input_window(float x, float y, float bottom_limit)
     if (was_dragging && !mouse_down)
     {
         // Save and invalidate ONLY when we release
-        wxGetApp().app_config->set("seam_detection_radius", std::to_string(m_seam_detection));
-        wxPostEvent(wxGetApp().plater(), SimpleEvent(EVT_FORCE_INVALIDATE_SLICE));
+        m_parent.app_config()->set("seam_detection_radius", std::to_string(m_seam_detection));
+        m_parent.event_poster()->postEvent(CanvasEventType::ForceInvalidateSlice);
         last_saved_value = m_seam_detection;
     }
 
@@ -258,7 +258,7 @@ void GLGizmoSeam::on_render_input_window(float x, float y, float bottom_limit)
     ImGui::Separator();
     if (ImGuiPureWrap::button(m_desc.at("remove_all")))
     {
-        Plater::TakeSnapshot snapshot(wxGetApp().plater(), _L("Reset selection"), UndoRedo::SnapshotType::GizmoAction);
+        m_parent.take_gizmo_snapshot(_u8L("Reset selection"));
         ModelObject *mo = m_c->selection_info()->model_object();
         int idx = -1;
         for (ModelVolume *mv : mo->volumes)
@@ -307,10 +307,11 @@ void GLGizmoSeam::update_model_object() const
 
     if (updated)
     {
-        const ModelObjectPtrs &mos = wxGetApp().model().objects;
-        wxGetApp().obj_list()->update_info_items(std::find(mos.begin(), mos.end(), mo) - mos.begin());
+        const ModelObjectPtrs &mos = m_parent.get_model()->objects;
+        m_parent.event_poster()->postEvent(CanvasEventType::UpdateInfoItems,
+                                           int(std::find(mos.begin(), mos.end(), mo) - mos.begin()));
 
-        m_parent.post_event(SimpleEvent(EVT_GLCANVAS_SCHEDULE_BACKGROUND_PROCESS));
+        m_parent.event_poster()->postEvent(CanvasEventType::ScheduleBackgroundProcess);
     }
 }
 

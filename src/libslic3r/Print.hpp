@@ -802,6 +802,22 @@ public:
 
     void force_invalidation() const { m_force_invalidation = true; }
 
+#ifdef SLIC3R_PYTHON_PREPROCESSOR
+    // Set by the GUI (UI thread) before slicing; read by background thread during export.
+    void set_preprocessing_consent(bool v) { m_preprocessing_consent.store(v, std::memory_order_relaxed); }
+    bool preprocessing_consent() const { return m_preprocessing_consent.load(std::memory_order_relaxed); }
+    void set_preprocessing_category_order(const std::string &v)
+    {
+        std::lock_guard<std::mutex> lock(m_preprocessing_mutex);
+        m_preprocessing_category_order = v;
+    }
+    std::string preprocessing_category_order() const
+    {
+        std::lock_guard<std::mutex> lock(m_preprocessing_mutex);
+        return m_preprocessing_category_order;
+    }
+#endif
+
 protected:
     // Invalidates the step, and its depending steps in Print.
     bool invalidate_step(PrintStep step);
@@ -859,6 +875,12 @@ private:
     friend class GCodeProcessor;
     // Allow PrintObject to access m_mutex and m_cancel_callback.
     friend class PrintObject;
+
+#ifdef SLIC3R_PYTHON_PREPROCESSOR
+    std::atomic<bool> m_preprocessing_consent{false};
+    mutable std::mutex m_preprocessing_mutex;
+    std::string m_preprocessing_category_order{"print,filament,printer"};
+#endif
 
     ConflictResultOpt m_conflict_result;
     std::optional<std::pair<std::string, std::string>>

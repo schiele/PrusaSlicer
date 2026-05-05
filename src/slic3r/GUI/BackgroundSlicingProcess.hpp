@@ -15,6 +15,7 @@
 
 #include <wx/event.h>
 
+#include "EventBridge.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintBase.hpp"
 #include "libslic3r/GCode/ThumbnailData.hpp"
@@ -119,17 +120,7 @@ public:
 
     GCodeProcessorResult *get_gcode_result() { return m_gcode_result; }
 
-    // The following wxCommandEvent will be sent to the UI thread / Plater window, when the slicing is finished
-    // and the background processing will transition into G-code export.
-    // The wxCommandEvent is sent to the UI thread asynchronously without waiting for the event to be processed.
-    void set_slicing_completed_event(int event_id) { m_event_slicing_completed_id = event_id; }
-    // The following wxCommandEvent will be sent to the UI thread / Plater window, when the G-code export is finished.
-    // The wxCommandEvent is sent to the UI thread asynchronously without waiting for the event to be processed.
-    void set_finished_event(int event_id) { m_event_finished_id = event_id; }
-    // The following wxCommandEvent will be sent to the UI thread / Plater window, when the G-code is being exported to
-    // specified path or uploaded.
-    // The wxCommandEvent is sent to the UI thread asynchronously without waiting for the event to be processed.
-    void set_export_began_event(int event_id) { m_event_export_began_id = event_id; }
+    void set_slicing_event_poster(GUI::ISlicingEventPoster *poster) { m_slicing_event_poster = poster; }
 
     // Activate the FFF print.
     // Return true if changed.
@@ -310,12 +301,7 @@ private:
     // To be called from inside m_mutex to cancel a planned UI task.
     static void cancel_ui_task(std::shared_ptr<BackgroundSlicingProcess::UITask> task);
 
-    // wxWidgets command ID to be sent to the plater to inform that the slicing is finished, and the G-code export will continue.
-    int m_event_slicing_completed_id = 0;
-    // wxWidgets command ID to be sent to the plater to inform that the task finished.
-    int m_event_finished_id = 0;
-    // wxWidgets command ID to be sent to the plater to inform that the G-code is being exported.
-    int m_event_export_began_id = 0;
+    GUI::ISlicingEventPoster *m_slicing_event_poster{nullptr};
 };
 
 }; // namespace Slic3r

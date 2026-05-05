@@ -1261,12 +1261,12 @@ void ObjectList::extruder_editing()
 
 void ObjectList::copy()
 {
-    wxPostEvent((wxEvtHandler *) wxGetApp().plater()->canvas3D()->get_wxglcanvas(), SimpleEvent(EVT_GLTOOLBAR_COPY));
+    wxGetApp().plater()->canvas3D()->event_poster()->postEvent(CanvasEventType::ToolbarCopy);
 }
 
 void ObjectList::paste()
 {
-    wxPostEvent((wxEvtHandler *) wxGetApp().plater()->canvas3D()->get_wxglcanvas(), SimpleEvent(EVT_GLTOOLBAR_PASTE));
+    wxGetApp().plater()->canvas3D()->event_poster()->postEvent(CanvasEventType::ToolbarPaste);
 }
 
 bool ObjectList::copy_to_clipboard()
@@ -2153,7 +2153,6 @@ void ObjectList::del_info_item(const int obj_idx, InfoItemType type)
         Plater::TakeSnapshot(plater, _L("Remove variable layer height"));
         (*m_objects)[obj_idx]->layer_height_profile.clear();
         if (cnv->is_layers_editing_enabled())
-            //cnv->post_event(SimpleEvent(EVT_GLTOOLBAR_LAYERSEDITING));
             cnv->force_main_toolbar_left_action(cnv->get_main_toolbar_item_id("layersediting"));
         break;
 
@@ -2161,7 +2160,7 @@ void ObjectList::del_info_item(const int obj_idx, InfoItemType type)
         assert(false);
         break;
     }
-    cnv->post_event(SimpleEvent(EVT_GLCANVAS_SCHEDULE_BACKGROUND_PROCESS));
+    cnv->event_poster()->postEvent(CanvasEventType::ScheduleBackgroundProcess);
 }
 
 void ObjectList::del_settings_from_config(const wxDataViewItem &parent_item)

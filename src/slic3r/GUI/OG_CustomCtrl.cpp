@@ -78,7 +78,8 @@ void OG_CustomCtrl::init_ctrl_lines()
     {
         if (line.is_separator())
         {
-            ctrl_lines.emplace_back(CtrlLine(0, this, line));
+            // Allocate vertical space so the line doesn't overlap adjacent controls
+            ctrl_lines.emplace_back(CtrlLine(wxGetApp().em_unit(), this, line));
             continue;
         }
 
@@ -146,8 +147,6 @@ wxPoint OG_CustomCtrl::get_pos(const Line &line, Field *field_in /* = nullptr*/)
         if (m_max_win_width > 0 && field->getWindow())
         {
             int win_width = field->getWindow()->GetSize().GetWidth();
-            if (dynamic_cast<CheckBox *>(field))
-                win_width *= 0.5;
             h_pos += m_max_win_width - win_width;
         }
     };
@@ -709,8 +708,9 @@ void OG_CustomCtrl::CtrlLine::update_visibility(ConfigOptionMode mode)
 
 void OG_CustomCtrl::CtrlLine::render_separator(wxDC &dc, wxCoord v_pos)
 {
-    wxPoint begin(ctrl->m_h_gap, v_pos);
-    wxPoint end(ctrl->GetSize().GetWidth() - ctrl->m_h_gap, v_pos);
+    wxCoord y = v_pos + height / 2;
+    wxPoint begin(ctrl->m_h_gap, y);
+    wxPoint end(ctrl->GetSize().GetWidth() - ctrl->m_h_gap, y);
 
     wxPen pen, old_pen = pen = dc.GetPen();
     pen.SetColour(*wxLIGHT_GREY);

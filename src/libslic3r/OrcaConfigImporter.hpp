@@ -77,7 +77,7 @@ public:
 
     // Import from .orca_printer or .orca_filament file.
     // confirm_overwrite is called when a preset with the same name already exists;
-    // it should return wxID_YES / wxID_NO / wxID_CANCEL (or 0 to skip, -1 to abort).
+    // it should return positive to accept, 0 to skip, negative to abort.
     ImportResult import_bundle(const std::string &zip_path, PresetBundle &preset_bundle, const ImportOptions &options,
                                std::function<int(const std::string &)> confirm_overwrite);
 

@@ -7,10 +7,11 @@
 #include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/GUI_ObjectList.hpp"
 #include "slic3r/GUI/GUI_ObjectManipulation.hpp"
-#include "slic3r/GUI/MainFrame.hpp" // to update title when add text
 #include "slic3r/GUI/NotificationManager.hpp"
 #include "slic3r/GUI/Plater.hpp"
 #include "slic3r/GUI/MsgDialog.hpp"
+#include "slic3r/GUI/EventTypes.hpp"
+#include "slic3r/GUI/EventBridge.hpp"
 #include "slic3r/GUI/format.hpp"
 #include "slic3r/GUI/CameraUtils.hpp"
 #include "slic3r/GUI/Jobs/EmbossJob.hpp"
@@ -196,7 +197,7 @@ struct GuiCfg
     };
     Translations translations;
 };
-GuiCfg create_gui_configuration();
+GuiCfg create_gui_configuration(ImGuiWrapper *imgui);
 
 } // namespace
 
@@ -244,12 +245,11 @@ CreateVolumeParams GLGizmoSVG::create_input(ModelVolumeType volume_type, std::st
     // NOTE: During selection of file it could change hovered volume
     DataBasePtr base = create_emboss_data_base(m_job_cancel, volume_type, svg_filepath);
     auto gizmo = static_cast<unsigned char>(GLGizmosManager::Svg);
-    Plater *plater = wxGetApp().plater();
     return CreateVolumeParams{std::move(base),
                               m_parent,
-                              plater->get_camera(),
-                              plater->build_volume(),
-                              plater->get_ui_job_worker(),
+                              m_parent.get_camera(),
+                              m_parent.build_volume(),
+                              m_parent.get_job_worker(),
                               volume_type,
                               m_raycast_manager,
                               gizmo,
@@ -277,32 +277,31 @@ bool GLGizmoSVG::is_svg_object(const ModelVolume &volume)
     return true;
 }
 
-bool GLGizmoSVG::on_mouse_for_rotation(const wxMouseEvent &mouse_event)
+bool GLGizmoSVG::on_mouse_for_rotation(const MouseInput &mouse)
 {
-    if (mouse_event.Moving())
+    if (mouse.type == MouseEventType::Motion && !mouse.dragging)
         return false;
 
-    bool used = use_grabbers(mouse_event);
+    bool used = use_grabbers(mouse);
     if (!m_dragging)
         return used;
 
-    if (mouse_event.Dragging())
+    if (mouse.dragging)
         dragging_rotate_gizmo(m_rotate_gizmo.get_angle(), m_angle, m_rotate_start_angle, m_parent.get_selection());
 
     return used;
 }
 
-bool GLGizmoSVG::on_mouse_for_translate(const wxMouseEvent &mouse_event)
+bool GLGizmoSVG::on_mouse_for_translate(const MouseInput &mouse)
 {
-    // exist selected volume?
     if (m_volume == nullptr)
         return false;
 
     auto up_limit = m_keep_up ? std::optional<double>(UP_LIMIT) : std::optional<double>{};
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = m_parent.get_camera();
 
     bool was_dragging = m_surface_drag.has_value();
-    bool res = on_mouse_surface_drag(mouse_event, camera, m_surface_drag, m_parent, m_raycast_manager, up_limit);
+    bool res = on_mouse_surface_drag(mouse, camera, m_surface_drag, m_parent, m_raycast_manager, up_limit);
     bool is_dragging = m_surface_drag.has_value();
 
     // End with surface dragging?
@@ -371,21 +370,23 @@ void GLGizmoSVG::volume_transformation_changed()
         // inform slicing process that model changed
         // SLA supports, processing
         // ensure on bed
-        wxGetApp().plater()->changed_object(*m_volume->get_object());
+        {
+            const ModelObjectPtrs &mos = m_parent.get_model()->objects;
+            auto it = std::find(mos.begin(), mos.end(), m_volume->get_object());
+            if (it != mos.end())
+                m_parent.event_poster()->postEvent(CanvasEventType::ChangedObject, int(it - mos.begin()));
+        }
     }
 
     // Show correct value of height & depth inside of inputs
     calculate_scale();
 }
 
-void GLGizmoSVG::on_mouse_confirm_edit(const wxMouseEvent &mouse_event)
+void GLGizmoSVG::on_mouse_confirm_edit(const MouseInput &mouse)
 {
-    // Fix phanthom transformation
-    //   appear when mouse click into scene during edit Rotation in input (click "Edit" button)
-    //   this must happen just before unselect selection (to find current volume)
     static bool was_dragging = true;
-    if ((mouse_event.LeftUp() || mouse_event.RightUp()) && m_parent.get_first_hover_volume_idx() < 0 && !was_dragging &&
-        m_volume != nullptr && m_volume->is_svg())
+    if ((mouse.type == MouseEventType::LeftUp || mouse.type == MouseEventType::RightUp) &&
+        m_parent.get_first_hover_volume_idx() < 0 && !was_dragging && m_volume != nullptr && m_volume->is_svg())
     {
         // current volume
         const GLVolume *gl_volume_ptr = m_parent.get_selection().get_first_volume();
@@ -409,22 +410,21 @@ void GLGizmoSVG::on_mouse_confirm_edit(const wxMouseEvent &mouse_event)
             }
         }
     }
-    was_dragging = mouse_event.Dragging();
+    was_dragging = mouse.dragging;
 }
 
-bool GLGizmoSVG::on_mouse(const wxMouseEvent &mouse_event)
+bool GLGizmoSVG::on_mouse(const MouseInput &mouse)
 {
-    // not selected volume
     if (m_volume == nullptr ||
         get_model_volume(m_volume_id, m_parent.get_selection().get_model()->objects) == nullptr ||
         !m_volume->emboss_shape.has_value())
         return false;
 
-    if (on_mouse_for_rotation(mouse_event))
+    if (on_mouse_for_rotation(mouse))
         return true;
-    if (on_mouse_for_translate(mouse_event))
+    if (on_mouse_for_translate(mouse))
         return true;
-    on_mouse_confirm_edit(mouse_event);
+    on_mouse_confirm_edit(mouse);
     return false;
 }
 
@@ -554,7 +554,7 @@ void GLGizmoSVG::on_render_input_window(float x, float y, float bottom_limit)
     set_volume_by_selection();
 
     // Configuration creation
-    double screen_scale = wxDisplay(wxGetApp().plater()).GetScaleFactor();
+    double screen_scale = m_parent.get_screen_scale_factor();
     float main_toolbar_height = m_parent.get_main_toolbar_height();
     if (m_gui_cfg == nullptr ||                               // Exist configuration - first run
         m_gui_cfg->screen_scale != screen_scale ||            // change of DPI
@@ -562,7 +562,7 @@ void GLGizmoSVG::on_render_input_window(float x, float y, float bottom_limit)
     )
     {
         // Create cache for gui offsets
-        ::GuiCfg cfg = create_gui_configuration();
+        ::GuiCfg cfg = create_gui_configuration(m_imgui);
         cfg.screen_scale = screen_scale;
         cfg.main_toolbar_height = main_toolbar_height;
 
@@ -1458,7 +1458,7 @@ void GLGizmoSVG::reset_volume()
     m_filename_preview.clear();
     m_shape_warnings.clear();
     // delete texture after finish imgui draw
-    wxGetApp().plater()->CallAfter([&texture = m_texture]() { delete_texture(texture); });
+    m_parent.call_after([&texture = m_texture]() { delete_texture(texture); });
 }
 
 void GLGizmoSVG::calculate_scale()
@@ -1607,7 +1607,7 @@ void GLGizmoSVG::draw_face_the_camera()
 {
     if (ImGui::Button(_u8L("Face the camera").c_str()))
     {
-        const Camera &cam = wxGetApp().plater()->get_camera();
+        const Camera &cam = m_parent.get_camera();
         auto wanted_up_limit = (m_keep_up) ? std::optional<double>(UP_LIMIT) : std::optional<double>{};
         if (face_selected_volume_to_camera(cam, m_parent, wanted_up_limit))
             volume_transformation_changed();
@@ -1874,7 +1874,7 @@ void GLGizmoSVG::draw_filename()
         //    GUI::FileType file_type  = FT_SVG;
         //    wxString wildcard = file_wildcards(file_type);
         //    wxString dlg_title = _L("Export SVG file:");
-        //    wxString dlg_dir = from_u8(wxGetApp().app_config->get_last_dir());
+        //    wxString dlg_dir = from_u8(app_config->get_last_dir());
         //    const EmbossShape::SvgFile& svg = m_volume_shape.svg_file;
         //    wxString dlg_file = from_u8(get_file_name(((!svg.path.empty()) ? svg.path : svg.path_in_3mf))) + ".svg";
         //    wxFileDialog dlg(nullptr, dlg_title, dlg_dir, dlg_file, wildcard, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
@@ -1908,7 +1908,7 @@ void GLGizmoSVG::draw_depth()
     ImGui::SameLine(m_gui_cfg->input_offset);
     ImGui::SetNextItemWidth(m_gui_cfg->input_width);
 
-    bool use_inch = wxGetApp().app_config->get_bool("use_inches");
+    bool use_inch = m_parent.app_config()->get_bool("use_inches");
     double &value = m_volume_shape.projection.depth;
     constexpr double step = 1.;
     constexpr double step_fast = 10.;
@@ -1957,7 +1957,7 @@ void GLGizmoSVG::draw_size()
                           GUI::format(_L("Scale also changes amount of curve samples (%1%)"), count_points).c_str());
     }
 
-    bool use_inch = wxGetApp().app_config->get_bool("use_inches");
+    bool use_inch = m_parent.app_config()->get_bool("use_inches");
 
     Point size = m_shape_bb.size();
     double width = size.x() * m_volume_shape.scale * m_scale_width.value_or(1.f);
@@ -2090,7 +2090,7 @@ void GLGizmoSVG::draw_size()
 
         std::string snap_name; // Empty mean do not store on undo/redo stack
         m_parent.do_scale(snap_name);
-        wxGetApp().obj_manipul()->set_dirty();
+        m_parent.event_poster()->postEvent(CanvasEventType::ManipulationDirty);
         // should be the almost same
         calculate_scale();
 
@@ -2143,7 +2143,7 @@ void GLGizmoSVG::draw_distance()
     ImGui::SameLine(m_gui_cfg->input_offset);
     ImGui::SetNextItemWidth(m_gui_cfg->input_width);
 
-    bool use_inch = wxGetApp().app_config->get_bool("use_inches");
+    bool use_inch = m_parent.app_config()->get_bool("use_inches");
     const wxString move_tooltip = _L("Distance of the center of the SVG to the model surface.");
     bool is_moved = false;
     if (use_inch)
@@ -2346,7 +2346,7 @@ void GLGizmoSVG::draw_model_type()
     }
 
     // In simple mode are not modifiers
-    if (wxGetApp().plater()->printer_technology() != ptSLA && wxGetApp().get_mode() != ConfigOptionMode::comSimple)
+    if (m_parent.current_printer_technology() != ptSLA && m_parent.get_mode() != ConfigOptionMode::comSimple)
     {
         ImGui::SameLine();
         if (ImGui::RadioButton(_u8L("Modifier").c_str(), type == modifier))
@@ -2362,25 +2362,15 @@ void GLGizmoSVG::draw_model_type()
 
     if (m_volume != nullptr && new_type.has_value() && !is_last_solid_part)
     {
-        GUI_App &app = wxGetApp();
-        Plater *plater = app.plater();
-        // TRN: This is the name of the action that shows in undo/redo stack (changing part type from SVG to something else).
-        Plater::TakeSnapshot snapshot(plater, _L("Change SVG Type"), UndoRedo::SnapshotType::GizmoAction);
+        m_parent.take_typed_snapshot(_u8L("Change SVG Type"), static_cast<int>(UndoRedo::SnapshotType::GizmoAction));
         m_volume->set_type(*new_type);
 
         bool is_volume_move_inside = (type == part);
         bool is_volume_move_outside = (*new_type == part);
-        // Update volume position when switch (from part) or (into part)
         if ((is_volume_move_inside || is_volume_move_outside))
             process();
 
-        // inspiration in ObjectList::change_part_type()
-        // how to view correct side panel with objects
-        ObjectList *obj_list = app.obj_list();
-        wxDataViewItemArray sel = obj_list->reorder_volumes_and_get_selection(
-            obj_list->get_selected_obj_idx(), [volume = m_volume](const ModelVolume *vol) { return vol == volume; });
-        if (!sel.IsEmpty())
-            obj_list->select_item(sel.front());
+        m_parent.reorder_volumes_and_select(m_parent.get_selection().get_object_idx(), m_volume);
 
         // NOTE: on linux, function reorder_volumes_and_get_selection call GLCanvas3D::reload_scene(refresh_immediately = false)
         // which discard m_volume pointer and set it to nullptr also selection is cleared so gizmo is automaticaly closed
@@ -2432,7 +2422,7 @@ std::string volume_name(const EmbossShape &shape)
     return "SVG shape";
 }
 
-GuiCfg create_gui_configuration()
+GuiCfg create_gui_configuration(ImGuiWrapper *imgui)
 {
     GuiCfg cfg; // initialize by default values;
 
@@ -2482,7 +2472,7 @@ GuiCfg create_gui_configuration()
 
     float window_title = line_height + 2 * style.FramePadding.y + 2 * style.WindowTitleAlign.y;
     float input_height = line_height_with_spacing + 2 * style.FramePadding.y;
-    float separator_height = 2.0f * wxGetApp().imgui()->get_style_scaling() + style.FramePadding.y;
+    float separator_height = 2.0f * imgui->get_style_scaling() + style.FramePadding.y;
     float window_height = window_title + // window title
                           cfg.texture_max_size_px +
                           2 * style.FramePadding.y + // preview (-- not sure with padding -> fix retina height)

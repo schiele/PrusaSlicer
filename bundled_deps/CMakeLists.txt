@@ -43,6 +43,8 @@ target_include_directories(stb_dxt INTERFACE stb_dxt)
 add_library(stb_image INTERFACE)
 target_include_directories(stb_image INTERFACE stb_image)
 
+add_subdirectory(stb_truetype)
+
 add_library(tcbspan INTERFACE)
 target_include_directories(tcbspan INTERFACE tcbspan)
 

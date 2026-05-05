@@ -384,6 +384,9 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
             std::string name = dir_entry.path().filename().string();
             // Remove the .ini suffix.
             name.erase(name.size() - 4);
+            // Filaments.ini is a standalone filament database, not a vendor bundle
+            if (name == "Filaments")
+                continue;
             try
             {
                 // Load the config bundle, flatten it.
@@ -429,6 +432,19 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
         // No config bundle loaded, reset.
         this->reset(false);
     }
+
+    // preFlight: clear compatible_printers_condition on all filaments so they work with any printer
+    for (auto &filament : this->filaments)
+        if (filament.config.has("compatible_printers_condition"))
+            filament.config.option<ConfigOptionString>("compatible_printers_condition")->value.clear();
+
+    // preFlight: make all presets editable (no locked system presets)
+    for (auto &preset : this->prints)
+        preset.is_system = false;
+    for (auto &preset : this->filaments)
+        preset.is_system = false;
+    for (auto &preset : this->printers)
+        preset.is_system = false;
 
     this->update_system_maps();
     return std::make_pair(std::move(substitutions), errors_cummulative);
@@ -885,7 +901,7 @@ DynamicPrintConfig PresetBundle::full_fff_config() const
                 continue;
             // Get a destination option.
             ConfigOption *opt_dst = out.option(key, false);
-            if (opt_dst->is_scalar())
+            if (opt_dst->is_scalar() || PresetCollection::is_independent_from_extruder_number_option(key))
             {
                 // Get an option, do not create if it does not exist.
                 const ConfigOption *opt_src = filament_configs.front()->option(key);
@@ -1637,12 +1653,12 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_configbundle(
     if (flags.has(LoadConfigBundleAttribute::LoadSystem) || flags.has(LoadConfigBundleAttribute::LoadVendorOnly))
     {
         VendorProfile vp = VendorProfile::from_ini(tree, path);
-        if (vp.models.size() == 0 && !vp.templates_profile)
+        if (vp.models.size() == 0)
         {
             BOOST_LOG_TRIVIAL(error) << boost::format("Vendor bundle: `%1%`: No printer model defined.") % path;
             return std::make_pair(PresetsConfigSubstitutions{}, 0);
         }
-        else if (vp.num_variants() == 0 && !vp.templates_profile)
+        else if (vp.num_variants() == 0)
         {
             BOOST_LOG_TRIVIAL(error) << boost::format("Vendor bundle: `%1%`: No printer variant defined") % path;
             return std::make_pair(PresetsConfigSubstitutions{}, 0);
@@ -1689,10 +1705,6 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_configbundle(
         {
             presets = &this->filaments;
             preset_name = section.first.substr(9);
-            if (vendor_profile && vendor_profile->templates_profile)
-            {
-                preset_name += " @Template";
-            }
         }
         else if (boost::starts_with(section.first, "sla_print:"))
         {
@@ -2434,17 +2446,17 @@ void copy_bed_model_and_texture_if_needed(DynamicPrintConfig &config)
 {
     const boost::filesystem::path user_dir =
         boost::filesystem::absolute(boost::filesystem::path(data_dir()) / "printer").make_preferred();
-    const boost::filesystem::path res_dir =
-        boost::filesystem::absolute(boost::filesystem::path(resources_dir()) / "profiles").make_preferred();
+    const boost::filesystem::path vendor_dir =
+        boost::filesystem::absolute(boost::filesystem::path(data_dir()) / "vendor").make_preferred();
 
-    auto do_copy = [&user_dir, &res_dir](ConfigOptionString *cfg, const std::string &type)
+    auto do_copy = [&user_dir, &vendor_dir](ConfigOptionString *cfg, const std::string &type)
     {
         if (cfg == nullptr || cfg->value.empty())
             return;
 
         const boost::filesystem::path src_dir =
             boost::filesystem::absolute(boost::filesystem::path(cfg->value)).make_preferred().parent_path();
-        if (src_dir != user_dir && src_dir.parent_path() != res_dir)
+        if (src_dir != user_dir && src_dir.parent_path() != vendor_dir)
         {
             const std::string dst_value = (user_dir / boost::filesystem::path(cfg->value).filename()).string();
             std::string error;

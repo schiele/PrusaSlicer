@@ -149,7 +149,7 @@ void Selection::add(unsigned int volume_idx, bool as_single_selection, bool chec
 
     const GLVolume *volume = (*m_volumes)[volume_idx];
 
-    if (wxGetApp().plater()->printer_technology() == ptSLA && volume->is_modifier &&
+    if ((PrinterTechnology) printer_technology() == ptSLA && volume->is_modifier &&
         m_model->objects[volume->object_idx()]->volumes[volume->volume_idx()]->is_modifier())
         return;
 
@@ -169,7 +169,7 @@ void Selection::add(unsigned int volume_idx, bool as_single_selection, bool chec
 
     if (!already_contained || needs_reset)
     {
-        wxGetApp().plater()->take_snapshot(_L("Selection-Add"), UndoRedo::SnapshotType::Selection);
+        m_event_poster->postEvent(CanvasEventType::TakeSnapshotSelection, _u8L("Selection-Add"));
 
         if (needs_reset)
             clear();
@@ -192,7 +192,17 @@ void Selection::add(unsigned int volume_idx, bool as_single_selection, bool chec
     }
     case Instance:
     {
-        Plater::SuppressSnapshots suppress(wxGetApp().plater());
+        if (m_suppress_snapshots_start)
+            m_suppress_snapshots_start();
+        struct ScopeGuard
+        {
+            std::function<void()> fn;
+            ~ScopeGuard()
+            {
+                if (fn)
+                    fn();
+            }
+        } suppress{m_suppress_snapshots_end};
         add_instance(volume->object_idx(), volume->instance_idx(), as_single_selection);
         break;
     }
@@ -210,7 +220,7 @@ void Selection::remove(unsigned int volume_idx)
     if (!contains_volume(volume_idx))
         return;
 
-    wxGetApp().plater()->take_snapshot(_L("Selection-Remove"), UndoRedo::SnapshotType::Selection);
+    m_event_poster->postEvent(CanvasEventType::TakeSnapshotSelection, _u8L("Selection-Remove"));
 
     GLVolume *volume = (*m_volumes)[volume_idx];
 
@@ -241,7 +251,7 @@ void Selection::add_object(unsigned int object_idx, bool as_single_selection)
     if ((!as_single_selection && contains_all_volumes(volume_idxs)) || (as_single_selection && matches(volume_idxs)))
         return;
 
-    wxGetApp().plater()->take_snapshot(_L("Selection-Add Object"), UndoRedo::SnapshotType::Selection);
+    m_event_poster->postEvent(CanvasEventType::TakeSnapshotSelection, _u8L("Selection-Add Object"));
 
     // resets the current list if needed
     if (as_single_selection)
@@ -260,7 +270,7 @@ void Selection::remove_object(unsigned int object_idx)
     if (!m_valid)
         return;
 
-    wxGetApp().plater()->take_snapshot(_L("Selection-Remove Object"), UndoRedo::SnapshotType::Selection);
+    m_event_poster->postEvent(CanvasEventType::TakeSnapshotSelection, _u8L("Selection-Remove Object"));
 
     do_remove_object(object_idx);
 
@@ -277,7 +287,7 @@ void Selection::add_instance(unsigned int object_idx, unsigned int instance_idx,
     if ((!as_single_selection && contains_all_volumes(volume_idxs)) || (as_single_selection && matches(volume_idxs)))
         return;
 
-    wxGetApp().plater()->take_snapshot(_L("Selection-Add Instance"), UndoRedo::SnapshotType::Selection);
+    m_event_poster->postEvent(CanvasEventType::TakeSnapshotSelection, _u8L("Selection-Add Instance"));
 
     // resets the current list if needed
     if (as_single_selection)
@@ -296,7 +306,7 @@ void Selection::remove_instance(unsigned int object_idx, unsigned int instance_i
     if (!m_valid)
         return;
 
-    wxGetApp().plater()->take_snapshot(_L("Selection-Remove Instance"), UndoRedo::SnapshotType::Selection);
+    m_event_poster->postEvent(CanvasEventType::TakeSnapshotSelection, _u8L("Selection-Remove Instance"));
 
     do_remove_instance(object_idx, instance_idx);
 
@@ -395,7 +405,7 @@ void Selection::add_all()
     if ((unsigned int) m_list.size() == count)
         return;
 
-    wxGetApp().plater()->take_snapshot(_(L("Selection-Add All")), UndoRedo::SnapshotType::Selection);
+    m_event_poster->postEvent(CanvasEventType::TakeSnapshotSelection, _u8L("Selection-Add All"));
 
     m_mode = Instance;
     clear();
@@ -420,8 +430,8 @@ void Selection::remove_all()
 
     // Not taking the snapshot with non-empty Redo stack will likely be more confusing than losing the Redo stack.
     // Let's wait for user feedback.
-    //    if (!wxGetApp().plater()->can_redo())
-    wxGetApp().plater()->take_snapshot(_L("Selection-Remove All"), UndoRedo::SnapshotType::Selection);
+    //    if (!can_redo())
+    m_event_poster->postEvent(CanvasEventType::TakeSnapshotSelection, _u8L("Selection-Remove All"));
 
     m_mode = Instance;
     clear();
@@ -466,14 +476,16 @@ void Selection::clear()
     set_bounding_boxes_dirty();
 
     // this happens while the application is closing
-    if (wxGetApp().obj_manipul() == nullptr)
+    if (!m_obj_manipul_reset_cache)
         return;
 
     // resets the cache in the sidebar
-    wxGetApp().obj_manipul()->reset_cache();
+    if (m_obj_manipul_reset_cache)
+        m_obj_manipul_reset_cache();
 
     // #et_FIXME fake KillFocus from sidebar
-    wxGetApp().plater()->canvas3D()->handle_sidebar_focus_event("", false);
+    if (m_canvas)
+        m_canvas->handle_sidebar_focus_event("", false);
 }
 
 // Update the selection based on the new instance IDs.
@@ -483,7 +495,7 @@ void Selection::instances_changed(const std::vector<size_t> &instance_ids_select
     assert(m_mode == Instance);
     m_list.clear();
 
-    const PrinterTechnology pt = wxGetApp().plater()->printer_technology();
+    const PrinterTechnology pt = (PrinterTechnology) printer_technology();
 
     for (unsigned int volume_idx = 0; volume_idx < (unsigned int) m_volumes->size(); ++volume_idx)
     {
@@ -834,7 +846,7 @@ const std::pair<BoundingBoxf3, Transform3d> &Selection::get_bounding_box_in_curr
 
     assert(!is_empty());
 
-    ECoordinatesType coordinates_type = wxGetApp().obj_manipul()->get_coordinates_type();
+    ECoordinatesType coordinates_type = get_coordinates_type();
     if (m_mode == Instance && coordinates_type == ECoordinatesType::Local)
         coordinates_type = ECoordinatesType::World;
 
@@ -962,7 +974,7 @@ BoundingBoxf Selection::get_screen_space_bounding_box()
             {box.min.x(), box.min.y(), box.max.z()}, {box.max.x(), box.min.y(), box.max.z()},
             {box.max.x(), box.max.y(), box.max.z()}, {box.min.x(), box.max.y(), box.max.z()}};
 
-        const Camera &camera = wxGetApp().plater()->get_camera();
+        const Camera &camera = get_camera();
         const Matrix4d projection_view_matrix = camera.get_projection_matrix().matrix() *
                                                 camera.get_view_matrix().matrix();
         const std::array<int, 4> &viewport = camera.get_viewport();
@@ -1088,7 +1100,7 @@ void Selection::translate(const Vec3d &displacement, TransformationType transfor
 
     ensure_not_below_bed();
     set_bounding_boxes_dirty();
-    wxGetApp().plater()->canvas3D()->requires_check_outside_state();
+    m_canvas->requires_check_outside_state();
 }
 
 // Rotate an object around one of the axes. Only one rotation component is expected to be changing.
@@ -1213,7 +1225,7 @@ void Selection::rotate(const Vec3d &rotation, TransformationType transformation_
 #endif // !DISABLE_INSTANCES_SYNCH
 
     set_bounding_boxes_dirty();
-    wxGetApp().plater()->canvas3D()->requires_check_outside_state();
+    m_canvas->requires_check_outside_state();
 }
 
 void Selection::flattening_rotate(const Vec3d &normal)
@@ -1262,7 +1274,7 @@ void Selection::scale_to_fit_print_volume(const BuildVolume &volume)
             return false;
 
         if (undoredo_snapshot)
-            wxGetApp().plater()->take_snapshot(_L("Scale To Fit"));
+            m_event_poster->postEvent(CanvasEventType::TakeSnapshot, _u8L("Scale To Fit"));
 
         TransformationType type;
         type.set_world();
@@ -1272,7 +1284,7 @@ void Selection::scale_to_fit_print_volume(const BuildVolume &volume)
         // apply scale
         setup_cache();
         scale(s * Vec3d::Ones(), type);
-        wxGetApp().plater()->canvas3D()->do_scale(""); // avoid storing another snapshot
+        m_canvas->do_scale(""); // avoid storing another snapshot
 
         // center selection on print bed
         setup_cache();
@@ -1280,9 +1292,10 @@ void Selection::scale_to_fit_print_volume(const BuildVolume &volume)
         TransformationType trafo_type;
         trafo_type.set_relative();
         translate(offset, trafo_type);
-        wxGetApp().plater()->canvas3D()->do_move(""); // avoid storing another snapshot
+        m_canvas->do_move(""); // avoid storing another snapshot
 
-        wxGetApp().obj_manipul()->set_dirty();
+        if (m_obj_manipul_set_dirty)
+            m_obj_manipul_set_dirty();
         return undoredo_snapshot;
     };
 
@@ -1359,7 +1372,7 @@ void Selection::scale_to_fit_print_volume(const BuildVolume &volume)
     // used to keep track whether the undo/redo snapshot has already been taken
     bool undoredo_snapshot = false;
 
-    if (wxGetApp().plater()->printer_technology() == ptSLA)
+    if ((PrinterTechnology) printer_technology() == ptSLA)
     {
         // remove SLA auxiliary volumes from the selection to ensure that the proper bounding box is calculated
         std::vector<unsigned int> to_remove;
@@ -1394,12 +1407,11 @@ void Selection::scale_to_fit_print_volume(const BuildVolume &volume)
     }
     }
 
-    if (wxGetApp().plater()->printer_technology() == ptFFF)
+    if ((PrinterTechnology) printer_technology() == ptFFF)
     {
         // check whether the top layer exceeds the maximum height of the print volume
         // and, in case, reduce the scale accordingly
-        const auto [slicing_parameters,
-                    profile] = wxGetApp().plater()->canvas3D()->get_layers_height_data(get_object_idx());
+        const auto [slicing_parameters, profile] = m_canvas->get_layers_height_data(get_object_idx());
         auto layers = generate_object_layers(slicing_parameters, profile);
         auto layers_it = layers.rbegin();
         while (layers_it != layers.rend() && *layers_it > volume.bounding_volume().max.z())
@@ -1530,7 +1542,7 @@ void Selection::scale_and_translate(const Vec3d &scale, const Vec3d &world_trans
     if (m_mode == EMode::Instance)
         ensure_on_bed();
     set_bounding_boxes_dirty();
-    wxGetApp().plater()->canvas3D()->requires_check_outside_state();
+    m_canvas->requires_check_outside_state();
 }
 
 void Selection::reset_skew()
@@ -1600,7 +1612,7 @@ void Selection::reset_skew()
 
     ensure_on_bed();
     set_bounding_boxes_dirty();
-    wxGetApp().plater()->canvas3D()->requires_check_outside_state();
+    m_canvas->requires_check_outside_state();
 }
 
 void Selection::translate(unsigned int object_idx, unsigned int instance_idx, const Vec3d &displacement)
@@ -1653,8 +1665,8 @@ void Selection::translate(unsigned int object_idx, unsigned int instance_idx, co
 
 int Selection::bake_transform_if_needed() const
 {
-    if ((is_single_full_instance() && wxGetApp().obj_manipul()->is_world_coordinates()) ||
-        (is_single_volume_or_modifier() && !wxGetApp().obj_manipul()->is_local_coordinates()))
+    if ((is_single_full_instance() && is_world_coordinates()) ||
+        (is_single_volume_or_modifier() && !is_local_coordinates()))
     {
         // Verify whether the instance rotation is multiples of 90 degrees, so that the scaling in world coordinates is possible.
         // all volumes in the selection belongs to the same instance, any of them contains the needed instance data, so we take the first one
@@ -1676,7 +1688,7 @@ int Selection::bake_transform_if_needed() const
         {
             // is the volume angle close to a multiple of 90 degrees?
             needs_baking |= !Geometry::is_rotation_ninety_degrees(volume.get_volume_rotation());
-            if (wxGetApp().obj_manipul()->is_world_coordinates())
+            if (is_world_coordinates())
                 // Is the instance angle close to a multiple of 90 degrees?
                 needs_baking |= !Geometry::is_rotation_ninety_degrees(volume.get_instance_rotation());
         }
@@ -1684,7 +1696,7 @@ int Selection::bake_transform_if_needed() const
         if (needs_baking)
         {
             MessageDialog dlg(
-                (wxWindow *) wxGetApp().mainframe,
+                m_canvas->get_wxglcanvas_parent(),
                 _L("The currently manipulated object is tilted or contains tilted parts (rotation angles are not multiples of 90°). "
                    "Non-uniform scaling of tilted objects is only possible in non-local coordinate systems, "
                    "once the rotation is embedded into the object coordinates.") +
@@ -1693,13 +1705,13 @@ int Selection::bake_transform_if_needed() const
             if (dlg.ShowModal() != wxID_YES)
                 return -1;
 
-            wxGetApp().plater()->take_snapshot(_("Bake transform"));
+            m_event_poster->postEvent(CanvasEventType::TakeSnapshot, _u8L("Bake transform"));
 
             // Bake the rotation into the meshes of the object.
-            wxGetApp().model().objects[volume.composite_id.object_id]->bake_xy_rotation_into_meshes(
+            m_model->objects[volume.composite_id.object_id]->bake_xy_rotation_into_meshes(
                 volume.composite_id.instance_id);
             // Update the 3D scene, selections etc.
-            wxGetApp().plater()->update();
+            m_event_poster->postEvent(CanvasEventType::ForceUpdate);
             return 0;
         }
     }
@@ -1855,7 +1867,7 @@ void Selection::render_center(bool gizmo_is_dragging)
     if (!m_valid || is_empty())
         return;
 
-    GLShaderProgram *shader = wxGetApp().get_shader("flat");
+    GLShaderProgram *shader = get_shader("flat");
     if (shader == nullptr)
         return;
 
@@ -1865,7 +1877,7 @@ void Selection::render_center(bool gizmo_is_dragging)
 
     glsafe(::glDisable(GL_DEPTH_TEST));
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = get_camera();
     Transform3d view_model_matrix = camera.get_view_matrix() * Geometry::assemble_transform(center);
 
     shader->set_uniform("view_model_matrix", view_model_matrix);
@@ -1883,8 +1895,7 @@ void Selection::render_sidebar_hints(const std::string &sidebar_field)
     if (sidebar_field.empty())
         return;
 
-    GLShaderProgram *shader = wxGetApp().get_shader(boost::starts_with(sidebar_field, "layer") ? "flat"
-                                                                                               : "gouraud_light");
+    GLShaderProgram *shader = get_shader(boost::starts_with(sidebar_field, "layer") ? "flat" : "gouraud_light");
     if (shader == nullptr)
         return;
 
@@ -1902,16 +1913,16 @@ void Selection::render_sidebar_hints(const std::string &sidebar_field)
     if (!boost::starts_with(sidebar_field, "layer"))
     {
         shader->set_uniform("emission_factor", 0.05f);
-        if (is_single_full_instance() && !wxGetApp().obj_manipul()->is_world_coordinates())
+        if (is_single_full_instance() && !is_world_coordinates())
         {
             orient_matrix = (*m_volumes)[*m_list.begin()]->get_instance_transformation().get_rotation_matrix();
             axes_center = (*m_volumes)[*m_list.begin()]->get_instance_offset();
         }
         else if (is_single_volume_or_modifier())
         {
-            if (!wxGetApp().obj_manipul()->is_world_coordinates())
+            if (!is_world_coordinates())
             {
-                if (wxGetApp().obj_manipul()->is_local_coordinates())
+                if (is_local_coordinates())
                 {
                     orient_matrix = get_bounding_box_in_current_reference_system().second;
                     orient_matrix.translation() = Vec3d::Zero();
@@ -1947,7 +1958,7 @@ void Selection::render_sidebar_hints(const std::string &sidebar_field)
 
     if (!boost::starts_with(sidebar_field, "layer"))
     {
-        if (wxGetApp().obj_manipul()->is_instance_coordinates())
+        if (is_instance_coordinates())
             m_axes.render(Geometry::translation_transform(axes_center) * orient_matrix, 0.25f);
     }
 
@@ -2038,7 +2049,7 @@ std::vector<unsigned int> Selection::get_volume_idxs_from_object(unsigned int ob
 {
     std::vector<unsigned int> idxs;
 
-    const PrinterTechnology pt = wxGetApp().plater()->printer_technology();
+    const PrinterTechnology pt = (PrinterTechnology) printer_technology();
 
     for (unsigned int i = 0; i < (unsigned int) m_volumes->size(); ++i)
     {
@@ -2275,8 +2286,7 @@ void Selection::update_type()
         {
             int oi = v->object_idx();
             int vi = v->volume_idx();
-            if (oi < (int) m_model->objects.size() && vi >= 0 &&
-                vi < (int) m_model->objects[oi]->volumes.size() &&
+            if (oi < (int) m_model->objects.size() && vi >= 0 && vi < (int) m_model->objects[oi]->volumes.size() &&
                 m_model->objects[oi]->volumes[vi]->name == "Alignment Box")
             {
                 v->disabled = true;
@@ -2438,7 +2448,7 @@ void Selection::render_synchronized_volumes()
     if (m_mode == Instance)
         return;
 
-    const ECoordinatesType coordinates_type = wxGetApp().obj_manipul()->get_coordinates_type();
+    const ECoordinatesType coordinates_type = get_coordinates_type();
     BoundingBoxf3 box;
     Transform3d trafo;
 
@@ -2562,20 +2572,19 @@ void Selection::render_bounding_box(const BoundingBoxf3 &box, const Transform3d 
     glsafe(::glEnable(GL_DEPTH_TEST));
 
 #if SLIC3R_OPENGL_ES
-    GLShaderProgram *shader = wxGetApp().get_shader("dashed_lines");
+    GLShaderProgram *shader = get_shader("dashed_lines");
 #else
     if (!OpenGLManager::get_gl_info().is_core_profile())
         glsafe(::glLineWidth(2.0f * m_scale_factor));
 
-    GLShaderProgram *shader = OpenGLManager::get_gl_info().is_core_profile()
-                                  ? wxGetApp().get_shader("dashed_thick_lines")
-                                  : wxGetApp().get_shader("flat");
+    GLShaderProgram *shader = OpenGLManager::get_gl_info().is_core_profile() ? get_shader("dashed_thick_lines")
+                                                                             : get_shader("flat");
 #endif // SLIC3R_OPENGL_ES
     if (shader == nullptr)
         return;
 
     shader->start_using();
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = get_camera();
     shader->set_uniform("view_model_matrix", camera.get_view_matrix() * trafo);
     shader->set_uniform("projection_matrix", camera.get_projection_matrix());
 #if !SLIC3R_OPENGL_ES
@@ -2602,7 +2611,7 @@ static ColorRGBA get_color(Axis axis)
 void Selection::render_sidebar_position_hints(const std::string &sidebar_field, GLShaderProgram &shader,
                                               const Transform3d &matrix)
 {
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = get_camera();
     const Transform3d &view_matrix = camera.get_view_matrix();
     shader.set_uniform("projection_matrix", camera.get_projection_matrix());
 
@@ -2654,7 +2663,7 @@ void Selection::render_sidebar_rotation_hints(const std::string &sidebar_field, 
         m_curved_arrow.render();
     };
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = get_camera();
     const Transform3d &view_matrix = camera.get_view_matrix();
     shader.set_uniform("projection_matrix", camera.get_projection_matrix());
 
@@ -2680,7 +2689,7 @@ void Selection::render_sidebar_rotation_hints(const std::string &sidebar_field, 
 void Selection::render_sidebar_scale_hints(const std::string &sidebar_field, GLShaderProgram &shader,
                                            const Transform3d &matrix)
 {
-    const bool uniform_scale = wxGetApp().obj_manipul()->get_uniform_scaling();
+    const bool uniform_scale = get_uniform_scaling();
 
     auto render_sidebar_scale_hint = [this, uniform_scale](Axis axis, GLShaderProgram &shader,
                                                            const Transform3d &view_matrix,
@@ -2703,7 +2712,7 @@ void Selection::render_sidebar_scale_hints(const std::string &sidebar_field, GLS
         m_arrow.render();
     };
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = get_camera();
     const Transform3d &view_matrix = camera.get_view_matrix();
     shader.set_uniform("projection_matrix", camera.get_projection_matrix());
 
@@ -2751,7 +2760,7 @@ void Selection::render_sidebar_layers_hints(const std::string &sidebar_field, GL
     const BoundingBoxf3 &box = get_bounding_box();
 
     // view dependend order of rendering to keep correct transparency
-    const bool camera_on_top = wxGetApp().plater()->get_camera().is_looking_downward();
+    const bool camera_on_top = get_camera().is_looking_downward();
     const float z1 = camera_on_top ? min_z : max_z;
     const float z2 = camera_on_top ? max_z : min_z;
 
@@ -2809,7 +2818,7 @@ void Selection::render_sidebar_layers_hints(const std::string &sidebar_field, GL
         m_planes.models[1].init_from(std::move(init_data));
     }
 
-    const Camera &camera = wxGetApp().plater()->get_camera();
+    const Camera &camera = get_camera();
     shader.set_uniform("view_model_matrix", camera.get_view_matrix());
     shader.set_uniform("projection_matrix", camera.get_projection_matrix());
 
@@ -2833,7 +2842,7 @@ void Selection::render_debug_window() const
     if (get_first_volume()->is_wipe_tower)
         return;
 
-    ImGuiWrapper &imgui = *wxGetApp().imgui();
+    ImGuiWrapper &imgui = *get_imgui();
     ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once);
     imgui.begin(std::string("Selection matrices"), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize);
 
@@ -3106,7 +3115,7 @@ void Selection::synchronize_unselected_instances(SyncRotationType sync_rotation_
             else if (sync_rotation_type != SyncRotationType::NONE || mirrored)
                 new_inst_trafo_j.linear() = (old_inst_trafo_j.linear() * old_inst_trafo_i.linear().inverse()) *
                                             curr_inst_trafo_i.linear();
-            if (wxGetApp().preset_bundle->printers.get_edited_preset().printer_technology() != ptSLA)
+            if (printer_technology() != ptSLA)
                 new_inst_trafo_j.translation().z() = curr_inst_trafo_i.translation().z();
             assert(is_rotation_xy_synchronized(curr_inst_trafo_i, new_inst_trafo_j));
             volume_j->set_instance_transformation(new_inst_trafo_j);
@@ -3250,7 +3259,7 @@ bool Selection::is_from_fully_selected_instance(unsigned int volume_idx) const
     unsigned int count = (unsigned int) std::count_if(m_list.begin(), m_list.end(),
                                                       SameInstance(object_idx, volume->instance_idx(), *m_volumes));
 
-    PrinterTechnology pt = wxGetApp().plater()->printer_technology();
+    PrinterTechnology pt = (PrinterTechnology) printer_technology();
     const ModelVolumePtrs &volumes = m_model->objects[object_idx]->volumes;
     const unsigned int vol_cnt = (unsigned int) std::count_if(volumes.begin(), volumes.end(),
                                                               [pt](const ModelVolume *volume)
@@ -3261,6 +3270,8 @@ bool Selection::is_from_fully_selected_instance(unsigned int volume_idx) const
 
 void Selection::paste_volumes_from_clipboard()
 {
+    if (!m_canvas)
+        return;
 #ifdef _DEBUG
     check_model_ids_validity(*m_model);
 #endif /* _DEBUG */
@@ -3295,7 +3306,7 @@ void Selection::paste_volumes_from_clipboard()
             if (from_same_object)
             {
                 //                // if the volume comes from the same object, apply the offset in world system
-                //                double offset = wxGetApp().plater()->canvas3D()->get_size_proportional_to_max_bed_size(0.05);
+                //                double offset = m_canvas->get_size_proportional_to_max_bed_size(0.05);
                 //                dst_volume->translate(dst_matrix.inverse() * Vec3d(offset, offset, 0.0));
             }
             else
@@ -3333,6 +3344,8 @@ void Selection::paste_volumes_from_clipboard()
 
 void Selection::paste_objects_from_clipboard()
 {
+    if (!m_canvas)
+        return;
 #ifdef _DEBUG
     check_model_ids_validity(*m_model);
 #endif /* _DEBUG */
@@ -3342,7 +3355,7 @@ void Selection::paste_objects_from_clipboard()
     for (const ModelObject *src_object : src_objects)
     {
         ModelObject *dst_object = m_model->add_object(*src_object);
-        double offset = wxGetApp().plater()->canvas3D()->get_size_proportional_to_max_bed_size(0.05);
+        double offset = m_canvas->get_size_proportional_to_max_bed_size(0.05);
         Vec3d displacement(offset, offset, 0.0);
         for (ModelInstance *inst : dst_object->instances)
         {

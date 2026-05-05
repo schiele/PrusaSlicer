@@ -31,7 +31,7 @@ public:
     bool on_esc_key_down();
     static void add_simplify_suggestion_notification(const std::vector<size_t> &object_ids,
                                                      const std::vector<ModelObject *> &objects,
-                                                     NotificationManager &manager);
+                                                     NotificationManager &manager, GLCanvas3D &canvas);
 
 protected:
     virtual std::string on_get_name() const override;

@@ -46,7 +46,7 @@ void CoordAxes::render(const Transform3d &trafo, float emission_factor)
         m_arrow.init_from(stilized_arrow(16, m_tip_radius, m_tip_length, m_stem_radius, m_stem_length));
 
     GLShaderProgram *curr_shader = wxGetApp().get_current_shader();
-    GLShaderProgram *shader = wxGetApp().get_shader("gouraud_light");
+    GLShaderProgram *shader = wxGetApp().get_utility_shader();
     if (shader == nullptr)
         return;
 

@@ -318,26 +318,24 @@ void ImGuiWrapper::set_scaling(float font_size, float scale_style, float scale_b
     destroy_font();
 }
 
-bool ImGuiWrapper::update_mouse_data(wxMouseEvent &evt)
+bool ImGuiWrapper::update_mouse_data(const MouseInput &mouse)
 {
     if (!display_initialized())
-    {
         return false;
-    }
 
     ImGuiIO &io = ImGui::GetIO();
-    io.MousePos = ImVec2((float) evt.GetX(), (float) evt.GetY());
-    io.MouseDown[0] = evt.LeftIsDown();
-    io.MouseDown[1] = evt.RightIsDown();
-    io.MouseDown[2] = evt.MiddleIsDown();
-    io.MouseDoubleClicked[0] = evt.LeftDClick();
-    io.MouseDoubleClicked[1] = evt.RightDClick();
-    io.MouseDoubleClicked[2] = evt.MiddleDClick();
-    float wheel_delta = static_cast<float>(evt.GetWheelDelta());
+    io.MousePos = ImVec2((float) mouse.x, (float) mouse.y);
+    io.MouseDown[0] = mouse.left_down;
+    io.MouseDown[1] = mouse.right_down;
+    io.MouseDown[2] = mouse.middle_down;
+    io.MouseDoubleClicked[0] = (mouse.type == MouseEventType::LeftDClick);
+    io.MouseDoubleClicked[1] = (mouse.type == MouseEventType::RightDClick);
+    io.MouseDoubleClicked[2] = (mouse.type == MouseEventType::MiddleDClick);
+    float wheel_delta = static_cast<float>(mouse.wheel_delta);
     if (wheel_delta != 0.0f)
-        io.MouseWheel = static_cast<float>(evt.GetWheelRotation()) / wheel_delta;
+        io.MouseWheel = static_cast<float>(mouse.wheel_rotation) / wheel_delta;
 
-    unsigned buttons = (evt.LeftIsDown() ? 1 : 0) | (evt.RightIsDown() ? 2 : 0) | (evt.MiddleIsDown() ? 4 : 0);
+    unsigned buttons = (mouse.left_down ? 1 : 0) | (mouse.right_down ? 2 : 0) | (mouse.middle_down ? 4 : 0);
     m_mouse_buttons = buttons;
 
     if (ImGuiPureWrap::want_mouse())
@@ -345,59 +343,45 @@ bool ImGuiWrapper::update_mouse_data(wxMouseEvent &evt)
     return ImGuiPureWrap::want_mouse();
 }
 
-bool ImGuiWrapper::update_key_data(wxKeyEvent &evt)
+bool ImGuiWrapper::update_key_data(const KeyInput &key)
 {
     if (!display_initialized())
-    {
         return false;
-    }
 
-    auto to_string = [](wxEventType type) -> std::string
+    auto type_str = [](KeyEventType t) -> const char *
     {
-        if (type == wxEVT_CHAR)
+        switch (t)
+        {
+        case KeyEventType::Char:
             return "Char";
-        if (type == wxEVT_KEY_DOWN)
+        case KeyEventType::KeyDown:
             return "KeyDown";
-        if (type == wxEVT_KEY_UP)
+        case KeyEventType::KeyUp:
             return "KeyUp";
+        }
         return "Other";
     };
 
-    wxEventType type = evt.GetEventType();
     ImGuiIO &io = ImGui::GetIO();
-    BOOST_LOG_TRIVIAL(debug) << "ImGui - key event(" << to_string(type)
-                             << "):"
-                             //<< " Unicode(" << evt.GetUnicodeKey() << ")"
-                             << " KeyCode(" << evt.GetKeyCode() << ")";
+    BOOST_LOG_TRIVIAL(debug) << "ImGui - key event(" << type_str(key.type) << "):"
+                             << " KeyCode(" << key.key_code << ")";
 
-    if (type == wxEVT_CHAR)
+    if (key.type == KeyEventType::Char)
     {
-        // Char event
-        const auto key = evt.GetUnicodeKey();
-
-        // Release BackSpace, Delete, ... when miss wxEVT_KEY_UP event
-        // Already Fixed at begining of new frame
-        // unsigned int key_u = static_cast<unsigned int>(key);
-        //if (key_u >= 0 && key_u < IM_ARRAYSIZE(io.KeysDown) && io.KeysDown[key_u]) {
-        //    io.KeysDown[key_u] = false;
-        //}
-
-        if (key != 0)
-        {
-            io.AddInputCharacter(key);
-        }
+        if (key.unicode_key != 0)
+            io.AddInputCharacter(key.unicode_key);
     }
-    else if (type == wxEVT_KEY_DOWN || type == wxEVT_KEY_UP)
+    else if (key.type == KeyEventType::KeyDown || key.type == KeyEventType::KeyUp)
     {
-        // Key up/down event
-        int key = evt.GetKeyCode();
-        wxCHECK_MSG(key >= 0 && key < IM_ARRAYSIZE(io.KeysDown), false, "Received invalid key code");
+        int kc = key.key_code;
+        if (kc < 0 || kc >= IM_ARRAYSIZE(io.KeysDown))
+            return false;
 
-        io.KeysDown[key] = (type == wxEVT_KEY_DOWN);
-        io.KeyShift = evt.ShiftDown();
-        io.KeyCtrl = evt.ControlDown();
-        io.KeyAlt = evt.AltDown();
-        io.KeySuper = evt.MetaDown();
+        io.KeysDown[kc] = (key.type == KeyEventType::KeyDown);
+        io.KeyShift = key.shift;
+        io.KeyCtrl = key.ctrl;
+        io.KeyAlt = key.alt;
+        io.KeySuper = key.meta;
     }
     bool ret = ImGuiPureWrap::want_keyboard() || ImGuiPureWrap::want_text_input();
     if (ret)

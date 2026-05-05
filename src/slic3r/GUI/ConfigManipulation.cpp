@@ -811,11 +811,24 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config)
 
     bool interlock_enabled = config->opt_bool("interlock_perimeters_enabled");
     toggle_field("interlock_perimeter_count", interlock_enabled);
+    toggle_field("interlock_regular_perimeters", interlock_enabled);
     toggle_field("interlock_solid_layers_top", interlock_enabled);
     toggle_field("interlock_solid_layers_bottom", interlock_enabled);
     // interlock_perimeter_strength hidden - forced to 100% in code
     toggle_field("interlock_perimeter_overlap", interlock_enabled);
     toggle_field("interlock_flow_detection", interlock_enabled);
+
+    // Clamp interlock_regular_perimeters to not exceed perimeters
+    {
+        int il_reg = config->opt_int("interlock_regular_perimeters");
+        int perims = config->opt_int("perimeters");
+        if (il_reg > perims && il_reg > 0)
+        {
+            DynamicPrintConfig new_conf = *config;
+            new_conf.set_key_value("interlock_regular_perimeters", new ConfigOptionInt(perims));
+            apply(config, &new_conf);
+        }
+    }
 
     bool has_top_surface_flow_reduction = config->option<ConfigOptionPercent>("top_surface_flow_reduction")->value > 0;
     toggle_field("top_surface_visibility_detection", has_top_surface_flow_reduction);

@@ -26,13 +26,14 @@
 #include "libslic3r/Polygon.hpp"
 #include "libslic3r/TextConfiguration.hpp"
 
-#define STB_TRUETYPE_IMPLEMENTATION // force following include to generate implementation
+#define STBTT_STATIC
+#define STB_TRUETYPE_IMPLEMENTATION
 
 #include <libslic3r/Triangulation.hpp> // CGAL project
 
-// Explicit horror include (used to be implicit) - libslic3r "officialy" does not depend on imgui.
-#include "../../bundled_deps/imgui/imgui/imstb_truetype.h" // stbtt_fontinfo
-#include "Utils.hpp"                                       // ScopeGuard
+// Standalone stb_truetype for font processing (no imgui dependency)
+#include <stb_truetype.h> // stbtt_fontinfo
+#include "Utils.hpp"      // ScopeGuard
 #include "libslic3r.h"
 // to heal shape
 #include "libslic3r/ClipperUtils.hpp" // union_ex + for boldness(polygon extend(offset))
@@ -1333,7 +1334,7 @@ ExPolygons letter2shapes(wchar_t letter, Point &cursor, const FontFile &font, Gl
     }
     if (letter == '\t')
     {
-        // '\t' = 4*space => same as imgui
+        // '\t' = 4 spaces
         const int count_spaces = 4;
         const Glyph *space = get_glyph(int(' '), font, font_prop, cache, font_info_cache);
         if (space == nullptr)

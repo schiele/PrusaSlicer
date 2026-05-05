@@ -154,7 +154,7 @@ void print_help(bool include_print_options /* = false*/, PrinterTechnology print
                         << " (without GUI support)"
 #endif /* SLIC3R_GUI */
                         << std::endl
-                        << "https://github.com/oozeBot/preFlight" << std::endl
+                        << "https://preflight3d.com/" << std::endl
                         << std::endl
                         << "Usage: preFlight [ INPUT ] [ OPTIONS ] [ ACTIONS ] [ TRANSFORM ] [ file.stl ... ]"
                         << std::endl;

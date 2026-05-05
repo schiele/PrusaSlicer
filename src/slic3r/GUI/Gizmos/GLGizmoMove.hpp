@@ -48,7 +48,7 @@ public:
     /// </summary>
     /// <param name="mouse_event">Keep information about mouse click</param>
     /// <returns>Return True when use the information otherwise False.</returns>
-    bool on_mouse(const wxMouseEvent &mouse_event) override;
+    bool on_mouse(const MouseInput &mouse) override;
 
     /// <summary>
     /// Detect reduction of move for wipetover on selection change

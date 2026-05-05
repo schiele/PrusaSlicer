@@ -94,30 +94,30 @@ VoronoiDiagram::construct_voronoi(const SegmentIterator segment_begin, const Seg
             {
                 if (m_issue_type == IssueType::MISSING_VORONOI_VERTEX)
                 {
-                    BOOST_LOG_TRIVIAL(error) << "Detected missing Voronoi vertex even after the rotation of input.";
+                    BOOST_LOG_TRIVIAL(trace) << "Detected missing Voronoi vertex even after the rotation of input.";
                 }
                 else if (m_issue_type == IssueType::NON_PLANAR_VORONOI_DIAGRAM)
                 {
-                    BOOST_LOG_TRIVIAL(error) << "Detected non-planar Voronoi diagram even after the rotation of input.";
+                    BOOST_LOG_TRIVIAL(trace) << "Detected non-planar Voronoi diagram even after the rotation of input.";
                 }
                 else if (m_issue_type == IssueType::VORONOI_EDGE_INTERSECTING_INPUT_SEGMENT)
                 {
-                    BOOST_LOG_TRIVIAL(error)
+                    BOOST_LOG_TRIVIAL(trace)
                         << "Detected Voronoi edge intersecting input segment even after the rotation of input.";
                 }
                 else if (m_issue_type == IssueType::FINITE_EDGE_WITH_NON_FINITE_VERTEX)
                 {
-                    BOOST_LOG_TRIVIAL(error)
+                    BOOST_LOG_TRIVIAL(trace)
                         << "Detected finite Voronoi vertex with non finite vertex even after the rotation of input.";
                 }
                 else if (m_issue_type == IssueType::PARABOLIC_VORONOI_EDGE_WITHOUT_FOCUS_POINT)
                 {
-                    BOOST_LOG_TRIVIAL(error)
+                    BOOST_LOG_TRIVIAL(trace)
                         << "Detected parabolic Voronoi edges without focus point even after the rotation of input.";
                 }
                 else
                 {
-                    BOOST_LOG_TRIVIAL(error)
+                    BOOST_LOG_TRIVIAL(trace)
                         << "Detected unknown Voronoi diagram issue even after the rotation of input.";
                 }
 

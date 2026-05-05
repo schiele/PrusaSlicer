@@ -285,7 +285,7 @@ AboutDialog::AboutDialog()
             "%4% &copy; 2025+ oozeBot, LLC. <br />"
             "%4% Based on original work by the open-source community. <br />"
             "%5% &copy; 2011-2018 Alessandro Ranellucci. <br />"
-            "<a href=\"https://github.com/oozebot/preFlight\">preFlight</a> %6% "
+            "<a href=\"https://preflight3d.com/\">preFlight</a> %6% "
             "<a href=\"http://www.gnu.org/licenses/agpl-3.0.html\">%7%</a>."
             "<br /><br />"
             "%8%"

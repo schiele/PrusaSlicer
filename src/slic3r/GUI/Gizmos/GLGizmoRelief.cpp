@@ -5,8 +5,8 @@
 #include "GLGizmoRelief.hpp"
 
 #include "slic3r/GUI/GUI_App.hpp"
-#include "slic3r/GUI/GUI_ObjectList.hpp"
-#include "slic3r/GUI/Plater.hpp"
+#include "slic3r/GUI/EventTypes.hpp"
+#include "slic3r/GUI/EventBridge.hpp"
 #include "slic3r/GUI/MainFrame.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/ImGuiPureWrap.hpp"
@@ -91,17 +91,17 @@ void GLGizmoRelief::on_render()
 
     if (m_preview.is_initialized())
     {
-        GLShaderProgram *shader = wxGetApp().get_shader("gouraud_light");
+        GLShaderProgram *shader = m_parent.get_shader("gouraud_light");
         if (shader == nullptr)
             return;
 
         shader->start_using();
 
-        const Camera &camera = wxGetApp().plater()->get_camera();
+        const Camera &camera = m_parent.get_camera();
 
         // Position preview at bed center
         Vec3d bed_center = Vec3d::Zero();
-        const DynamicPrintConfig &config = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+        const DynamicPrintConfig &config = m_parent.preset_bundle()->printers.get_edited_preset().config;
         if (const ConfigOptionPoints *opt = config.option<ConfigOptionPoints>("bed_shape"))
         {
             BoundingBoxf bb;
@@ -153,7 +153,7 @@ void GLGizmoRelief::on_render_input_window(float x, float y, float bottom_limit)
     ImGuiPureWrap::begin("Relief from Image###GizmoRelief",
                          ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
 
-    ImGuiWrapper &imgui = *wxGetApp().imgui();
+    ImGuiWrapper &imgui = *m_imgui;
 
     if (!m_image.has_value())
     {
@@ -338,7 +338,7 @@ void GLGizmoRelief::on_render_input_window(float x, float y, float bottom_limit)
 
 bool GLGizmoRelief::load_image()
 {
-    wxFileDialog dialog(static_cast<wxWindow *>(wxGetApp().mainframe), _L("Select grayscale image"), "", "",
+    wxFileDialog dialog(m_parent.get_wxglcanvas_parent(), _L("Select grayscale image"), "", "",
                         "Image files (*.png;*.jpg;*.jpeg;*.bmp;*.tiff;*.tif)"
                         "|*.png;*.jpg;*.jpeg;*.bmp;*.tiff;*.tif",
                         wxFD_OPEN | wxFD_FILE_MUST_EXIST);
@@ -679,12 +679,12 @@ void GLGizmoRelief::generate_mesh()
 
     TriangleMesh relief_mesh(std::move(m_preview_its));
 
-    Plater *plater = wxGetApp().plater();
-    if (!plater)
+    Model *model_ptr = m_parent.get_model();
+    if (!model_ptr)
         return;
 
-    Model &model = plater->model();
-    Vec2d bed_center = plater->build_volume().bed_center();
+    Model &model = *model_ptr;
+    Vec2d bed_center = m_parent.build_volume().bed_center();
     size_t obj_idx = model.objects.size();
 
     // Build a bounding box for the alignment proxy
@@ -713,8 +713,8 @@ void GLGizmoRelief::generate_mesh()
     instance->set_offset(Slic3r::to_3d(bed_center, -obj->origin_translation(2)));
     obj->ensure_on_bed();
 
-    wxGetApp().obj_list()->add_object_to_list(obj_idx);
-    plater->update();
+    m_parent.event_poster()->postEvent(CanvasEventType::ObjectListAddObject, int(obj_idx));
+    m_parent.event_poster()->postEvent(CanvasEventType::PlaterUpdate);
 }
 
 } // namespace GUI

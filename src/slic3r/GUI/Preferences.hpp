@@ -53,6 +53,25 @@ enum NotifyReleaseMode
     NotifyReleaseNone
 };
 
+enum CanvasLightingQuality
+{
+    CanvasLightingAuto,
+    CanvasLightingBasic,
+    CanvasLightingEnhanced,
+    CanvasLightingCount,
+};
+
+enum CanvasMsaaMode
+{
+    CanvasMsaaAuto,
+    CanvasMsaaOff,
+    CanvasMsaa2x,
+    CanvasMsaa4x,
+    CanvasMsaa8x,
+    CanvasMsaa16x,
+    CanvasMsaaCount,
+};
+
 namespace GUI
 {
 

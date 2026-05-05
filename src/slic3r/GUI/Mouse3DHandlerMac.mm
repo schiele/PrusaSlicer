@@ -127,7 +127,7 @@ static bool load_driver_functions()
     }
   }
   else {
-    BOOST_LOG_TRIVIAL(error) << "3dx drivers module loading error: "<< dlerror() ;
+    BOOST_LOG_TRIVIAL(info) << "3dx drivers not available (no 3Dconnexion framework installed)";
   }
 
   BOOST_LOG_TRIVIAL(info) << "3dx drivers loaded: " << (driver_loaded ? (has_new_driver ? "YES, new" : "YES, old") : "NO");

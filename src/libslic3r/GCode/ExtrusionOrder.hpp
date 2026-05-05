@@ -99,6 +99,7 @@ struct IslandExtrusions
     std::vector<Perimeter> perimeters;
     std::vector<InfillRange> infill_ranges;
     bool infill_first{false};
+    float island_area_mm2{0.0f};
 };
 
 struct SliceExtrusions

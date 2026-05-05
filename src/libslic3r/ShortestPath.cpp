@@ -484,6 +484,18 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
         }
     }
 
+    // The greedy chain walk can miss segments when the linked list has
+    // disconnected components. Append any unvisited segments so no
+    // polylines are silently dropped in Release builds.
+    if (out.size() < num_segments)
+    {
+        std::vector<bool> visited(num_segments, false);
+        for (const auto &seg : out)
+            visited[seg.first] = true;
+        for (size_t i = 0; i < num_segments; i++)
+            if (!visited[i])
+                out.emplace_back(i, false);
+    }
     assert(out.size() == num_segments);
     return out;
 }
@@ -1162,6 +1174,18 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
         }
     }
 
+    // The greedy chain walk can miss segments when the linked list has
+    // disconnected components. Append any unvisited segments so no
+    // polylines are silently dropped in Release builds.
+    if (out.size() < num_segments)
+    {
+        std::vector<bool> visited(num_segments, false);
+        for (const auto &seg : out)
+            visited[seg.first] = true;
+        for (size_t i = 0; i < num_segments; i++)
+            if (!visited[i])
+                out.emplace_back(i, false);
+    }
     assert(out.size() == num_segments);
     return out;
 }

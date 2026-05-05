@@ -525,9 +525,19 @@ void OptionsGroup::activate_line(Line &line)
 
     // Set sidetext width for a better alignment of options in line
     // "m_show_modified_btns==true" means that options groups are in tabs
+    // Only narrow sidetext when the multi-option line actually has sidetext,
+    // otherwise it needlessly wraps sidetext on other lines in the group.
     if (option_set.size() > 1 && m_use_custom_ctrl)
     {
-        sidetext_width = Field::def_width_thinner();
+        bool has_sidetext = false;
+        for (const auto &opt : option_set)
+            if (!opt.opt.sidetext.empty())
+            {
+                has_sidetext = true;
+                break;
+            }
+        if (has_sidetext)
+            sidetext_width = Field::def_width_thinner();
     }
 
     // if we have a single option with no label, no sidetext just add it directly to sizer
@@ -1651,7 +1661,7 @@ wxString OptionsGroup::get_url(const std::string &path_end)
     wxString language = wxGetApp().current_language_code_safe();
     wxString lang_marker = language.IsEmpty() ? "en" : language.BeforeFirst('_');
 
-    return wxString("https://ooze.bot/preflight/") + lang_marker + wxString("/article/" + path_end);
+    return wxString("https://preflight3d.com/articles/") + lang_marker + wxString("/article/" + path_end);
 }
 
 bool OptionsGroup::launch_browser(const std::string &path_end)

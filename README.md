@@ -1,7 +1,7 @@
 <p align="center">
-  <img src="resources/images/preFlight.png" alt="preFlight logo" width="600">
+  <img src="images/preFlight.png" alt="preFlight logo" width="600">
   <br><br>
-  <a href="resources/images/gui.png"><img src="resources/images/gui.png" alt="preFlight interface" width="800"></a>
+  <a href="images/gui.png"><img src="images/gui.png" alt="preFlight interface" width="800"></a>
 </p>
 
 <p align="center">
@@ -9,27 +9,36 @@
   <a href="https://github.com/oozebot/preFlight/releases"><img src="https://img.shields.io/github/downloads/oozebot/preFlight/total?label=Downloads" alt="Downloads"></a>
   <a href="https://github.com/oozebot/preFlight/stargazers"><img src="https://img.shields.io/github/stars/oozebot/preFlight?style=flat&label=Stars" alt="GitHub Stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/oozebot/preFlight" alt="License"></a>
+  <a href="https://preflight3d.com"><img src="https://img.shields.io/badge/Web-preflight3d.com-blue?logo=globe" alt="Website"></a>
   <a href="https://donate.stripe.com/eVqfZbgoVf9y1c1aXe63K00"><img src="https://img.shields.io/badge/Donate-Support%20preFlight-blue?logo=stripe" alt="Donate"></a>
 </p>
 
 # preFlight
 
-**The Engineer's Slicer**
+**Pilot, You Are Cleared for Launch.**
 
 preFlight is an advanced 3D printing slicer built for precision and performance. Building on the Slic3r legacy as a spiritual successor to PrusaSlicer, it offers exclusive features and a comprehensive under-the-hood overhaul, bringing the entire dependency stack up to modern standards. Given this massive modernization, preFlight has evolved beyond the constraints of the original codebase, making upstream merging irrelevant.
+
+<br>
 
 ## oozeBot
 
 Based in Georgia, USA, oozeBot is a small but ambitious team currently preparing for the take-off of our Elevate line of 3D printers. preFlight is the cornerstone of the ecosystem we are building - a genuinely new option in the 3D printing space designed to benefit all makers, regardless of the hardware they use.
 
+<br>
+
 ## Discover preFlight
-Want to see what makes preFlight special? Head over to our [Feature Showcase](https://github.com/oozebot/preFlight/discussions/categories/preflight-features) to view screenshots, learn more about unique features, and join the discussion.
+Visit [preflight3d.com](https://preflight3d.com) for documentation, guides, and the latest news. Check out our [Feature Showcase](https://github.com/oozebot/preFlight/discussions/categories/preflight-features) for screenshots and community discussion.
+
+<br>
 
 ## Donate
 
 While preFlight is open-source and free for everyone, your support helps us maintain the infrastructure, fund R&D, and keep our team in orbit. If you find value in our tools, consider contributing to the mission.
 
 [Support the preFlight Mission (via Stripe)](https://donate.stripe.com/eVqfZbgoVf9y1c1aXe63K00)
+
+<br>
 
 ## Requirements
 
@@ -43,16 +52,20 @@ While preFlight is open-source and free for everyone, your support helps us main
 
 **Raspberry Pi:** RPi 5 running 64-bit Raspberry Pi OS (Bookworm or Trixie). Download the aarch64 .deb package from [GitHub Releases](https://github.com/oozebot/preFlight/releases).
 
+<br>
+
 ## Security & Authenticity
 
 To ensure the integrity of your installation and protect yourself, please follow these security guidelines:
 
 * **Official Downloads:** Only download preFlight binaries directly from our [GitHub Releases](https://github.com/oozebot/preFlight/releases) page. We do not distribute preFlight through third-party mirror sites.
 * **Verified Signature:** All official Windows binaries are digitally signed by **oozeBot, LLC** using an **Organization Validation (OV) Code Signing Certificate**. 
-* **Verification:** Before running the installer, right-click the file, select **Properties**, and navigate to the **Digital Signatures** tab. Ensure the "Name of signer" is explicitly listed as **oozeBot, LLC**.
-* **Safety First:** If you receive a "Windows protected your PC" (SmartScreen) warning on a file that is *not* signed by oozeBot, LLC, do not proceed with the installation and [report the issue](https://github.com/oozebot/preFlight/issues) immediately.
+* **Verification:** Before running preFlight, right-click the `.exe`, select **Properties**, and navigate to the **Digital Signatures** tab. Ensure the "Name of signer" is explicitly listed as **oozeBot, LLC**.
+* **Safety First:** If you receive a "Windows protected your PC" (SmartScreen) warning on a file that is *not* signed by oozeBot, LLC, do not run it and [report the issue](https://github.com/oozebot/preFlight/issues) immediately.
 * **macOS Notarization:** All official macOS DMGs are signed with an **Apple Developer ID** certificate and notarized by Apple. macOS will verify the signature and notarization automatically on first launch. If Gatekeeper warns that the app is from an unidentified developer, the DMG is not an official release.
 * **3MF Security:** Post-process scripts embedded in third-party 3MF files are suppressed on import (CVE-2023-47268). All 3MF extraction uses in-memory buffers, so preFlight is not affected by Zip Slip path traversal vulnerabilities.
+
+<br>
 
 ## Why preFlight?
 
@@ -60,12 +73,13 @@ To ensure the integrity of your installation and protect yourself, please follow
 |--------------|----------------|
 | **Athena Perimeter Generator** | Independent overlap control no other slicer offers |
 | **Interlocking Perimeters** | Enhanced Z-bonding without added cost or complexity |
+| **G-code Preprocessing** | Python scripting runs in-process during slicing, not as a post-export step |
 | **True 64-bit Architecture** | No coordinate overflow, no silent failures |
 | **High Precision** | Clipper2 compiled with 10-decimal high precision |
 | **In-Memory Processing** | No temp files, ~50% less RAM usage |
 | **Modern Stack** | C++20, Clipper2, Boost 1.90, CGAL 6.1, OpenCASCADE 7.9, Eigen 5.0 |
 
----
+<br>
 
 ## Flagship Features
 
@@ -100,6 +114,8 @@ We forked Arachne to modernize it in several ways. Athena uses **fixed extrusion
 
 **When to Use Arachne:** You prefer automatic overlap calculation or don't care about perimeter spacing.
 
+<br>
+
 ### Interlocking Perimeters
 
 A novel approach to layer bonding using **spacing variation and compression bonding** - fundamentally different from "brick layers".
@@ -122,7 +138,25 @@ A novel approach to layer bonding using **spacing variation and compression bond
 - No material or time penalty at 100% strength
 - Maintains dimensional accuracy (constant layer heights)
 
----
+<br>
+
+### G-code Preprocessing (Python Scripting)
+
+**Embedded Python scripting engine with 150+ APIs and full access to all slicer settings.**
+
+Run Python scripts against sliced G-code before preview and export. Pre-processing runs inside the slicing pipeline, giving scripts access to move data, layer structure, settings, and raw G-code that no external post-processor can match.
+
+- **Bundled Python 3.14** - No system Python required. Fully isolated runtime with pip support.
+- **Per-profile scripts** - Each Print, Filament, and Printer profile gets its own Preprocessing tab with an enable toggle and ordered script list
+- **Motion planner data** - Scripts can read distance, junction angle, acceleration, max entry speed, per-role metrics
+- **Fill region geometry** - Region area and fill pattern name for detecting small features
+- **Full G-code control** - Insert, rewrite, prepend, append, annotate moves with optional comments
+- **State isolation** - Each script run snapshots and restores sys.path, sys.modules, signal handlers, and CWD
+- **Error reporting** - Script errors surface as breadcrumb notifications with line numbers
+- **18 sample scripts included** - Pressure advance tuning, flow limiting, fan curves, motion optimization, and more
+- **Type stubs** - `preFlight.py` stub for autocomplete/intellisense in external editors
+
+<br>
 
 ## Exclusive Features
 
@@ -143,12 +177,16 @@ Why it matters:
 - Clipper2 uses 64-bit internally - type mismatch causes bugs
 - Large print volumes can exceed 32-bit range
 
+<br>
+
 ### In-Memory G-code Processing
 
 Zero temp files during slicing:
 - No disk I/O during slicing
 - ~50% less RAM (no per-line string overhead)
 - Faster slicing (no file system operations)
+
+<br>
 
 ### Multi-Type Support Painting
 
@@ -159,6 +197,8 @@ Zero temp files during slicing:
 - Paint **Organic** (Green) - Easy removal, delicate areas
 
 Strong supports under critical overhangs, easy-to-remove supports elsewhere. All on one print.
+
+<br>
 
 ### Seam System
 
@@ -185,6 +225,8 @@ Bidirectional blending system for stable vertical and diagonal seam tracking on 
 - Draw straight seam lines between points instead of painting freehand. Perfect for placing seams along edges or in straight grooves. Includes Z-axis snapping (within 5 degrees) for vertical lines.
 - Minimum brush size reduced to 0.1mm
 
+<br>
+
 ### 2-opt Travel Optimization
 
 Intelligent perimeter ordering eliminates crossing travel paths:
@@ -192,12 +234,16 @@ Intelligent perimeter ordering eliminates crossing travel paths:
 - 2-opt optimization algorithm to eliminate crossing travel paths
 - Adaptive iteration count scaling with group complexity
 
+<br>
+
 ### Region-Aware Infill Ordering
 
 Intelligent print ordering minimizes travel:
 - Concentric fill uses depth-first traversal
 - Sparse infill uses union-find clustering
 - 30-50% reduction in travel distance for gyroid on multi-island layers
+
+<br>
 
 ### RepRapFirmware Direct Integration
 
@@ -207,11 +253,15 @@ One-click retrieval of all machine limits directly from Duet/RRF printers:
 - M566 (Jerk), M201 (Acceleration), M203 (Feedrate)
 - M204 (Print/travel accel), M207 (Firmware retract)
 
+<br>
+
 ### Physics-Based Time Estimation
 
 - Junction Deviation support (Marlin M205 J)
 - RepRapFirmware acceleration model
 - Print time estimates that actually match reality
+
+<br>
 
 ### G-code Complexity Analysis
 
@@ -219,6 +269,8 @@ One-click retrieval of all machine limits directly from Duet/RRF printers:
 - Maximum commands per second for each extrusion role
 - Which layer the maximum occurred on
 - Identify bottlenecks before printing
+
+<br>
 
 ### Enhanced G-code Viewer
 
@@ -232,11 +284,15 @@ Hover over the G-code window and scroll to scrub through commands in real-time. 
 - Right-click to copy any command to clipboard
 - Width matched to legend for clean UI
 
+<br>
+
 ### Print Quality Enhancements
 
 - **Top Surface Flow Reduction** - Reduce flow on top layers for smoother finish
 - **Narrow to Athena** - Narrow solid surfaces use variable-width fill instead of rectilinear, eliminating zigzag and diamond artifacts at narrow transitions
 - **Bridge Infill Overlap** - Independent control over overlap between bridge extrusions
+
+<br>
 
 ### Support System Redesign
 
@@ -244,31 +300,45 @@ Hover over the G-code window and scroll to scrub through commands in real-time. 
 - **Variable Interface Layer Heights** - Achieve desired gap through interface height adjustment, not Z-offset
 - **Simplified Bottom Contact** - Clear options: No Gap, Half Layer, Full Layer (instead of arbitrary mm values)
 
+<br>
+
 ### Cooling & Extrusion Control
 
 - **Full Manual Fan Control** - Complete manual cooling control for each feature type
 - **Fan Spin-Up Options** - Configure fan spin-up timing for precise cooling with overhang perimeters and bridge infill
 - **Wipe Enhancements** - Improved wipe/retraction behavior
 
+<br>
+
 ### OrcaSlicer Profile Import
 
 Import printer, filament, and process profiles from `.orca_printer`, `.orca_filament`, and `.zip` bundles via File > Import > Import OrcaSlicer Bundle. Includes key mapping with value transforms, bed temperature plate selection, G-code macro translation, and a results dialog showing imported profiles, lossy mappings, dropped settings, and G-code warnings.
+
+<br>
 
 ### Preview Clipping Plane
 
 Right-click any object in sliced preview to activate an interactive cross-section plane that cuts through toolpaths and shell meshes. Useful for inspecting internal structure, verifying infill patterns, and diagnosing print issues before sending to the printer.
 
+<br>
+
 ### Align to Face Gizmo
 
 Precise object alignment using face selection. Pick a face on the build plate object, pick a face on the tool object, and snap them together. Includes flip, proportional scale/size, depth slider, position nudge, and Shift+drag snap-to-point with visual ring indicator. Boolean weld and subtract operations for combining or cutting objects in place.
+
+<br>
 
 ### Relief Gizmo
 
 Emboss images as 3D heightmaps onto mesh surfaces. Load any image and project it as a relief with smoothing, gamma correction, and minimum thickness controls. Real-time preview with CSG subtraction shown during the slicing shell animation.
 
+<br>
+
 ### Counterbore Bridge Gizmo
 
 Paint-on gizmo for controlling bridge layers above counterbore holes. Paint the regions that need bridging, set a per-hole bridge layer count, and the slicer generates bridge infill only within the painted area. Fill direction follows the corridor angle for each hole independently, and the transition extends upward through the specified bridge count.
+
+<br>
 
 ### Customizable Sidebar
 
@@ -279,9 +349,13 @@ Two layout modes to suit your workflow:
 
 Per-option visibility checkboxes let you show or hide individual settings to keep the sidebar focused on what matters to you.
 
+<br>
+
 ### Project Notes
 
 Add notes to individual objects or the entire project. Notes are persisted in 3MF files with full undo/redo support.
+
+<br>
 
 ### Additional Features
 
@@ -291,7 +365,7 @@ Add notes to individual objects or the entire project. Notes are persisted in 3M
 - **Progressive Slicing Feedback** - Visual feedback during slicing
 - **Solid Fill Pattern Selection** - Choose pattern for internal solid layers
 
----
+<br>
 
 ## Ported Features (with additional enhancements)
 
@@ -323,7 +397,7 @@ Ported from OrcaSlicer with enhancements
 - **Octaves** - Detail levels (noise complexity)
 - **Persistence** - How much each octave contributes
 
----
+<br>
 
 ## Modern Infrastructure
 
@@ -350,7 +424,7 @@ Ported from OrcaSlicer with enhancements
 - Memory leak fixes (gigabytes saved over long sessions)
 - CMake 4.x ready
 
----
+<br>
 
 ## Compatibility
 
@@ -365,7 +439,7 @@ preFlight works with any modern 3D printer accepting RepRap-flavored G-code:
 - **Input**: STL, OBJ, 3MF, AMF, STEP
 - **Output**: G-code for FFF printers
 
----
+<br>
 
 ## Building from Source
 
@@ -414,13 +488,7 @@ brew install cmake ninja pkg-config
 | `-jobs N` | Number of parallel build jobs (default: auto-detect) |
 | `-arch A` | Architecture override (macOS: `arm64` / `x86_64`) |
 
----
-
-## Documentation
-
-Coming soon.
-
----
+<br>
 
 ## License
 
@@ -428,13 +496,12 @@ preFlight is licensed under the **GNU Affero General Public License, version 3**
 
 preFlight is based on [PrusaSlicer](https://github.com/prusa3d/PrusaSlicer) by Prusa Research, which is based on [Slic3r](https://github.com/slic3r/Slic3r) by Alessandro Ranellucci and the RepRap community.
 
----
+<br>
 
 ## Support
 
+- **Website:** [preflight3d.com](https://preflight3d.com)
 - **Email:** [support@ooze.bot](mailto:support@ooze.bot)
 - **GitHub Issues:** [github.com/oozebot/preFlight/issues](https://github.com/oozebot/preFlight/issues)
-
----
 
 *preFlight - Precision where it matters.*

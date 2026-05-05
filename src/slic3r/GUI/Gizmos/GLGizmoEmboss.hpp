@@ -80,7 +80,8 @@ public:
     /// </summary>
     /// <param name="job_cancel">Way to stop re_emboss job</param>
     /// <returns>True on success otherwise False</returns>
-    static bool re_emboss(const ModelVolume &text, std::shared_ptr<std::atomic<bool>> job_cancel = nullptr);
+    static bool re_emboss(const ModelVolume &text, GLCanvas3D &canvas,
+                          std::shared_ptr<std::atomic<bool>> job_cancel = nullptr);
 
 protected:
     bool on_init() override;
@@ -105,7 +106,7 @@ protected:
     /// </summary>
     /// <param name="mouse_event">Information about mouse</param>
     /// <returns>Propagete normaly return false.</returns>
-    bool on_mouse(const wxMouseEvent &mouse_event) override;
+    bool on_mouse(const MouseInput &mouse) override;
 
     bool wants_enter_leave_snapshots() const override;
     std::string get_gizmo_entering_text() const override;
@@ -190,9 +191,9 @@ private:
     ImVec2 get_minimal_window_size() const;
 
     // process mouse event
-    bool on_mouse_for_rotation(const wxMouseEvent &mouse_event);
-    bool on_mouse_for_translate(const wxMouseEvent &mouse_event);
-    void on_mouse_change_selection(const wxMouseEvent &mouse_event);
+    bool on_mouse_for_rotation(const MouseInput &mouse);
+    bool on_mouse_for_translate(const MouseInput &mouse);
+    void on_mouse_change_selection(const MouseInput &mouse);
 
     // When open text loaded from .3mf it could be written with unknown font
     bool m_is_unknown_font = false;

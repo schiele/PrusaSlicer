@@ -8,6 +8,7 @@
 
 #include "GLShader.hpp"
 
+#include <map>
 #include <vector>
 #include <string>
 #include <memory>
@@ -18,9 +19,11 @@ namespace Slic3r
 class GLShadersManager
 {
     std::vector<std::unique_ptr<GLShaderProgram>> m_shaders;
+    // Maps shader names to fallback names when compilation fails
+    std::map<std::string, std::string> m_fallback_map;
 
 public:
-    std::pair<bool, std::string> init();
+    std::pair<bool, std::string> init(bool compile_phong_shaders = true);
     // call this method before to release the OpenGL context
     void shutdown();
 
@@ -29,6 +32,13 @@ public:
 
     // returns currently active shader, nullptr if none
     GLShaderProgram *get_current_shader();
+
+private:
+    // Try to compile a shader; on failure, map its name to fallback_name so
+    // get_shader(name) transparently returns the fallback program.
+    bool try_compile_with_fallback(const std::string &name, const GLShaderProgram::ShaderFilenames &filenames,
+                                   const std::string &fallback_name,
+                                   const std::initializer_list<std::string_view> &defines = {});
 };
 
 } // namespace Slic3r

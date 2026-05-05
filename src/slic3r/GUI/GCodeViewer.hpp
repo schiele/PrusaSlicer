@@ -10,6 +10,7 @@
 
 #include "3DScene.hpp"
 #include "libslic3r/ExtrusionRole.hpp"
+#include <functional>
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "GLModel.hpp"
 #include "preFlight.PreviewClipController.hpp"
@@ -27,11 +28,21 @@
 namespace Slic3r
 {
 
+class AppConfig;
+class BuildVolume;
+class GLShaderProgram;
+class Model;
+class PresetBundle;
 class Print;
 class TriangleMesh;
 
 namespace GUI
 {
+
+struct Camera;
+class GLCanvas3D;
+class ImGuiWrapper;
+class NotificationManager;
 
 class GCodeViewer
 {
@@ -59,9 +70,9 @@ class GCodeViewer
 
     public:
 #if VGCODE_ENABLE_COG_AND_TOOL_MARKERS
-        void render(bool fixed_screen_size);
+        void render(bool fixed_screen_size, const Camera &camera, GLShaderProgram *shader);
 #else
-        void render();
+        void render(const Camera &camera, GLShaderProgram *shader);
 #endif // VGCODE_ENABLE_COG_AND_TOOL_MARKERS
 
         void reset()
@@ -123,6 +134,8 @@ struct SequentialView
 
     class Marker
     {
+        ImGuiWrapper *m_imgui{nullptr};
+        GLCanvas3D *m_canvas{nullptr};
         GLModel m_model;
         GLModel m_model_ht90_rod;
         Vec3f m_world_position;
@@ -176,12 +189,16 @@ struct SequentialView
         bool is_visible() const { return m_visible; }
         void set_visible(bool visible) { m_visible = visible; }
 
-        void render();
+        void set_imgui(ImGuiWrapper *imgui) { m_imgui = imgui; }
+        void set_canvas(GLCanvas3D *canvas) { m_canvas = canvas; }
+        void render(const Camera &camera, GLShaderProgram *shader);
         void render_position_window(const libvgcode::Viewer *viewer);
     };
 
     class GCodeWindow
     {
+        ImGuiWrapper *m_imgui{nullptr};
+        GLCanvas3D *m_canvas{nullptr};
         struct Line
         {
             std::string command;
@@ -224,6 +241,8 @@ struct SequentialView
             m_virtual_file = nullptr; // Clear virtual file pointer to prevent stale data
         }
         void toggle_visibility() { m_visible = !m_visible; }
+        void set_imgui(ImGuiWrapper *imgui) { m_imgui = imgui; }
+        void set_canvas(GLCanvas3D *canvas) { m_canvas = canvas; }
         void render(float top, float bottom, size_t curr_line_id, float legend_width = 0.0f);
 
         int get_and_clear_scroll_request()
@@ -239,11 +258,33 @@ struct SequentialView
 
     Marker marker;
     GCodeWindow gcode_window;
+    GLCanvas3D *canvas{nullptr};
 
-    void render(float legend_height, const libvgcode::Viewer *viewer, uint32_t gcode_id, float legend_width = 0.0f);
+    void render(float legend_height, const libvgcode::Viewer *viewer, uint32_t gcode_id, const Camera &camera,
+                GLShaderProgram *marker_shader, float legend_width = 0.0f);
 };
 
 private:
+Camera *m_camera{nullptr};
+ImGuiWrapper *m_imgui{nullptr};
+NotificationManager *m_notification_manager{nullptr};
+GLCanvas3D *m_canvas{nullptr};
+const AppConfig *m_app_config{nullptr};
+std::function<void(bool)> m_enable_preview_moves_slider;
+std::function<void()> m_update_preview_moves_slider;
+std::function<void(std::optional<int>, std::optional<int>)> m_update_preview_moves_slider_range;
+std::function<void(bool)> m_set_keep_current_preview_type;
+std::function<bool()> m_is_sidebar_collapsed;
+std::function<const BuildVolume &()> m_get_build_volume;
+std::function<Model &()> m_get_model;
+std::function<void(const std::vector<Vec2d> &, double, const std::string &, const std::string &, bool)> m_set_bed_shape;
+std::function<void()> m_set_default_bed_shape;
+const PresetBundle *m_preset_bundle{nullptr};
+std::function<bool()> m_is_editor;
+std::function<bool()> m_is_gcode_viewer;
+std::function<int()> m_em_unit;
+std::function<GLShaderProgram *(const std::string &)> m_get_shader;
+std::function<GLShaderProgram *()> m_get_current_shader;
 bool m_gl_data_initialized{false};
 unsigned int m_last_result_id{0};
 // bounding box of toolpaths
@@ -342,6 +383,107 @@ GCodeViewer();
     reset();
 }
 
+void set_camera(Camera *camera)
+{
+    m_camera = camera;
+}
+const Camera &get_camera() const
+{
+    return *m_camera;
+}
+void set_imgui(ImGuiWrapper *imgui)
+{
+    m_imgui = imgui;
+    m_sequential_view.marker.set_imgui(imgui);
+    m_sequential_view.gcode_window.set_imgui(imgui);
+}
+ImGuiWrapper *get_imgui() const
+{
+    return m_imgui;
+}
+void set_notification_manager(NotificationManager *nm)
+{
+    m_notification_manager = nm;
+}
+NotificationManager *get_notification_manager() const
+{
+    return m_notification_manager;
+}
+void set_canvas(GLCanvas3D *canvas)
+{
+    m_canvas = canvas;
+    m_sequential_view.canvas = canvas;
+    m_sequential_view.marker.set_canvas(canvas);
+    m_sequential_view.gcode_window.set_canvas(canvas);
+}
+GLCanvas3D *canvas() const
+{
+    return m_canvas;
+}
+void set_app_config(const AppConfig *config)
+{
+    m_app_config = config;
+}
+const AppConfig *app_config() const
+{
+    return m_app_config;
+}
+void set_preset_bundle(const PresetBundle *bundle)
+{
+    m_preset_bundle = bundle;
+}
+void set_plater_callbacks(
+    std::function<void(bool)> enable_slider, std::function<void()> update_slider,
+    std::function<void(std::optional<int>, std::optional<int>)> update_slider_range,
+    std::function<void(bool)> set_keep_preview_type, std::function<bool()> is_sidebar_collapsed,
+    std::function<const BuildVolume &()> get_build_volume, std::function<Model &()> get_model,
+    std::function<void(const std::vector<Vec2d> &, double, const std::string &, const std::string &, bool)>
+        set_bed_shape,
+    std::function<void()> set_default_bed_shape)
+{
+    m_enable_preview_moves_slider = std::move(enable_slider);
+    m_update_preview_moves_slider = std::move(update_slider);
+    m_update_preview_moves_slider_range = std::move(update_slider_range);
+    m_set_keep_current_preview_type = std::move(set_keep_preview_type);
+    m_is_sidebar_collapsed = std::move(is_sidebar_collapsed);
+    m_get_build_volume = std::move(get_build_volume);
+    m_get_model = std::move(get_model);
+    m_set_bed_shape = std::move(set_bed_shape);
+    m_set_default_bed_shape = std::move(set_default_bed_shape);
+}
+void set_app_state(std::function<bool()> is_editor, std::function<bool()> is_gcode_viewer, std::function<int()> em_unit)
+{
+    m_is_editor = std::move(is_editor);
+    m_is_gcode_viewer = std::move(is_gcode_viewer);
+    m_em_unit = std::move(em_unit);
+}
+bool is_editor() const
+{
+    return m_is_editor && m_is_editor();
+}
+bool is_gcode_viewer() const
+{
+    return m_is_gcode_viewer && m_is_gcode_viewer();
+}
+int em_unit() const
+{
+    return m_em_unit ? m_em_unit() : 10;
+}
+void set_shader_getters(std::function<GLShaderProgram *(const std::string &)> get_shader,
+                        std::function<GLShaderProgram *()> get_current_shader)
+{
+    m_get_shader = std::move(get_shader);
+    m_get_current_shader = std::move(get_current_shader);
+}
+GLShaderProgram *get_shader(const std::string &name) const
+{
+    return m_get_shader ? m_get_shader(name) : nullptr;
+}
+GLShaderProgram *get_current_shader() const
+{
+    return m_get_current_shader ? m_get_current_shader() : nullptr;
+}
+
 void init();
 
 // extract rendering data from the given parameters
@@ -357,13 +499,13 @@ void render();
 void render_cog()
 {
     if (!m_loaded_as_preview && m_viewer.get_layers_count() > 0)
-        m_cog.render(m_cog_marker_fixed_screen_size);
+        m_cog.render(m_cog_marker_fixed_screen_size, get_camera(), get_shader("toolpaths_cog"));
 }
 #else
     void render_cog()
     {
         if (!m_loaded_as_preview && m_viewer.get_layers_count() > 0)
-            m_cog.render();
+            m_cog.render(get_camera(), get_shader("toolpaths_cog"));
     }
 #endif // VGCODE_ENABLE_COG_AND_TOOL_MARKERS
 bool has_data() const

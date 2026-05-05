@@ -110,13 +110,16 @@ static Model read_all_from_file(const std::string &input_file, DynamicPrintConfi
     if (is_project_file(input_file))
     {
         std::string gen_app;
-        bool pp_suppressed = false;
+        bool suppressed = false;
+        bool pp_stripped = false;
         result = load_3mf(input_file.c_str(), *config, *config_substitutions, &model,
-                          options & LoadAttribute::CheckVersion, generator_version, &gen_app, &pp_suppressed);
+                          options & LoadAttribute::CheckVersion, generator_version, &gen_app, &suppressed,
+                          &pp_stripped);
         if (stats)
         {
             stats->generator_application = std::move(gen_app);
-            stats->post_process_suppressed = pp_suppressed;
+            stats->scripts_suppressed = suppressed;
+            stats->post_process_stripped = pp_stripped;
         }
     }
     else

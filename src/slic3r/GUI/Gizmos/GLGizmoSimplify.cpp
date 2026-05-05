@@ -6,11 +6,12 @@
 #include "GLGizmoSimplify.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
-#include "slic3r/GUI/GUI_ObjectManipulation.hpp"
-#include "slic3r/GUI/GUI_ObjectList.hpp"
 #include "slic3r/GUI/MsgDialog.hpp"
 #include "slic3r/GUI/NotificationManager.hpp"
 #include "slic3r/GUI/Plater.hpp"
+#include "slic3r/GUI/EventTypes.hpp"
+#include "slic3r/GUI/EventBridge.hpp"
+#include "slic3r/Utils/UndoRedo.hpp"
 #include "slic3r/GUI/format.hpp"
 #include "slic3r/GUI/OpenGLManager.hpp"
 #include "libslic3r/AppConfig.hpp"
@@ -28,25 +29,12 @@
 namespace Slic3r::GUI
 {
 
-// Extend call after only when Simplify gizmo is still alive
-static void call_after_if_active(std::function<void()> fn, GUI_App *app = &wxGetApp())
+static void call_after_if_active(std::function<void()> fn, GLCanvas3D &canvas)
 {
-    // check application GUI
-    if (app == nullptr)
-        return;
-    app->CallAfter(
-        [fn, app]()
+    canvas.call_after(
+        [fn, &canvas]()
         {
-            // app must exist because it call this
-            // if (app == nullptr) return;
-            const Plater *plater = app->plater();
-            if (plater == nullptr)
-                return;
-            const GLCanvas3D *canvas = plater->canvas3D();
-            if (canvas == nullptr)
-                return;
-            const GLGizmosManager &mng = canvas->get_gizmos_manager();
-            // check if simplify is still activ gizmo
+            const GLGizmosManager &mng = canvas.get_gizmos_manager();
             if (mng.get_current_type() != GLGizmosManager::Simplify)
                 return;
             fn();
@@ -131,7 +119,7 @@ bool GLGizmoSimplify::on_esc_key_down()
 // while opening needs GLGizmoSimplify to set window position
 void GLGizmoSimplify::add_simplify_suggestion_notification(const std::vector<size_t> &object_ids,
                                                            const std::vector<ModelObject *> &objects,
-                                                           NotificationManager &manager)
+                                                           NotificationManager &manager, GLCanvas3D &canvas)
 {
     std::vector<size_t> big_ids;
     big_ids.reserve(object_ids.size());
@@ -160,17 +148,18 @@ void GLGizmoSimplify::add_simplify_suggestion_notification(const std::vector<siz
                                     objects[object_id]->name);
         std::string hypertext = _u8L("Simplify model");
 
-        std::function<bool(wxEvtHandler *)> open_simplify = [object_id](wxEvtHandler *)
+        GLCanvas3D *canvas_ptr = &canvas;
+        std::function<bool(wxEvtHandler *)> open_simplify = [object_id, canvas_ptr](wxEvtHandler *)
         {
-            auto plater = wxGetApp().plater();
-            if (object_id >= plater->model().objects.size())
+            const Model *model = canvas_ptr->get_model();
+            if (!model || object_id >= model->objects.size())
                 return true;
 
-            Selection &selection = plater->canvas3D()->get_selection();
+            Selection &selection = canvas_ptr->get_selection();
             selection.clear();
             selection.add_object((unsigned int) object_id);
 
-            auto &manager = plater->canvas3D()->get_gizmos_manager();
+            auto &manager = canvas_ptr->get_gizmos_manager();
             bool close_notification = true;
             if (!manager.open_gizmo(GLGizmosManager::Simplify))
                 return close_notification;
@@ -200,7 +189,7 @@ void GLGizmoSimplify::on_render_input_window(float x, float y, float bottom_limi
         close();
         if (m_parent.get_selection().volumes_count() != 1)
         {
-            MessageDialog msg((wxWindow *) wxGetApp().mainframe,
+            MessageDialog msg(m_parent.get_wxglcanvas_parent(),
                               _L("Simplification is currently only allowed when a single part is selected"),
                               _L("Error"));
             msg.ShowModal();
@@ -231,7 +220,7 @@ void GLGizmoSimplify::on_render_input_window(float x, float y, float bottom_limi
         // select different model
 
         // close suggestion notification
-        auto notification_manager = wxGetApp().plater()->get_notification_manager();
+        auto notification_manager = m_parent.get_notification_manager();
         for (const auto &id : act_volume_ids)
             notification_manager->remove_simplify_suggestion_with_id(id);
 
@@ -543,7 +532,7 @@ void GLGizmoSimplify::process()
             {
                 std::lock_guard lk(m_state_mutex);
                 m_state.progress = percent;
-                call_after_if_active([this]() { request_rerender(); });
+                call_after_if_active([this]() { request_rerender(); }, m_parent);
             };
 
             // Initialize.
@@ -584,7 +573,7 @@ void GLGizmoSimplify::process()
             }
 
             // Update UI. Use CallAfter so the function is run on UI thread.
-            call_after_if_active([this]() { worker_finished(); });
+            call_after_if_active([this]() { worker_finished(); }, m_parent);
         },
         std::move(its));
 }
@@ -598,15 +587,14 @@ void GLGizmoSimplify::apply_simplify()
     assert(m_state.volume_ids == m_volume_ids);
 
     const Selection &selection = m_parent.get_selection();
-    auto plater = wxGetApp().plater();
-    // TRN %1% = volumes name
-    plater->take_snapshot(Slic3r::format(_u8L("Simplify %1%"), create_volumes_name(m_volume_ids, selection)));
-    plater->clear_before_change_mesh(selection.get_object_idx(),
-                                     _u8L("Custom supports, seams and multimaterial painting were "
-                                          "removed after simplifying the mesh."));
+    m_parent.take_typed_snapshot(Slic3r::format(_u8L("Simplify %1%"), create_volumes_name(m_volume_ids, selection)),
+                                 static_cast<int>(UndoRedo::SnapshotType::Action));
+    m_parent.clear_before_change_volume(*get_selected_volume(*m_volume_ids.begin(), selection),
+                                        _u8L("Custom supports, seams and multimaterial painting were "
+                                             "removed after simplifying the mesh."));
     // After removing custom supports, seams, and multimaterial painting, we have to update info about the object to remove information about
     // custom supports, seams, and multimaterial painting in the right panel.
-    wxGetApp().obj_list()->update_info_items(selection.get_object_idx());
+    m_parent.event_poster()->postEvent(CanvasEventType::UpdateInfoItems, selection.get_object_idx());
 
     for (const auto &item : m_state.result)
     {
@@ -625,9 +613,9 @@ void GLGizmoSimplify::apply_simplify()
     m_state.result.clear();
     // fix hollowing, sla support points, modifiers, ...
     int object_idx = selection.get_object_idx();
-    plater->changed_mesh(object_idx);
+    m_parent.changed_mesh(object_idx);
     // Fix warning icon in object list
-    wxGetApp().obj_list()->update_item_error_icon(object_idx, -1);
+    m_parent.event_poster()->postEvent(CanvasEventType::ObjectListUpdateItemErrorIcon, object_idx);
     close();
 }
 
@@ -826,11 +814,11 @@ void GLGizmoSimplify::on_render()
         GLModel &glmodel = it->second;
 
         const Transform3d trafo_matrix = selected_volume->world_matrix();
-        auto *gouraud_shader = wxGetApp().get_shader("gouraud_light");
+        auto *gouraud_shader = m_parent.get_shader("gouraud_light");
         bool depth_test_enabled = ::glIsEnabled(GL_DEPTH_TEST);
         glsafe(::glEnable(GL_DEPTH_TEST));
         gouraud_shader->start_using();
-        const Camera &camera = wxGetApp().plater()->get_camera();
+        const Camera &camera = m_parent.get_camera();
         const Transform3d &view_matrix = camera.get_view_matrix();
         const Transform3d view_model_matrix = view_matrix * trafo_matrix;
         gouraud_shader->set_uniform("view_model_matrix", view_model_matrix);
@@ -844,9 +832,9 @@ void GLGizmoSimplify::on_render()
         if (m_show_wireframe)
         {
 #if SLIC3R_OPENGL_ES
-            auto *contour_shader = wxGetApp().get_shader("wireframe");
+            auto *contour_shader = m_parent.get_shader("wireframe");
 #else
-            auto *contour_shader = wxGetApp().get_shader("mm_contour");
+            auto *contour_shader = m_parent.get_shader("mm_contour");
 #endif // SLIC3R_OPENGL_ES
             contour_shader->start_using();
             contour_shader->set_uniform("offset", OpenGLManager::get_gl_info().is_mesa() ? 0.0005 : 0.00001);
@@ -856,7 +844,7 @@ void GLGizmoSimplify::on_render()
             glmodel.set_color(ColorRGBA::WHITE());
 #if !SLIC3R_OPENGL_ES
             if (!OpenGLManager::get_gl_info().is_core_profile())
-                glsafe(::glLineWidth(1.0f * wxGetApp().imgui()->get_style_scaling()));
+                glsafe(::glLineWidth(1.0f * m_imgui->get_style_scaling()));
             glsafe(::glPolygonMode(GL_FRONT_AND_BACK, GL_LINE));
 #endif // !SLIC3R_OPENGL_ES
             glmodel.render();

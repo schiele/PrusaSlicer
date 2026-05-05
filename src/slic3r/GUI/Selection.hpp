@@ -10,6 +10,7 @@
 #include "GUI_Geometry.hpp"
 #include "CoordAxes.hpp"
 
+#include <functional>
 #include <set>
 #include <optional>
 
@@ -33,6 +34,11 @@ using ModelObjectPtrs = std::vector<ModelObject *>;
 
 namespace GUI
 {
+
+struct Camera;
+class GLCanvas3D;
+class ICanvasEventPoster;
+class ImGuiWrapper;
 
 class Selection
 {
@@ -125,6 +131,18 @@ private:
     GLVolumePtrs *m_volumes;
     // Model, not owned.
     Model *m_model;
+    Camera *m_camera{nullptr};
+    ImGuiWrapper *m_imgui{nullptr};
+    ICanvasEventPoster *m_event_poster{nullptr};
+    GLCanvas3D *m_canvas{nullptr};
+    std::function<GLShaderProgram *(const std::string &)> m_get_shader;
+    std::function<int()> m_printer_technology;
+    std::function<ECoordinatesType()> m_get_coordinates_type;
+    std::function<bool()> m_get_uniform_scaling;
+    std::function<void()> m_obj_manipul_reset_cache;
+    std::function<void()> m_obj_manipul_set_dirty;
+    std::function<void()> m_suppress_snapshots_start;
+    std::function<void()> m_suppress_snapshots_end;
 
     bool m_enabled;
     bool m_valid;
@@ -185,6 +203,37 @@ public:
 
     Model *get_model() const { return m_model; }
     void set_model(Model *model);
+    void set_camera(Camera *camera) { m_camera = camera; }
+    const Camera &get_camera() const { return *m_camera; }
+    void set_imgui(ImGuiWrapper *imgui) { m_imgui = imgui; }
+    ImGuiWrapper *get_imgui() const { return m_imgui; }
+    void set_event_poster(ICanvasEventPoster *poster) { m_event_poster = poster; }
+    ICanvasEventPoster *event_poster() const { return m_event_poster; }
+    void set_canvas(GLCanvas3D *canvas) { m_canvas = canvas; }
+    GLCanvas3D *canvas() const { return m_canvas; }
+    void set_obj_manipul_callbacks(std::function<ECoordinatesType()> get_coords, std::function<bool()> get_uniform,
+                                   std::function<void()> reset_cache, std::function<void()> set_dirty,
+                                   std::function<void()> suppress_start, std::function<void()> suppress_end)
+    {
+        m_get_coordinates_type = std::move(get_coords);
+        m_get_uniform_scaling = std::move(get_uniform);
+        m_obj_manipul_reset_cache = std::move(reset_cache);
+        m_obj_manipul_set_dirty = std::move(set_dirty);
+        m_suppress_snapshots_start = std::move(suppress_start);
+        m_suppress_snapshots_end = std::move(suppress_end);
+    }
+    ECoordinatesType get_coordinates_type() const
+    {
+        return m_get_coordinates_type ? m_get_coordinates_type() : ECoordinatesType::World;
+    }
+    bool is_world_coordinates() const { return get_coordinates_type() == ECoordinatesType::World; }
+    bool is_local_coordinates() const { return get_coordinates_type() == ECoordinatesType::Local; }
+    bool is_instance_coordinates() const { return get_coordinates_type() == ECoordinatesType::Instance; }
+    bool get_uniform_scaling() const { return m_get_uniform_scaling && m_get_uniform_scaling(); }
+    void set_printer_technology_getter(std::function<int()> fn) { m_printer_technology = std::move(fn); }
+    int printer_technology() const { return m_printer_technology ? m_printer_technology() : 0; }
+    void set_shader_getter(std::function<GLShaderProgram *(const std::string &)> fn) { m_get_shader = std::move(fn); }
+    GLShaderProgram *get_shader(const std::string &name) const { return m_get_shader ? m_get_shader(name) : nullptr; }
 
     EMode get_mode() const { return m_mode; }
     void set_mode(EMode mode) { m_mode = mode; }

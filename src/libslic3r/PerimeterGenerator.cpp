@@ -2765,7 +2765,125 @@ static void dbg_perim_overlap(double z, int layer_id, int loop_number, coord_t s
                    z, loop_number + 1, unscaled<double>(spacing), unscaled<double>(inset_before),
                    unscaled<double>(inset_after), unscaled<double>(min_perim_infill_spacing));
 }
+// ===================== INTERLOCK DEBUG HELPERS =====================
+static void dbg_il_regions(double z, const char *phase, const ExPolygons &regions, const char *label)
+{
+    if (!FILL_DEBUG)
+        return;
+    double total_area = 0;
+    for (const ExPolygon &ep : regions)
+        total_area += std::abs(ep.area()) * 1e-12;
+    if (regions.empty())
+    {
+        dbg_fill_print("z=%.3f [INTERLOCK] %s %s EMPTY\n", z, phase, label);
+        return;
+    }
+    BoundingBox bb = get_extents(regions);
+    dbg_fill_print("z=%.3f [INTERLOCK] %s %s ep=%zu area=%8.4fmm2 bbox=(%.2f,%.2f)-(%.2f,%.2f)\n", z, phase, label,
+                   regions.size(), total_area, unscaled<double>(bb.min.x()), unscaled<double>(bb.min.y()),
+                   unscaled<double>(bb.max.x()), unscaled<double>(bb.max.y()));
+    for (size_t i = 0; i < regions.size(); i++)
+    {
+        const ExPolygon &ep = regions[i];
+        double a = std::abs(ep.area()) * 1e-12;
+        BoundingBox epbb = get_extents(ep);
+        dbg_fill_print("z=%.3f [INTERLOCK]   %s %s [%zu] area=%8.4fmm2 holes=%zu pts=%zu "
+                       "bbox=(%.2f,%.2f)-(%.2f,%.2f)\n",
+                       z, phase, label, i, a, ep.holes.size(), ep.contour.points.size(), unscaled<double>(epbb.min.x()),
+                       unscaled<double>(epbb.min.y()), unscaled<double>(epbb.max.x()), unscaled<double>(epbb.max.y()));
+    }
+}
+
+static void dbg_il_params(double z, int layer_id, bool is_odd, int actual_shells, int requested_shells,
+                          coord_t perimeter_width, coord_t base_w, coord_t main_w, coord_t boundary_w,
+                          coord_t il_external, coord_t il_internal, coord_t il_innermost, coord_t overlap_amount,
+                          coord_t perim_to_il_overlap)
+{
+    if (!FILL_DEBUG)
+        return;
+    dbg_fill_print("z=%.3f [INTERLOCK] PARAMS layer=%d odd=%d shells=%d/%d perim_w=%.4fmm "
+                   "base_w=%.4f main_w=%.4f boundary_w=%.4f il_ext=%.4f il_int=%.4f il_inner=%.4f "
+                   "overlap=%.4f p2il_overlap=%.4fmm\n",
+                   z, layer_id, (int) is_odd, actual_shells, requested_shells, unscaled<double>(perimeter_width),
+                   unscaled<double>(base_w), unscaled<double>(main_w), unscaled<double>(boundary_w),
+                   unscaled<double>(il_external), unscaled<double>(il_internal), unscaled<double>(il_innermost),
+                   unscaled<double>(overlap_amount), unscaled<double>(perim_to_il_overlap));
+}
+
+static void dbg_il_athena_shells(double z, const char *label, const std::vector<Athena::VariableWidthLines> &il_paths,
+                                 int shells)
+{
+    if (!FILL_DEBUG)
+        return;
+    for (size_t inset_idx = 0; inset_idx < il_paths.size() && inset_idx < size_t(shells); ++inset_idx)
+    {
+        int closed_count = 0, open_count = 0, odd_count = 0, small_count = 0, empty_count = 0;
+        for (const Athena::ExtrusionLine &line : il_paths[inset_idx])
+        {
+            if (line.empty() || line.size() < 2)
+            {
+                empty_count++;
+                continue;
+            }
+            if (line.is_odd)
+                odd_count++;
+            if (!line.is_closed)
+                open_count++;
+            else
+                closed_count++;
+            Polygon poly;
+            for (const Athena::ExtrusionJunction &j : line.junctions)
+                poly.points.push_back(j.p);
+            if (poly.size() < 3)
+                small_count++;
+        }
+        dbg_fill_print("z=%.3f [INTERLOCK] ATHENA_SHELL %s inset=%zu lines=%zu closed=%d open=%d odd=%d "
+                       "small=%d empty=%d\n",
+                       z, label, inset_idx, il_paths[inset_idx].size(), closed_count, open_count, odd_count,
+                       small_count, empty_count);
+    }
+}
+
+static void dbg_il_collect_result(double z, const char *label, const ExtrusionEntityCollection &coll)
+{
+    if (!FILL_DEBUG)
+        return;
+    int loops = 0, paths = 0;
+    double total_len = 0;
+    for (const ExtrusionEntity *ee : coll.entities)
+    {
+        if (dynamic_cast<const ExtrusionLoop *>(ee))
+            loops++;
+        else if (auto *pp = dynamic_cast<const ExtrusionPath *>(ee))
+        {
+            paths++;
+            total_len += unscaled<double>(pp->polyline.length());
+        }
+    }
+    dbg_fill_print("z=%.3f [INTERLOCK] COLLECTED %s entities=%zu loops=%d paths=%d path_len=%.2fmm\n", z, label,
+                   coll.entities.size(), loops, paths, total_len);
+}
+
+static void dbg_il_inner_contour(double z, const Polygons &athena_inner, const Polygons &geometric_inner,
+                                 const ExPolygons &final_contour)
+{
+    if (!FILL_DEBUG)
+        return;
+    double athena_area = 0, geo_area = 0, final_area = 0;
+    for (const Polygon &p : athena_inner)
+        athena_area += std::abs(p.area()) * 1e-12;
+    for (const Polygon &p : geometric_inner)
+        geo_area += std::abs(p.area()) * 1e-12;
+    for (const ExPolygon &ep : final_contour)
+        final_area += std::abs(ep.area()) * 1e-12;
+    dbg_fill_print("z=%.3f [INTERLOCK] INNER_CONTOUR athena_polys=%zu area=%.4fmm2 "
+                   "geo_polys=%zu area=%.4fmm2 final_ep=%zu area=%.4fmm2\n",
+                   z, athena_inner.size(), athena_area, geometric_inner.size(), geo_area, final_contour.size(),
+                   final_area);
+}
 // ===================== END PERIMETER DEBUG HELPERS =====================
+
+// ===================== END INTERLOCK DEBUG HELPERS =====================
 
 void PerimeterGenerator::process_athena(
     // Inputs:
@@ -2780,34 +2898,99 @@ void PerimeterGenerator::process_athena(
     // Infills without the gap fills
     ExPolygons &out_fill_expolygons)
 {
-    // other perimeters
+    // Widths are fixed; spacing depends on effective perimeter count
     coord_t perimeter_width = params.perimeter_flow.scaled_width();
-    // perimeter/perimeter overlap only applies with 3+ perimeters
+    coord_t ext_perimeter_width = params.ext_perimeter_flow.scaled_width();
+    coord_t solid_infill_spacing = params.solid_infill_flow.scaled_spacing();
+
+    // Detect how many perimeters must be generated for this island
+    int loop_number = params.config.perimeters + surface.extra_perimeters - 1; // 0-indexed loops
+
+    // Reduce perimeter count for ALL surfaces on layers where interlocking is active.
+    // Must run BEFORE spacing calculations so the effective perimeter count drives
+    // the overlap thresholds, producing identical results to setting perimeters directly.
+    const int il_regular_override = params.config.interlock_regular_perimeters.value;
+    if (il_regular_override > 0 && il_regular_override - 1 < loop_number &&
+        params.config.interlock_perimeters_enabled && !params.spiral_vase && params.layer != nullptr)
+    {
+        const auto &all_layers = params.layer->object()->layers();
+        const size_t cur_idx = params.layer->id();
+        const int m_top = params.config.interlock_solid_layers_top.value;
+        const int m_bot = params.config.interlock_solid_layers_bottom.value;
+        const ExPolygons &probe = params.layer->lslices;
+
+        ExPolygons vis;
+        if (m_top > 0)
+        {
+            ExPolygons covered = probe;
+            for (int k = 1; k <= m_top && !covered.empty() && (cur_idx + k) < all_layers.size(); ++k)
+            {
+                append(vis, diff_ex(covered, all_layers[cur_idx + k]->lslices));
+                covered = intersection_ex(covered, all_layers[cur_idx + k]->lslices);
+            }
+            if (!covered.empty() && (cur_idx + m_top) >= all_layers.size())
+                append(vis, covered);
+        }
+        if (m_bot > 0)
+        {
+            ExPolygons covered = probe;
+            for (int k = 1; k <= m_bot && !covered.empty() && cur_idx >= static_cast<size_t>(k); ++k)
+            {
+                append(vis, diff_ex(covered, all_layers[cur_idx - k]->lslices));
+                covered = intersection_ex(covered, all_layers[cur_idx - k]->lslices);
+            }
+            if (!covered.empty() && cur_idx < static_cast<size_t>(m_bot))
+                append(vis, covered);
+        }
+        bool has_il = vis.empty();
+        if (!has_il)
+        {
+            double remaining = 0;
+            for (const ExPolygon &ep : diff_ex(probe, union_ex(vis)))
+                remaining += std::abs(ep.area());
+            has_il = remaining > double(perimeter_width) * double(perimeter_width);
+        }
+        if (FILL_DEBUG && params.layer != nullptr)
+        {
+            double probe_area = 0;
+            for (const ExPolygon &ep : probe)
+                probe_area += std::abs(ep.area()) * 1e-12;
+            double vis_area = 0;
+            for (const ExPolygon &ep : vis)
+                vis_area += std::abs(ep.area()) * 1e-12;
+            dbg_fill_print("z=%.3f [PERIM] IL_OVERRIDE layer=%zu/%zu m_top=%d m_bot=%d "
+                           "probe_area=%.4f vis_area=%.4f vis_empty=%d has_il=%d "
+                           "loop_was=%d loop_becomes=%d\n",
+                           params.layer->print_z, cur_idx, all_layers.size(), m_top, m_bot, probe_area, vis_area,
+                           (int) vis.empty(), (int) has_il, loop_number,
+                           has_il ? il_regular_override - 1 : loop_number);
+        }
+        if (has_il)
+            loop_number = il_regular_override + surface.extra_perimeters - 1;
+    }
+
+    // Compute spacing using the effective perimeter count. When the override fires,
+    // use the override value so thresholds match setting perimeters directly.
+    // Otherwise use the config value (NOT loop_number+1, which includes extra_perimeters).
+    const int effective_perims = (il_regular_override > 0 && loop_number == il_regular_override - 1)
+                                     ? il_regular_override
+                                     : params.config.perimeters.value;
     coord_t perimeter_spacing = preFlight::PreciseWalls::calculate_perimeter_spacing(
         params.perimeter_flow,
         preFlight::PreciseWalls::get_effective_perimeter_overlap(params.config.perimeter_perimeter_overlap,
-                                                                 params.config.perimeters));
-    // external perimeters
-    coord_t ext_perimeter_width = params.ext_perimeter_flow.scaled_width();
-    // This should use perimeter/perimeter overlap for external-to-external spacing
+                                                                 effective_perims));
     coord_t ext_perimeter_spacing = preFlight::PreciseWalls::calculate_perimeter_spacing(
         params.ext_perimeter_flow,
         preFlight::PreciseWalls::get_effective_perimeter_overlap(params.config.perimeter_perimeter_overlap,
-                                                                 params.config.perimeters));
-    // external/perimeter overlap only applies with 2+ perimeters
+                                                                 effective_perims));
     coord_t ext_perimeter_spacing2 = preFlight::PreciseWalls::calculate_external_spacing(
         params.ext_perimeter_flow, params.perimeter_flow,
         preFlight::PreciseWalls::get_effective_external_overlap(params.config.external_perimeter_overlap,
-                                                                params.config.perimeters));
-    // solid infill
-    coord_t solid_infill_spacing = params.solid_infill_flow.scaled_spacing();
+                                                                effective_perims));
 
     // prepare grown lower layer slices for overhang detection
     if (params.config.overhangs && lower_slices != nullptr && lower_slices_polygons_cache.empty())
     {
-        // We consider overhang any part where the entire nozzle diameter is not supported by the
-        // lower layer, so we take lower slices and offset them by half the nozzle diameter used
-        // in the current layer
         double nozzle_diameter = params.print_config.nozzle_diameter.get_at(params.config.perimeter_extruder - 1);
         lower_slices_polygons_cache = offset(*lower_slices, float(scale_(+nozzle_diameter / 2)));
     }
@@ -2818,10 +3001,6 @@ void PerimeterGenerator::process_athena(
         lower_slices_raw = to_polygons(*lower_slices);
     }
 
-    // we need to process each island separately because we might have different
-    // extra perimeters for each one
-    // detect how many perimeters must be generated for this island
-    int loop_number = params.config.perimeters + surface.extra_perimeters - 1; // 0-indexed loops
     if (loop_number > 0 &&
         ((params.config.top_one_perimeter_type == TopOnePerimeterType::TopmostOnly && upper_slices == nullptr) ||
          (params.config.only_one_perimeter_first_layer && params.layer_id == 0)))
@@ -3094,13 +3273,24 @@ void PerimeterGenerator::process_athena(
                 }
             }
 
+            dbg_il_regions(dbg_z, "VISIBILITY", infill_contour, "infill_contour");
+            dbg_il_regions(dbg_z, "VISIBILITY", il_regions, "il_regions");
+            dbg_il_regions(dbg_z, "VISIBILITY", non_il_regions, "non_il_regions");
+
             // Opening filter: remove regions narrower than 3 shells (~4.47 perimeter widths)
+            ExPolygons il_regions_before_opening = il_regions;
             {
                 const coord_t min_width = coord_t(perimeter_width * 4.47);
                 const coord_t opening = min_width / 2;
                 if (opening > 0 && !il_regions.empty())
                     il_regions = offset_ex(offset_ex(il_regions, -opening), opening);
-                // No interlocking if il_regions is empty after opening filter
+            }
+            if (FILL_DEBUG)
+            {
+                ExPolygons opening_removed = diff_ex(il_regions_before_opening, il_regions);
+                if (!opening_removed.empty())
+                    dbg_il_regions(dbg_z, "OPENING_REMOVED", opening_removed, "filtered_out");
+                dbg_il_regions(dbg_z, "OPENING_RESULT", il_regions, "after_filter");
             }
 
             if (!il_regions.empty())
@@ -3143,6 +3333,10 @@ void PerimeterGenerator::process_athena(
                         goto skip_interlocking;
                 }
 
+                dbg_il_params(dbg_z, params.layer_id, is_odd_layer, actual_shells, num_interlocking_shells,
+                              perimeter_width, base_w, main_w, boundary_w, il_external, il_internal, il_innermost,
+                              overlap_amount, perimeter_width - perimeter_spacing);
+
                 {
                     if (infill_contour.empty())
                         goto skip_interlocking;
@@ -3160,7 +3354,19 @@ void PerimeterGenerator::process_athena(
                     const coord_t perim_to_il_overlap = perimeter_width - perimeter_spacing;
 
                     const bool prefer_cw = params.print_config.prefer_clockwise_movements;
-                    const bool need_visibility_clip = !non_il_regions.empty();
+
+                    // Opening filter on non_il_regions: remove narrow boundary
+                    // strips (< 2*perimeter_width) while keeping wide visibility
+                    // zones. All shells clip against the opened version so they
+                    // bridge through narrow gaps but respect wide zones.
+                    // Uses perimeter_width (constant) for consistent behavior
+                    // across even/odd layers.
+                    ExPolygons non_il_opened;
+                    if (!non_il_regions.empty())
+                        non_il_opened = intersection_ex(offset_ex(offset_ex(non_il_regions, -float(perimeter_width)),
+                                                                  float(perimeter_width)),
+                                                        non_il_regions);
+                    const bool need_visibility_clip = !non_il_opened.empty();
 
                     // Helper to create an interlocking ExtrusionLoop from a Polygon
                     auto make_il_loop = [&](ExtrusionEntityCollection &coll, const Polygon &poly, size_t shell_idx)
@@ -3207,7 +3413,34 @@ void PerimeterGenerator::process_athena(
                                         shell_pl.append(pt);
                                     shell_pl.append(poly.points.front());
 
-                                    Polylines clipped = diff_pl(shell_pl, non_il_regions);
+                                    double shell_len = unscaled<double>(shell_pl.length());
+                                    Polylines clipped = diff_pl(shell_pl, non_il_opened);
+                                    if (FILL_DEBUG)
+                                    {
+                                        BoundingBox pbb = get_extents(poly);
+                                        if (clipped.empty())
+                                        {
+                                            dbg_fill_print("z=%.3f [INTERLOCK] VIS_CLIP inset=%zu FULLY_CLIPPED "
+                                                           "shell_len=%.2fmm bbox=(%.2f,%.2f)-(%.2f,%.2f)\n",
+                                                           dbg_z, inset_idx, shell_len, unscaled<double>(pbb.min.x()),
+                                                           unscaled<double>(pbb.min.y()), unscaled<double>(pbb.max.x()),
+                                                           unscaled<double>(pbb.max.y()));
+                                        }
+                                        else
+                                        {
+                                            double total_clip_len = 0;
+                                            for (const Polyline &pl : clipped)
+                                                total_clip_len += unscaled<double>(pl.length());
+                                            dbg_fill_print("z=%.3f [INTERLOCK] VIS_CLIP inset=%zu segs=%zu "
+                                                           "shell_len=%.2fmm clip_len=%.2fmm (%.1f%%) "
+                                                           "bbox=(%.2f,%.2f)-(%.2f,%.2f)\n",
+                                                           dbg_z, inset_idx, clipped.size(), shell_len, total_clip_len,
+                                                           (total_clip_len / shell_len) * 100.0,
+                                                           unscaled<double>(pbb.min.x()), unscaled<double>(pbb.min.y()),
+                                                           unscaled<double>(pbb.max.x()),
+                                                           unscaled<double>(pbb.max.y()));
+                                        }
+                                    }
                                     if (clipped.empty())
                                         continue;
 
@@ -3263,14 +3496,29 @@ void PerimeterGenerator::process_athena(
                                         for (size_t ci = 0; ci + 1 < pts.size(); ++ci)
                                             clipped_poly.points.push_back(pts[ci]);
                                         make_il_loop(coll, clipped_poly, inset_idx);
+                                        if (FILL_DEBUG)
+                                            dbg_fill_print("z=%.3f [INTERLOCK] VIS_RESULT inset=%zu REJOINED_LOOP\n",
+                                                           dbg_z, inset_idx);
                                     }
                                     else
                                     {
                                         const double min_segment_len = perimeter_width * 3.0;
                                         for (const Polyline &seg : clipped)
                                         {
+                                            double seg_len = unscaled<double>(seg.length());
                                             if (seg.size() < 2 || seg.length() < min_segment_len)
+                                            {
+                                                if (FILL_DEBUG)
+                                                    dbg_fill_print("z=%.3f [INTERLOCK] VIS_RESULT inset=%zu "
+                                                                   "DROPPED_SHORT len=%.2fmm min=%.2fmm\n",
+                                                                   dbg_z, inset_idx, seg_len,
+                                                                   unscaled<double>(perimeter_width) * 3.0);
                                                 continue;
+                                            }
+                                            if (FILL_DEBUG)
+                                                dbg_fill_print("z=%.3f [INTERLOCK] VIS_RESULT inset=%zu "
+                                                               "KEPT_PATH len=%.2fmm\n",
+                                                               dbg_z, inset_idx, seg_len);
                                             ExtrusionFlow sf(params.perimeter_flow.mm3_per_mm(),
                                                              params.perimeter_flow.width(),
                                                              params.perimeter_flow.height());
@@ -3308,38 +3556,53 @@ void PerimeterGenerator::process_athena(
                     };
                     std::vector<ExPolyIL> per_expoly_il;
 
-                    // Phase 1: unified Athena for inner contour
+                    // Phase 1: unified Athena for inner contour.
+                    // Use consistent (odd-layer) parameters so the inner contour
+                    // doesn't oscillate between layers. The narrower outermost bead
+                    // produces the most generous inner contour. The ~0.04mm difference
+                    // from the actual even-layer boundary bead is within infill_overlap.
+                    const coord_t ic_bead_width_0 = base_w;
+                    const coord_t ic_external = il_adjacent;
+                    const coord_t ic_innermost = il_gapped - boundary_shift;
+
                     Polygons il_outline = to_polygons(infill_contour);
                     if (perim_to_il_overlap > 0)
                         il_outline = offset(il_outline, float(perim_to_il_overlap));
 
-                    Athena::WallToolPaths il_walls(il_outline, il_bead_width_0, il_internal, size_t(actual_shells), 0,
+                    Athena::WallToolPaths il_walls(il_outline, ic_bead_width_0, il_internal, size_t(actual_shells), 0,
                                                    params.layer_height, params.object_config, params.print_config,
-                                                   il_bead_width_0, perimeter_width, il_external, il_internal,
-                                                   il_innermost, params.layer_id, 1.0, 10000);
+                                                   ic_bead_width_0, perimeter_width, ic_external, il_internal,
+                                                   ic_innermost, params.layer_id, 1.0, 10000);
 
-                    // Phase 2: generate entities - per-ExPolygon if multiple, or use
-                    // the unified call if only one ExPolygon.
+                    // Phase 1 must run first so getInnerContour() works.
+                    il_walls.generate();
+
+                    // Phase 2: generate entities with real alternating parameters.
+                    // Phase 1 used consistent ic_* params for stable inner contour;
+                    // Phase 2 uses il_* params for correct alternating bead widths.
                     if (infill_contour.size() <= 1)
                     {
-                        // Single ExPolygon: use unified Athena output for entities too
-                        const auto &il_paths = il_walls.generate();
+                        // Single ExPolygon: generate entities with alternating params
+                        Athena::WallToolPaths il_entity_walls(il_outline, il_bead_width_0, il_internal,
+                                                              size_t(actual_shells), 0, params.layer_height,
+                                                              params.object_config, params.print_config,
+                                                              il_bead_width_0, perimeter_width, il_external,
+                                                              il_internal, il_innermost, params.layer_id, 1.0, 10000);
+                        const auto &il_paths = il_entity_walls.generate();
+                        dbg_il_athena_shells(dbg_z, "unified", il_paths, actual_shells);
                         ExPolyIL ep_il;
                         ep_il.expoly = ExPolygon();
                         collect_shells(ep_il.entities, il_paths, actual_shells);
+                        dbg_il_collect_result(dbg_z, "unified", ep_il.entities);
                         if (!ep_il.entities.empty())
                             any_il_generated = true;
                         per_expoly_il.push_back(std::move(ep_il));
                     }
                     else
                     {
-                        // Multiple ExPolygons: generate per-ExPolygon for island isolation.
-                        // Must call generate() on the unified instance first so
-                        // getInnerContour() works later.
-                        il_walls.generate();
-
-                        for (const ExPolygon &expoly : infill_contour)
+                        for (size_t ep_idx = 0; ep_idx < infill_contour.size(); ++ep_idx)
                         {
+                            const ExPolygon &expoly = infill_contour[ep_idx];
                             Polygons ep_outline = to_polygons(expoly);
                             if (ep_outline.empty())
                                 continue;
@@ -3353,9 +3616,21 @@ void PerimeterGenerator::process_athena(
                                                            params.layer_id, 1.0, 10000);
                             const auto &ep_paths = ep_walls.generate();
 
+                            if (FILL_DEBUG)
+                            {
+                                char label[64];
+                                snprintf(label, sizeof(label), "ep[%zu]", ep_idx);
+                                dbg_il_athena_shells(dbg_z, label, ep_paths, actual_shells);
+                            }
                             ExPolyIL ep_il;
                             ep_il.expoly = expoly;
                             collect_shells(ep_il.entities, ep_paths, actual_shells);
+                            if (FILL_DEBUG)
+                            {
+                                char label[64];
+                                snprintf(label, sizeof(label), "ep[%zu]", ep_idx);
+                                dbg_il_collect_result(dbg_z, label, ep_il.entities);
+                            }
                             if (!ep_il.entities.empty())
                                 any_il_generated = true;
                             per_expoly_il.push_back(std::move(ep_il));
@@ -3368,18 +3643,6 @@ void PerimeterGenerator::process_athena(
                     // across ALL sub-collections to find which island it belongs to.
                     if (any_il_generated && !out_loops.entities.empty())
                     {
-                        auto centroid_of = [](const ExtrusionEntity *ee) -> Point
-                        {
-                            Points pts;
-                            ee->collect_points(pts);
-                            if (pts.empty())
-                                return ee->first_point();
-                            Vec2d sum = Vec2d::Zero();
-                            for (const Point &pt : pts)
-                                sum += pt.cast<double>();
-                            return (sum / double(pts.size())).cast<coord_t>();
-                        };
-
                         auto get_fid = [](const ExtrusionEntity *ee) -> uint16_t
                         {
                             if (auto *loop = dynamic_cast<const ExtrusionLoop *>(ee))
@@ -3429,9 +3692,11 @@ void PerimeterGenerator::process_athena(
                         }
 
                         // Build perimeter reference list from the CURRENT sub-collection only.
+                        // Store sampled points on each perimeter for distance-based matching
+                        // (centroids fail on concentric geometry where all centers coincide).
                         struct PerimRef
                         {
-                            Point centroid;
+                            Points sample_pts;
                             uint16_t fid;
                         };
                         std::vector<PerimRef> all_perim_refs;
@@ -3440,7 +3705,11 @@ void PerimeterGenerator::process_athena(
                                 out_loops.entities[current_coll_idx]);
                             if (cur_coll)
                                 for (ExtrusionEntity *e : cur_coll->entities)
-                                    all_perim_refs.push_back({centroid_of(e), get_fid(e)});
+                                {
+                                    Points pts;
+                                    e->collect_points(pts);
+                                    all_perim_refs.push_back({std::move(pts), get_fid(e)});
+                                }
                         }
 
                         if (all_perim_refs.empty())
@@ -3456,12 +3725,11 @@ void PerimeterGenerator::process_athena(
                         }
 
                         {
-                            // Match each interlocking entity to nearest perimeter by centroid.
-                            // All interlocking goes to the current sub-collection.
+                            // Match each interlocking entity to its nearest perimeter using
+                            // minimum point-to-point distance on the actual paths.
                             struct ILAssignment
                             {
                                 ExtrusionEntity *entity;
-                                Point centroid;
                                 uint16_t fid;
                                 uint16_t inset;
                             };
@@ -3470,49 +3738,25 @@ void PerimeterGenerator::process_athena(
                             {
                                 for (ExtrusionEntity *ent : ep_il.entities.entities)
                                 {
-                                    Point il_centroid = centroid_of(ent);
+                                    Points il_pts;
+                                    ent->collect_points(il_pts);
                                     double best_dist = std::numeric_limits<double>::max();
                                     uint16_t best_fid = 0;
                                     for (const auto &pr : all_perim_refs)
                                     {
-                                        double d = (il_centroid - pr.centroid).cast<double>().squaredNorm();
-                                        if (d < best_dist)
-                                        {
-                                            best_dist = d;
-                                            best_fid = pr.fid;
-                                        }
+                                        // Minimum distance between any IL point and any perimeter point
+                                        for (const Point &ip : il_pts)
+                                            for (const Point &pp : pr.sample_pts)
+                                            {
+                                                double d = (ip - pp).cast<double>().squaredNorm();
+                                                if (d < best_dist)
+                                                {
+                                                    best_dist = d;
+                                                    best_fid = pr.fid;
+                                                }
+                                            }
                                     }
-                                    il_assignments.push_back({ent, il_centroid, best_fid, get_inset(ent)});
-                                }
-                            }
-
-                            // Coherence pass: for each interlocking entity, check if the
-                            // MAJORITY of nearby entities have a different feature_id.
-                            // If so, reassign to match the majority. This keeps concentric
-                            // loops together when centroids are equidistant from multiple features.
-                            {
-                                const double neighbor_threshold_sq = double(perimeter_width * 6) *
-                                                                     double(perimeter_width * 6);
-                                for (size_t a = 0; a < il_assignments.size(); ++a)
-                                {
-                                    const Point &ca = il_assignments[a].centroid;
-                                    std::map<uint16_t, int> votes; // fid -> count
-                                    for (size_t b = 0; b < il_assignments.size(); ++b)
-                                    {
-                                        if (a == b)
-                                            continue;
-                                        if ((ca - il_assignments[b].centroid).cast<double>().squaredNorm() <
-                                            neighbor_threshold_sq)
-                                            votes[il_assignments[b].fid]++;
-                                    }
-                                    if (votes.empty())
-                                        continue;
-                                    auto best = std::max_element(votes.begin(), votes.end(),
-                                                                 [](const auto &x, const auto &y)
-                                                                 { return x.second < y.second; });
-                                    if (best->first != il_assignments[a].fid &&
-                                        best->second > votes[il_assignments[a].fid])
-                                        il_assignments[a].fid = best->first;
+                                    il_assignments.push_back({ent, best_fid, get_inset(ent)});
                                 }
                             }
 
@@ -3542,7 +3786,9 @@ void PerimeterGenerator::process_athena(
                                             feature_order.push_back(fid);
                                     }
 
-                                    // Rebuild: perimeters then interlocking per feature
+                                    // Rebuild: perimeters then interlocking per feature.
+                                    // Interlocking sorted by inset (closest to perimeters first),
+                                    // shortest-path chained within each inset for fragments.
                                     std::vector<ExtrusionEntity *> ordered;
                                     for (uint16_t fid : feature_order)
                                     {
@@ -3550,15 +3796,24 @@ void PerimeterGenerator::process_athena(
                                             if (perim_fids[i] == fid)
                                                 ordered.push_back(real_perims[i]->clone());
 
-                                        // Interlocking for this feature, sorted by inset (outside-in)
-                                        std::vector<std::pair<uint16_t, size_t>> il_sorted;
+                                        // Group interlocking by inset for this feature
+                                        std::map<uint16_t, std::vector<ExtrusionEntity *>> il_by_inset;
                                         for (size_t k = 0; k < il_assignments.size(); ++k)
                                             if (il_assignments[k].fid == fid)
-                                                il_sorted.push_back({il_assignments[k].inset, k});
-                                        std::sort(il_sorted.begin(), il_sorted.end(),
-                                                  [](const auto &a, const auto &b) { return a.first < b.first; });
-                                        for (const auto &[inset, k] : il_sorted)
-                                            ordered.push_back(il_assignments[k].entity->clone());
+                                                il_by_inset[il_assignments[k].inset].push_back(
+                                                    il_assignments[k].entity->clone());
+
+                                        // Emit each inset in order; chain within each for travel
+                                        Point start = ordered.empty() ? Point::Zero() : ordered.back()->last_point();
+                                        for (auto &[inset, il_ptrs] : il_by_inset)
+                                        {
+                                            chain_and_reorder_extrusion_entities(il_ptrs, &start);
+                                            for (auto *e : il_ptrs)
+                                            {
+                                                ordered.push_back(e);
+                                                start = e->last_point();
+                                            }
+                                        }
                                     }
 
                                     coll->clear();
@@ -3578,11 +3833,12 @@ void PerimeterGenerator::process_athena(
                     {
                         // Geometric fallback: offset il_outline inward by total shell depth.
                         // This follows corners that Athena's skeleton rounds away from.
-                        coord_t total_depth = il_bead_width_0 / 2; // outline edge to shell 0 center
+                        // Use consistent (Phase 1) parameters for geometric depth
+                        coord_t total_depth = ic_bead_width_0 / 2; // outline edge to shell 0 center
                         if (actual_shells >= 2)
-                            total_depth += il_external; // shell 0 center to shell 1 center
+                            total_depth += ic_external; // shell 0 center to shell 1 center
                         if (actual_shells >= 3)
-                            total_depth += il_internal * (actual_shells - 3) + il_innermost;
+                            total_depth += il_internal * (actual_shells - 3) + ic_innermost;
                         total_depth += perimeter_width / 2; // last shell center to inner edge
 
                         // Use infill_contour (not il_outline) as the base for geometric
@@ -3616,8 +3872,13 @@ void PerimeterGenerator::process_athena(
                         append(combined_inner, geometric_inner);
 
                         ExPolygons new_inner = intersection_ex(union_ex(combined_inner), il_regions);
-                        append(new_inner, non_il_regions);
+                        // Narrow boundary strips removed from fill area so sparse
+                        // infill can't appear between perimeters and interlocking.
+                        // Wide visibility zones keep their fill area for solid infill.
+                        append(new_inner, non_il_opened);
                         infill_contour = union_ex(new_inner);
+
+                        dbg_il_inner_contour(dbg_z, il_inner, geometric_inner, infill_contour);
                     }
                 }
             }
@@ -3645,7 +3906,24 @@ skip_interlocking:
     inset = coord_t(scale_(params.config.get_abs_value("infill_overlap", unscale<double>(inset))));
     Polygons pp;
     for (ExPolygon &ex : infill_contour)
+    {
+        // Drop degenerate ExPolygons where the effective gap between contour
+        // and holes is too narrow for infill. The simplify/union/offset pipeline
+        // converts ExPolygons to raw Polygons, losing contour/hole winding;
+        // for nearly-coincident boundaries this produces a full disc that covers
+        // the entire perimeter region. Applies to any hole count - interlocking
+        // can consume interior space leaving multi-hole thin shells.
+        if (!ex.holes.empty())
+        {
+            double ex_area = std::abs(ex.area());
+            BoundingBox ex_bb = ex.contour.bounding_box();
+            double max_dim = double(std::max(ex_bb.size().x(), ex_bb.size().y()));
+            double effective_gap = (max_dim > 0) ? (ex_area / max_dim) : 0;
+            if (effective_gap < double(solid_infill_spacing))
+                continue;
+        }
         ex.simplify_p(params.scaled_resolution, &pp);
+    }
     // Clip simplified polygons against the original contour to prevent
     // simplification-induced overshoot. Douglas-Peucker chord-cuts across
     // concavities, enlarging the polygon. This clips that enlargement while

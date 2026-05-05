@@ -43,7 +43,6 @@ public:
     std::string changelog_url;
     std::string repo_id;
     std::string repo_prefix;
-    bool templates_profile{false};
 
     struct PrinterVariant
     {
@@ -60,7 +59,6 @@ public:
         PrinterTechnology technology;
         std::string family;
         std::vector<PrinterVariant> variants;
-        std::vector<std::string> default_materials;
         // Vendor & Printer Model specific print bed model & texture.
         std::string bed_model;
         std::string bed_texture;
@@ -286,14 +284,10 @@ public:
     // Report configuration fields, which are misplaced into a wrong group, remove them from the config.
     static std::string remove_invalid_keys(DynamicPrintConfig &config, const DynamicPrintConfig &default_config);
 
-protected:
     Preset(Type type, const std::string &name, bool is_default = false) : type(type), is_default(is_default), name(name)
     {
     }
     Preset() = default;
-
-    friend class PresetCollection;
-    friend class PresetBundle;
 };
 
 bool is_compatible_with_print(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_print,

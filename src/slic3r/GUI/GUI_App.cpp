@@ -191,7 +191,6 @@ public:
         wxASSERT(bitmap.IsOk());
 
 #ifdef __WXMSW__
-        // Use UpdateLayeredWindow for proper per-pixel alpha transparency
         HWND hwnd = (HWND) this->GetHandle();
         if (hwnd)
         {
@@ -223,7 +222,6 @@ public:
                         {
                             int idx = (y * img.GetWidth() + x) * 4;
                             unsigned char alpha = img.GetAlpha(x, y);
-                            // Premultiply RGB by alpha (required by UpdateLayeredWindow with AC_SRC_ALPHA)
                             data[idx + 0] = (img.GetBlue(x, y) * alpha + 127) / 255;
                             data[idx + 1] = (img.GetGreen(x, y) * alpha + 127) / 255;
                             data[idx + 2] = (img.GetRed(x, y) * alpha + 127) / 255;
@@ -324,27 +322,24 @@ public:
              });
 #endif
 
-        // Hide the window instantly on close to prevent the layered window's
-        // transparent regions from briefly flashing as opaque during destruction.
         Bind(wxEVT_CLOSE_WINDOW,
              [this](wxCloseEvent &evt)
              {
 #ifdef __WXMSW__
-                 // For WS_EX_LAYERED windows, setting alpha to 0 hides instantly
-                 // without any repaint artifacts from window destruction
+                 // Set alpha to 0 so the layered window vanishes instantly
+                 // without flashing opaque during destruction
                  HWND hwnd = (HWND) GetHandle();
                  if (hwnd)
                      SetLayeredWindowAttributes(hwnd, 0, 0, LWA_ALPHA);
 #endif
                  Hide();
-                 evt.Skip(); // Allow normal destruction to proceed
+                 evt.Skip();
              });
 
-        // Set up auto-close timer if timeout specified
         if (milliseconds > 0)
         {
-            m_timer.SetOwner(this);
-            Bind(wxEVT_TIMER, [this](wxTimerEvent &) { Close(); });
+            m_timer.SetOwner(this, wxID_HIGHEST + 2);
+            Bind(wxEVT_TIMER, [this](wxTimerEvent &) { Close(); }, wxID_HIGHEST + 2);
             m_timer.StartOnce(milliseconds);
         }
 
@@ -903,12 +898,13 @@ void GUI_App::post_init()
     // Start TD1S filament sensor monitor
     if (!is_gcode_viewer())
     {
-        m_td1s_sensor.start([this](const TD1SReading &reading)
-        {
-            auto *dlg = new TD1SDialog(mainframe, reading.color, reading.td, reading.hex_color);
-            dlg->ShowModal();
-            dlg->Destroy();
-        });
+        m_td1s_sensor.start(
+            [this](const TD1SReading &reading)
+            {
+                auto *dlg = new TD1SDialog(mainframe, reading.color, reading.td, reading.hex_color);
+                dlg->ShowModal();
+                dlg->Destroy();
+            });
     }
 
     // Set preFlight version and save to preFlight.ini or preFlightGcodeViewer.ini.
@@ -980,6 +976,49 @@ bool GUI_App::init_opengl()
     return status;
 }
 
+static bool s_use_phong_lighting(const AppConfig *config)
+{
+    if (!config)
+        return true;
+    const std::string quality = config->get("canvas_lighting_quality");
+    if (quality == "basic")
+        return false;
+    if (quality == "enhanced")
+        return true;
+    // "auto": detect from GPU renderer string
+    const std::string &renderer = OpenGLManager::get_gl_info().get_renderer();
+    if (renderer.find("NVIDIA") != std::string::npos || renderer.find("GeForce") != std::string::npos ||
+        renderer.find("AMD") != std::string::npos || renderer.find("Radeon") != std::string::npos)
+        return true;
+    if (renderer.find("Intel") != std::string::npos || renderer.find("Iris") != std::string::npos ||
+        renderer.find("UHD") != std::string::npos || renderer.find("HD Graphics") != std::string::npos ||
+        renderer.find("llvmpipe") != std::string::npos || renderer.find("SwiftShader") != std::string::npos)
+        return false;
+    return true;
+}
+
+GLShaderProgram *GUI_App::get_utility_shader()
+{
+    if (s_use_phong_lighting(app_config))
+    {
+        GLShaderProgram *shader = get_shader("phong_light");
+        if (shader)
+            return shader;
+    }
+    return get_shader("gouraud_light");
+}
+
+GLShaderProgram *GUI_App::get_model_shader()
+{
+    if (s_use_phong_lighting(app_config))
+    {
+        GLShaderProgram *shader = get_shader("phong");
+        if (shader)
+            return shader;
+    }
+    return get_shader("gouraud");
+}
+
 // gets path to preFlight.ini, returns semver from first line comment
 static boost::optional<Semver> parse_semver_from_ini(const std::string &path)
 {
@@ -1031,34 +1070,6 @@ void GUI_App::init_app_config()
         }
     }
 }
-
-namespace
-{
-// Copy ini file from resources to vendors if such file does not exists yet.
-void copy_vendor_ini(const std::vector<std::string> &vendors)
-{
-    for (const std::string &vendor : vendors)
-    {
-        boost::system::error_code ec;
-        const boost::filesystem::path ini_in_resources = boost::filesystem::path(Slic3r::resources_dir()) / "profiles" /
-                                                         (vendor + ".ini");
-        assert(boost::filesystem::exists(ini_in_resources));
-        const boost::filesystem::path ini_in_vendors = boost::filesystem::path(Slic3r::data_dir()) / "vendor" /
-                                                       (vendor + ".ini");
-        if (boost::filesystem::exists(ini_in_vendors, ec))
-        {
-            continue;
-        }
-        std::string message;
-        CopyFileResult cfr = copy_file(ini_in_resources.string(), ini_in_vendors.string(), message, false);
-        if (cfr != SUCCESS)
-        {
-            BOOST_LOG_TRIVIAL(error) << "Failed to copy file " << ini_in_resources << " to " << ini_in_vendors << ": "
-                                     << message;
-        }
-    }
-}
-} // namespace
 
 void GUI_App::legacy_app_config_vendor_check()
 {
@@ -2279,7 +2290,7 @@ void GUI_App::UpdateDarkUI(wxWindow *window, bool highlited /* = false*/, bool j
                 item->SetBackgroundColour(highlited ? m_color_highlight_default : m_color_window_default);
                 item->SetTextColour(m_color_label_default);
             }
-        return;
+        // Fall through to apply SetDarkExplorerTheme for consistent dark scrollbars
     }
     else if (dynamic_cast<wxListBox *>(window))
         window->SetWindowStyle(window->GetWindowStyle() | wxBORDER_SIMPLE);
@@ -4161,16 +4172,6 @@ bool GUI_App::run_wizard(ConfigWizard::RunReason reason, ConfigWizard::StartPage
     if (res)
     {
         load_current_presets();
-
-        for (Tab *tab : tabs_list)
-        {
-            if (tab->type() == Preset::TYPE_PRINTER)
-            {
-                if (!tab->IsShown())
-                    mainframe->select_tab(size_t(0));
-                break;
-            }
-        }
     }
     return res;
 }
@@ -4913,7 +4914,6 @@ void GUI_App::search_and_select_filaments(const std::string &material, bool avoi
     for (const auto &filament : preset_bundle->extruders_filaments[extruder_index])
     {
         if (filament.is_compatible && !filament.preset->is_default && filament.preset->is_visible &&
-            (!filament.preset->vendor || !filament.preset->vendor->templates_profile) &&
             filament.preset->config.has("filament_type") &&
             (!avoid_abrasive ||
              filament.preset->config.option<ConfigOptionBools>("filament_abrasive")->values[0] == false) &&
@@ -4933,7 +4933,6 @@ void GUI_App::search_and_select_filaments(const std::string &material, bool avoi
     for (const auto &filament : preset_bundle->extruders_filaments[extruder_index])
     {
         if (filament.is_compatible && !filament.preset->is_default && filament.preset->is_visible &&
-            (!filament.preset->vendor || !filament.preset->vendor->templates_profile) &&
             filament.preset->config.has("filament_type") &&
             (!avoid_abrasive ||
              filament.preset->config.option<ConfigOptionBools>("filament_abrasive")->values[0] == false) &&
@@ -4941,7 +4940,7 @@ void GUI_App::search_and_select_filaments(const std::string &material, bool avoi
             select_filament_preset(filament.preset, extruder_index))
         {
             out_message += /*(extruder_count == 1)
-                ? GUI::format(_L("Selected Filament:\n%1%"), filament_preset.preset->name) 
+                ? GUI::format(_L("Selected Filament:\n%1%"), filament_preset.preset->name)
                 : */
                 GUI::format(_L("Extruder %1%: Selected filament %2%"), extruder_index + 1, filament.preset->name) +
                 "\n";
@@ -4952,9 +4951,7 @@ void GUI_App::search_and_select_filaments(const std::string &material, bool avoi
     // try finding any compatible filament to install
     for (const auto &filament : preset_bundle->extruders_filaments[extruder_index])
     {
-        if (filament.is_compatible && !filament.preset->is_default &&
-            (!filament.preset->vendor || !filament.preset->vendor->templates_profile) &&
-            filament.preset->config.has("filament_type") &&
+        if (filament.is_compatible && !filament.preset->is_default && filament.preset->config.has("filament_type") &&
             (!avoid_abrasive ||
              filament.preset->config.option<ConfigOptionBools>("filament_abrasive")->values[0] == false) &&
             filament.preset->config.option("filament_type")->serialize() == material &&

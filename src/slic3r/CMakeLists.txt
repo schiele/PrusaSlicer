@@ -42,6 +42,18 @@ set(SLIC3R_GUI_SOURCES
     GUI/GLShadersManager.cpp
     GUI/GLShader.cpp
     GUI/GLShader.hpp    
+    GUI/EventTypes.hpp
+    GUI/EventBridge.hpp
+    GUI/EventBridge_wx.hpp
+    GUI/EventBridge_wx.cpp
+    GUI/InputEvents.hpp
+    GUI/InputEvents_wx.hpp
+    GUI/GLSurface.hpp
+    GUI/GLSurface_wx.hpp
+    GUI/GLSurface_wx.cpp
+    GUI/ITimer.hpp
+    GUI/Timer_wx.hpp
+    GUI/Timer_wx.cpp
     GUI/GLCanvas3D.hpp
     GUI/GLCanvas3D.cpp
     GUI/SceneRaycaster.hpp
@@ -391,6 +403,8 @@ set(SLIC3R_GUI_SOURCES
     Utils/Bonjour.hpp
     Utils/PresetUpdater.cpp
     Utils/PresetUpdater.hpp
+    Utils/ProfileServer.cpp
+    Utils/ProfileServer.hpp
     Utils/PresetUpdaterWrapper.cpp
     Utils/PresetUpdaterWrapper.hpp
     Utils/Process.cpp

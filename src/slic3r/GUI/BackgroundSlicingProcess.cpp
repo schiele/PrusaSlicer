@@ -25,6 +25,7 @@
 #include <miniz.h>
 
 // Print now includes tbb, and tbb includes Windows. This breaks compilation of wxWidgets if included before wx.
+#include "libslic3r/AppConfig.hpp"
 #include "libslic3r/Print.hpp"
 // #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/Utils.hpp"
@@ -190,18 +191,15 @@ void BackgroundSlicingProcess::process_fff()
 {
     assert(m_print == m_fff_print);
     m_print->process();
-    wxCommandEvent evt(m_event_slicing_completed_id);
-    // Post the Slicing Finished message for the G-code viewer to update.
-    // Passing the timestamp
-    evt.SetInt((int) (m_fff_print->step_state_with_timestamp(PrintStep::psSlicingFinished).timestamp));
-    wxQueueEvent(GUI::wxGetApp().mainframe->m_plater, evt.Clone());
+    m_slicing_event_poster->postSlicingCompleted(
+        (int) (m_fff_print->step_state_with_timestamp(PrintStep::psSlicingFinished).timestamp));
     m_fff_print->export_gcode("", m_gcode_result,
                               [this](const ThumbnailsParams &params) { return this->render_thumbnails(params); });
     if (this->set_step_started(bspsGCodeFinalize))
     {
         if (!m_export_path.empty())
         {
-            wxQueueEvent(GUI::wxGetApp().mainframe->m_plater, new wxCommandEvent(m_event_export_began_id));
+            m_slicing_event_poster->postExportBegan();
             finalize_gcode(m_export_path, m_export_path_on_removable_media);
         }
 
@@ -255,12 +253,11 @@ void BackgroundSlicingProcess::thread_proc()
         {
             // Only post the canceled event, if canceled by user.
             // Don't post the canceled event, if canceled from Print::apply().
-            SlicingProcessCompletedEvent evt(m_event_finished_id, 0,
-                                             (m_state == STATE_CANCELED) ? SlicingProcessCompletedEvent::Cancelled
-                                             : exception                 ? SlicingProcessCompletedEvent::Error
-                                                                         : SlicingProcessCompletedEvent::Finished,
-                                             exception);
-            wxQueueEvent(GUI::wxGetApp().mainframe->m_plater, evt.Clone());
+            m_slicing_event_poster->postProcessCompleted((m_state == STATE_CANCELED)
+                                                             ? GUI::SlicingCompletedStatus::Cancelled
+                                                         : exception ? GUI::SlicingCompletedStatus::Error
+                                                                     : GUI::SlicingCompletedStatus::Finished,
+                                                         exception);
             // Cancelled by the user, not internally, thus cleanup() was not called yet.
             // Otherwise cleanup() is called from Print::apply()
             m_print->cleanup();
@@ -572,10 +569,9 @@ bool BackgroundSlicingProcess::execute_ui_task(std::function<void()> task)
     if (running)
     {
         std::shared_ptr<UITask> ctx = m_ui_task;
-        GUI::wxGetApp().mainframe->m_plater->CallAfter(
+        m_slicing_event_poster->callOnUIThreadAsync(
             [task, ctx]()
             {
-                // Running on the UI thread, thus ctx->state does not need to be guarded with mutex against ::cancel_ui_task().
                 assert(ctx->state == UITask::Planned || ctx->state == UITask::Canceled);
                 if (ctx->state == UITask::Planned)
                 {
@@ -583,7 +579,6 @@ bool BackgroundSlicingProcess::execute_ui_task(std::function<void()> task)
                     std::unique_lock<std::mutex> lck(ctx->mutex);
                     ctx->state = UITask::Finished;
                 }
-                // Wake up the worker thread from the UI thread.
                 ctx->condition.notify_all();
             });
 
@@ -630,6 +625,15 @@ Print::ApplyStatus BackgroundSlicingProcess::apply(const Model &model, const Dyn
 {
     assert(m_print != nullptr);
     assert(config.opt_enum<PrinterTechnology>("printer_technology") == m_print->technology());
+#ifdef SLIC3R_PYTHON_PREPROCESSOR
+    // Read preprocessing config from AppConfig on the UI thread (thread-safe)
+    if (m_print->technology() == ptFFF)
+    {
+        auto *app_config = GUI::wxGetApp().app_config;
+        m_fff_print->set_preprocessing_consent(app_config->get_bool("preprocessing_consent_accepted"));
+        m_fff_print->set_preprocessing_category_order(app_config->get("preprocessing_category_order"));
+    }
+#endif
     Print::ApplyStatus invalidated = m_print->apply(model, config, warnings);
     if ((invalidated & PrintBase::APPLY_STATUS_INVALIDATED) != 0 && m_print->technology() == ptFFF &&
         !m_fff_print->is_step_done(psGCodeExport))

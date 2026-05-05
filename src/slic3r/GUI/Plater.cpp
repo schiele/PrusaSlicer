@@ -97,6 +97,7 @@
 #include "format.hpp"
 #include "3DScene.hpp"
 #include "GLCanvas3D.hpp"
+#include "EventBridge_wx.hpp"
 #include "Selection.hpp"
 #include "GLToolbar.hpp"
 #include "GUI_Preview.hpp"
@@ -320,6 +321,11 @@ struct Plater::priv
     NotesDialog notes_dialog;
 
     ProjectDirtyStateManager dirty_state;
+
+    // Declared before background_process to ensure posters outlive the slicing thread
+    std::unique_ptr<CanvasEventPoster_wx> view3D_event_poster;
+    std::unique_ptr<CanvasEventPoster_wx> preview_event_poster;
+    std::unique_ptr<SlicingEventPoster_wx> slicing_event_poster;
 
     BackgroundSlicingProcess background_process;
     bool suppressed_backround_processing_update{false};
@@ -737,16 +743,17 @@ void Plater::priv::init()
     background_process.set_gcode_result(&gcode_results.front());
     background_process.set_thumbnail_cb([this](const ThumbnailsParams &params)
                                         { return this->generate_thumbnails(params, Camera::EType::Ortho); });
-    background_process.set_slicing_completed_event(EVT_SLICING_COMPLETED);
-    background_process.set_finished_event(EVT_PROCESS_COMPLETED);
-    background_process.set_export_began_event(EVT_EXPORT_BEGAN);
+    slicing_event_poster = std::make_unique<SlicingEventPoster_wx>(this->q, EVT_SLICING_UPDATE, EVT_SLICING_COMPLETED,
+                                                                   EVT_PROCESS_COMPLETED, EVT_EXPORT_BEGAN);
+    background_process.set_slicing_event_poster(slicing_event_poster.get());
+
     // Default printer technology for default config.
     background_process.select_technology(this->printer_technology);
     // Register progress callback from the Print class to the Plater.
 
     auto statuscb = [this](const Slic3r::PrintBase::SlicingStatus &status)
     {
-        wxQueueEvent(this->q, new Slic3r::SlicingStatusEvent(EVT_SLICING_UPDATE, 0, status));
+        slicing_event_poster->postSlicingStatus(status);
     };
     std::for_each(fff_prints.begin(), fff_prints.end(),
                   [statuscb](std::unique_ptr<Print> &p) { p->set_status_callback(statuscb); });
@@ -798,11 +805,146 @@ void Plater::priv::init()
 
     wxGLCanvas *view3D_canvas = view3D->get_wxglcanvas();
 
+    view3D_event_poster = std::make_unique<CanvasEventPoster_wx>(view3D_canvas);
+    view3D->get_canvas3d()->set_event_poster(view3D_event_poster.get());
+    view3D->get_canvas3d()->set_camera(&camera);
+    view3D->get_canvas3d()->set_shader_getters([](const std::string &name) { return wxGetApp().get_shader(name); },
+                                               []() { return wxGetApp().get_current_shader(); });
+    view3D->get_canvas3d()->set_imgui(wxGetApp().imgui());
+    view3D->get_canvas3d()->set_app_state([] { return wxGetApp().is_editor(); },
+                                          [] { return wxGetApp().is_gcode_viewer(); },
+                                          [] { return wxGetApp().em_unit(); }, [] { return wxGetApp().dark_mode(); },
+                                          [] { return (int) wxGetApp().get_mode(); },
+                                          [] { return wxGetApp().extruders_edited_cnt(); },
+                                          [] { return (int) wxGetApp().plater()->printer_technology(); });
+    view3D->get_canvas3d()->set_notification_manager(notification_manager.get());
+    view3D->get_canvas3d()->set_mouse3d_controller(&mouse3d_controller);
+    view3D->get_canvas3d()->set_collapse_toolbar(&collapse_toolbar);
+    view3D->get_canvas3d()->set_view_toolbar(&view_toolbar);
+    view3D->get_canvas3d()->get_selection().set_obj_manipul_callbacks(
+        []
+        {
+            return wxGetApp().obj_manipul() ? wxGetApp().obj_manipul()->get_coordinates_type()
+                                            : ECoordinatesType::World;
+        },
+        [] { return wxGetApp().obj_manipul() ? wxGetApp().obj_manipul()->get_uniform_scaling() : false; },
+        []
+        {
+            if (wxGetApp().obj_manipul())
+                wxGetApp().obj_manipul()->reset_cache();
+        },
+        []
+        {
+            if (wxGetApp().obj_manipul())
+                wxGetApp().obj_manipul()->set_dirty();
+        },
+        [this] { q->suppress_snapshots(); }, [this] { q->allow_snapshots(); });
+    view3D->get_canvas3d()->set_toolbar_queries(
+        [this] { return q->can_delete(); }, [this] { return q->can_delete_all(); }, [this] { return q->can_arrange(); },
+        [this] { return q->can_copy_to_clipboard(); }, [this] { return q->can_paste_from_clipboard(); },
+        [this] { return q->can_increase_instances(); }, [this] { return q->can_decrease_instances(); },
+        [this] { return q->can_split_to_objects(); }, [this] { return q->can_split_to_volumes(); },
+        [this] { return !q->get_last_loaded_gcode().empty(); }, [this] { q->suppress_snapshots(); },
+        [this] { q->allow_snapshots(); }, [](bool &is_custom) { return wxGetApp().toolbar_icon_scale(is_custom); },
+        [](float s) { wxGetApp().set_auto_toolbar_icon_scale(s); }, [this] { return q->init_view_toolbar(); },
+        [this] { return q->init_collapse_toolbar(); },
+        [this](int lo, int hi) { q->set_preview_layers_slider_values_range(lo, hi); });
+    view3D->get_canvas3d()->set_app_config(wxGetApp().app_config);
+    view3D->get_canvas3d()->set_preset_bundle(wxGetApp().preset_bundle);
+    view3D->get_canvas3d()->set_build_volume_getter([this]() -> const BuildVolume & { return q->build_volume(); });
+    view3D->get_canvas3d()->set_screen_scale_factor_getter(
+        [this]() -> float { return static_cast<float>(wxDisplay(q).GetScaleFactor()); });
+    view3D->get_canvas3d()->set_has_selected_cut_object([]() -> bool
+                                                        { return wxGetApp().obj_list()->has_selected_cut_object(); });
+    view3D->get_canvas3d()->set_plater_action_callbacks(
+        [this] { q->enter_gizmos_stack(); }, [this] { q->leave_gizmos_stack(); },
+        [this] { return q->is_project_dirty(); }, [this](const DynamicPrintConfig &cfg) { q->on_config_change(cfg); },
+        [this](ModelVolume &mv, const std::string &msg) { q->clear_before_change_volume(mv, msg); },
+        [this](size_t idx) { q->remove(idx); }, [this](int idx) { q->changed_mesh(idx); }, [this]() -> std::string
+        { return q->active_fff_print().validate(); }, [this] { return q->is_background_process_update_scheduled(); },
+        [this](int step, const ModelObject &obj, bool postpone)
+        { q->reslice_FFF_until_step(static_cast<PrintObjectStep>(step), obj, postpone); },
+        [this](const std::string &name, int type)
+        { this->take_snapshot(name, static_cast<UndoRedo::SnapshotType>(type)); });
+    view3D->get_canvas3d()->set_apply_cut_callback([this](size_t idx, const ModelObjectPtrs &objs)
+                                                   { q->apply_cut_object_to_model(idx, objs); });
+    view3D->get_canvas3d()->set_job_worker_getter([this]() -> Worker & { return q->get_ui_job_worker(); });
+    view3D->get_canvas3d()->set_reorder_volumes_callback(
+        [](int obj_idx, const ModelVolume *target_vol)
+        {
+            ObjectList *obj_list = wxGetApp().obj_list();
+            wxDataViewItemArray sel = obj_list->reorder_volumes_and_get_selection(obj_idx,
+                                                                                  [target_vol](const ModelVolume *vol)
+                                                                                  { return vol == target_vol; });
+            if (!sel.IsEmpty())
+                obj_list->select_item(sel.front());
+        });
+    view3D->get_canvas3d()->get_gcode_viewer().set_plater_callbacks(
+        [this](bool e) { q->enable_preview_moves_slider(e); }, [this] { q->update_preview_moves_slider(); },
+        [this](std::optional<int> lo, std::optional<int> hi) { q->update_preview_moves_slider(lo, hi); },
+        [this](bool k) { q->set_keep_current_preview_type(k); }, [this] { return q->is_sidebar_collapsed(); },
+        [this]() -> const BuildVolume & { return q->build_volume(); }, [this]() -> Model & { return model; },
+        [this](const std::vector<Vec2d> &shape, double h, const std::string &tex, const std::string &mdl, bool force)
+        { q->set_bed_shape(shape, h, tex, mdl, force); }, [this] { q->set_default_bed_shape(); });
+    view3D->get_canvas3d()->set_render_callbacks([this] { q->render_notes_dialog(); },
+                                                 [this](GLCanvas3D &canvas) { q->render_sliders(canvas); });
+    view3D->get_canvas3d()->set_misc_callbacks([this] { return q->is_slicing(); },
+                                               [this] { return q->get_extruder_colors_from_plater_config(); },
+                                               [](std::function<void()> fn) { wxGetApp().CallAfter(std::move(fn)); },
+                                               [] { return wxGetApp().init_opengl(); },
+
+#if ENABLE_ENVIRONMENT_MAP
+                                               [this] { q->init_environment_texture(); },
+#else
+                                               nullptr,
+#endif
+#if ENABLE_PROJECT_DIRTY_STATE_DEBUG_WINDOW
+                                               [this] { q->render_project_state_debug_window(); },
+#else
+                                               nullptr,
+#endif
+#if ENABLE_OBJECT_MANIPULATION_DEBUG
+                                               []
+                                               {
+                                                   if (wxGetApp().obj_manipul())
+                                                       wxGetApp().obj_manipul()->render_debug_window();
+                                               }
+#else
+                                               nullptr
+#endif
+    );
+    view3D->get_canvas3d()->set_undo_redo_callbacks([this] { return q->can_undo(); }, [this] { return q->can_redo(); },
+                                                    [this](bool is_undo, int idx, const char **out)
+                                                    { return q->undo_redo_string_getter(is_undo, idx, out); },
+                                                    [this](bool is_undo, std::string &out)
+                                                    { q->undo_redo_topmost_string_getter(is_undo, out); },
+                                                    [this](int idx) { q->undo_to(idx); },
+                                                    [this](int idx) { q->redo_to(idx); });
+    view3D->get_canvas3d()->set_plater_queries(
+        [this] { return q->is_preview_shown(); }, [this] { return q->is_view3D_shown(); },
+        [this] { return q->is_preview_loaded(); }, [this] { return q->can_layers_editing(); },
+        [this] { return q->is_sidebar_collapsed(); }, [this]() -> std::vector<std::unique_ptr<Print>> &
+        { return q->get_fff_prints(); }, [this] { return q->is_render_statistic_dialog_visible(); });
+    view3D->get_canvas3d()->set_obj_manipul_callbacks(
+        []
+        {
+            if (wxGetApp().obj_manipul())
+                wxGetApp().obj_manipul()->set_dirty();
+        },
+        []
+        {
+            return wxGetApp().obj_manipul() ? wxGetApp().obj_manipul()->get_coordinates_type()
+                                            : ECoordinatesType::World;
+        },
+        [] { return wxGetApp().obj_manipul() ? wxGetApp().obj_manipul()->get_uniform_scaling() : false; });
+
     if (wxGetApp().is_editor())
     {
         // 3DScene events:
         view3D_canvas->Bind(EVT_GLCANVAS_SCHEDULE_BACKGROUND_PROCESS,
                             [this](SimpleEvent &) { this->schedule_background_process(); });
+        view3D_canvas->Bind(EVT_GLCANVAS_FORCE_INVALIDATE_SLICE,
+                            [this](SimpleEvent &) { this->q->force_invalidate_slice(); });
         view3D_canvas->Bind(EVT_GLCANVAS_OBJECT_SELECT, &priv::on_object_select, this);
         view3D_canvas->Bind(EVT_GLCANVAS_RIGHT_CLICK, &priv::on_right_click, this);
         view3D_canvas->Bind(EVT_GLCANVAS_REMOVE_OBJECT, [this](SimpleEvent &) { q->remove_selected(); });
@@ -860,10 +1002,217 @@ void Plater::priv::init()
         view3D_canvas->Bind(EVT_GLTOOLBAR_LAYERSEDITING, &priv::on_action_layersediting, this);
     }
     view3D_canvas->Bind(EVT_GLCANVAS_UPDATE_BED_SHAPE, [this](SimpleEvent &) { q->set_bed_shape(); });
+    view3D_canvas->Bind(EVT_GLCANVAS_UPDATE_INFO_ITEMS,
+                        [this](Event<int> &evt) { wxGetApp().obj_list()->update_info_items(evt.data); });
+    view3D_canvas->Bind(EVT_GLCANVAS_OBJ_LIST_SELECTION_CHANGED,
+                        [this](SimpleEvent &) { wxGetApp().obj_list()->selection_changed(); });
+    view3D_canvas->Bind(EVT_GLCANVAS_UPDATE_SELECTIONS,
+                        [this](SimpleEvent &) { wxGetApp().obj_list()->update_selections(); });
+    view3D_canvas->Bind(EVT_GLCANVAS_HIDE_SLICE_BUTTON,
+                        [](SimpleEvent &)
+                        {
+                            if (wxGetApp().mainframe && wxGetApp().mainframe->m_modern_tabbar)
+                                wxGetApp().mainframe->m_modern_tabbar->HideSliceButton();
+                        });
+    view3D_canvas->Bind(EVT_GLCANVAS_SHOW_SLICE_BUTTON,
+                        [](SimpleEvent &)
+                        {
+                            if (wxGetApp().mainframe && wxGetApp().mainframe->m_modern_tabbar)
+                                wxGetApp().mainframe->m_modern_tabbar->ShowSliceButton();
+                        });
+    view3D_canvas->Bind(EVT_GLCANVAS_TOGGLE_RENDER_STATISTIC_DIALOG,
+                        [this](SimpleEvent &) { q->toggle_render_statistic_dialog(); });
+    view3D_canvas->Bind(EVT_GLCANVAS_SHOW_AUTOSLICING_ACTION_BUTTONS,
+                        [this](SimpleEvent &) { q->show_autoslicing_action_buttons(); });
+    view3D_canvas->Bind(EVT_GLCANVAS_SWITCH_TO_AUTOSLICING,
+                        [this](SimpleEvent &) { wxGetApp().sidebar().switch_to_autoslicing_mode(); });
+    view3D_canvas->Bind(EVT_GLCANVAS_SWITCH_FROM_AUTOSLICING,
+                        [this](SimpleEvent &) { wxGetApp().sidebar().switch_from_autoslicing_mode(); });
+    view3D_canvas->Bind(EVT_GLCANVAS_OBJECT_LIST_CHANGED, [this](SimpleEvent &) { q->object_list_changed(); });
+    view3D_canvas->Bind(EVT_GLCANVAS_COLLAPSE_SIDEBAR_TOGGLE,
+                        [this](SimpleEvent &) { q->collapse_sidebar(!q->is_sidebar_collapsed()); });
+    view3D_canvas->Bind(EVT_GLCANVAS_MINIMIZE_WINDOW,
+                        [](SimpleEvent &)
+                        {
+                            if (wxGetApp().mainframe)
+                                wxGetApp().mainframe->Iconize();
+                        });
+    view3D_canvas->Bind(EVT_GLCANVAS_TAKE_SNAPSHOT, [this](StringEvent &evt) { this->take_snapshot(evt.data); });
+    view3D_canvas->Bind(EVT_GLCANVAS_TAKE_SNAPSHOT_SELECTION,
+                        [this](StringEvent &evt) { this->take_snapshot(evt.data, UndoRedo::SnapshotType::Selection); });
+    view3D_canvas->Bind(EVT_GLCANVAS_TAKE_GIZMO_SNAPSHOT, [this](StringEvent &evt)
+                        { this->take_snapshot(evt.data, UndoRedo::SnapshotType::GizmoAction); });
+    view3D_canvas->Bind(EVT_GLCANVAS_MANIPULATION_DIRTY, [](SimpleEvent &) { wxGetApp().obj_manipul()->set_dirty(); });
+    view3D_canvas->Bind(EVT_GLCANVAS_MANIPULATION_UPDATE_AND_SHOW,
+                        [](SimpleEvent &) { wxGetApp().obj_manipul()->UpdateAndShow(true); });
+    view3D_canvas->Bind(EVT_GLCANVAS_CHANGED_OBJECT,
+                        [this](Event<int> &evt)
+                        {
+                            if (evt.data >= 0 && evt.data < int(this->model.objects.size()))
+                                q->changed_object(evt.data);
+                        });
+    view3D_canvas->Bind(EVT_GLCANVAS_SET_PLATER_DIRTY, [this](SimpleEvent &) { q->set_plater_dirty(true); });
+    view3D_canvas->Bind(EVT_GLCANVAS_PLATER_UPDATE, [this](SimpleEvent &) { q->update(); });
+    view3D_canvas->Bind(EVT_GLCANVAS_TAB_UPDATE_DIRTY,
+                        [](SimpleEvent &) { wxGetApp().get_tab(Preset::TYPE_PRINT)->update_dirty(); });
+    view3D_canvas->Bind(EVT_GLCANVAS_OBJ_LIST_UPDATE_AFTER_UNDO_REDO,
+                        [](SimpleEvent &) { wxGetApp().obj_list()->update_after_undo_redo(); });
+    view3D_canvas->Bind(EVT_GLCANVAS_OBJ_LIST_ADD_OBJECT,
+                        [](Event<int> &evt) { wxGetApp().obj_list()->add_object_to_list(evt.data); });
+    view3D_canvas->Bind(EVT_GLCANVAS_OBJ_LIST_UPDATE_ITEM_ERROR_ICON,
+                        [](Event<int> &evt) { wxGetApp().obj_list()->update_item_error_icon(evt.data, -1); });
+    view3D_canvas->Bind(EVT_GLCANVAS_SCALE_SELECTION_TO_FIT_PRINT_VOLUME,
+                        [this](SimpleEvent &) { q->scale_selection_to_fit_print_volume(); });
+
+    preview_event_poster = std::make_unique<CanvasEventPoster_wx>(preview->get_wxglcanvas());
+    preview->get_canvas3d()->set_event_poster(preview_event_poster.get());
+    preview->get_canvas3d()->set_camera(&camera);
+    preview->get_canvas3d()->set_shader_getters([](const std::string &name) { return wxGetApp().get_shader(name); },
+                                                []() { return wxGetApp().get_current_shader(); });
+    preview->get_canvas3d()->set_imgui(wxGetApp().imgui());
+    preview->get_canvas3d()->set_app_state([] { return wxGetApp().is_editor(); },
+                                           [] { return wxGetApp().is_gcode_viewer(); },
+                                           [] { return wxGetApp().em_unit(); }, [] { return wxGetApp().dark_mode(); },
+                                           [] { return (int) wxGetApp().get_mode(); },
+                                           [] { return wxGetApp().extruders_edited_cnt(); },
+                                           [] { return (int) wxGetApp().plater()->printer_technology(); });
+    preview->get_canvas3d()->set_notification_manager(notification_manager.get());
+    preview->get_canvas3d()->set_mouse3d_controller(&mouse3d_controller);
+    preview->get_canvas3d()->set_collapse_toolbar(&collapse_toolbar);
+    preview->get_canvas3d()->set_view_toolbar(&view_toolbar);
+    preview->get_canvas3d()->get_selection().set_obj_manipul_callbacks(
+        []
+        {
+            return wxGetApp().obj_manipul() ? wxGetApp().obj_manipul()->get_coordinates_type()
+                                            : ECoordinatesType::World;
+        },
+        [] { return wxGetApp().obj_manipul() ? wxGetApp().obj_manipul()->get_uniform_scaling() : false; },
+        []
+        {
+            if (wxGetApp().obj_manipul())
+                wxGetApp().obj_manipul()->reset_cache();
+        },
+        []
+        {
+            if (wxGetApp().obj_manipul())
+                wxGetApp().obj_manipul()->set_dirty();
+        },
+        [this] { q->suppress_snapshots(); }, [this] { q->allow_snapshots(); });
+    preview->get_canvas3d()->set_toolbar_queries(
+        [this] { return q->can_delete(); }, [this] { return q->can_delete_all(); }, [this] { return q->can_arrange(); },
+        [this] { return q->can_copy_to_clipboard(); }, [this] { return q->can_paste_from_clipboard(); },
+        [this] { return q->can_increase_instances(); }, [this] { return q->can_decrease_instances(); },
+        [this] { return q->can_split_to_objects(); }, [this] { return q->can_split_to_volumes(); },
+        [this] { return !q->get_last_loaded_gcode().empty(); }, [this] { q->suppress_snapshots(); },
+        [this] { q->allow_snapshots(); }, [](bool &is_custom) { return wxGetApp().toolbar_icon_scale(is_custom); },
+        [](float s) { wxGetApp().set_auto_toolbar_icon_scale(s); }, [this] { return q->init_view_toolbar(); },
+        [this] { return q->init_collapse_toolbar(); },
+        [this](int lo, int hi) { q->set_preview_layers_slider_values_range(lo, hi); });
+    preview->get_canvas3d()->set_app_config(wxGetApp().app_config);
+    preview->get_canvas3d()->set_preset_bundle(wxGetApp().preset_bundle);
+    preview->get_canvas3d()->set_build_volume_getter([this]() -> const BuildVolume & { return q->build_volume(); });
+    preview->get_canvas3d()->get_gcode_viewer().set_plater_callbacks(
+        [this](bool e) { q->enable_preview_moves_slider(e); }, [this] { q->update_preview_moves_slider(); },
+        [this](std::optional<int> lo, std::optional<int> hi) { q->update_preview_moves_slider(lo, hi); },
+        [this](bool k) { q->set_keep_current_preview_type(k); }, [this] { return q->is_sidebar_collapsed(); },
+        [this]() -> const BuildVolume & { return q->build_volume(); }, [this]() -> Model & { return model; },
+        [this](const std::vector<Vec2d> &shape, double h, const std::string &tex, const std::string &mdl, bool force)
+        { q->set_bed_shape(shape, h, tex, mdl, force); }, [this] { q->set_default_bed_shape(); });
+    preview->get_canvas3d()->set_render_callbacks([this] { q->render_notes_dialog(); },
+                                                  [this](GLCanvas3D &canvas) { q->render_sliders(canvas); });
+    preview->get_canvas3d()->set_misc_callbacks([this] { return q->is_slicing(); },
+                                                [this] { return q->get_extruder_colors_from_plater_config(); },
+                                                [](std::function<void()> fn) { wxGetApp().CallAfter(std::move(fn)); },
+                                                [] { return wxGetApp().init_opengl(); },
+
+#if ENABLE_ENVIRONMENT_MAP
+                                                [this] { q->init_environment_texture(); },
+#else
+                                                nullptr,
+#endif
+#if ENABLE_PROJECT_DIRTY_STATE_DEBUG_WINDOW
+                                                [this] { q->render_project_state_debug_window(); },
+#else
+                                                nullptr,
+#endif
+#if ENABLE_OBJECT_MANIPULATION_DEBUG
+                                                []
+                                                {
+                                                    if (wxGetApp().obj_manipul())
+                                                        wxGetApp().obj_manipul()->render_debug_window();
+                                                }
+#else
+                                                nullptr
+#endif
+    );
+    preview->get_canvas3d()->set_undo_redo_callbacks([this] { return q->can_undo(); }, [this] { return q->can_redo(); },
+                                                     [this](bool is_undo, int idx, const char **out)
+                                                     { return q->undo_redo_string_getter(is_undo, idx, out); },
+                                                     [this](bool is_undo, std::string &out)
+                                                     { q->undo_redo_topmost_string_getter(is_undo, out); },
+                                                     [this](int idx) { q->undo_to(idx); },
+                                                     [this](int idx) { q->redo_to(idx); });
+    preview->get_canvas3d()->set_plater_queries(
+        [this] { return q->is_preview_shown(); }, [this] { return q->is_view3D_shown(); },
+        [this] { return q->is_preview_loaded(); }, [this] { return q->can_layers_editing(); },
+        [this] { return q->is_sidebar_collapsed(); }, [this]() -> std::vector<std::unique_ptr<Print>> &
+        { return q->get_fff_prints(); }, [this] { return q->is_render_statistic_dialog_visible(); });
+    preview->get_canvas3d()->set_obj_manipul_callbacks(
+        []
+        {
+            if (wxGetApp().obj_manipul())
+                wxGetApp().obj_manipul()->set_dirty();
+        },
+        []
+        {
+            return wxGetApp().obj_manipul() ? wxGetApp().obj_manipul()->get_coordinates_type()
+                                            : ECoordinatesType::World;
+        },
+        [] { return wxGetApp().obj_manipul() ? wxGetApp().obj_manipul()->get_uniform_scaling() : false; });
 
     // Preview events:
     preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_QUESTION_MARK, [](SimpleEvent &) { wxGetApp().keyboard_shortcuts(); });
     preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_UPDATE_BED_SHAPE, [this](SimpleEvent &) { q->set_bed_shape(); });
+    preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_TAKE_SNAPSHOT,
+                                    [this](StringEvent &evt) { this->take_snapshot(evt.data); });
+    preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_TAKE_SNAPSHOT_SELECTION, [this](StringEvent &evt)
+                                    { this->take_snapshot(evt.data, UndoRedo::SnapshotType::Selection); });
+    preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_UPDATE_INFO_ITEMS,
+                                    [this](Event<int> &evt) { wxGetApp().obj_list()->update_info_items(evt.data); });
+    preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_OBJ_LIST_SELECTION_CHANGED,
+                                    [this](SimpleEvent &) { wxGetApp().obj_list()->selection_changed(); });
+    preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_UPDATE_SELECTIONS,
+                                    [this](SimpleEvent &) { wxGetApp().obj_list()->update_selections(); });
+    preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_HIDE_SLICE_BUTTON,
+                                    [](SimpleEvent &)
+                                    {
+                                        if (wxGetApp().mainframe && wxGetApp().mainframe->m_modern_tabbar)
+                                            wxGetApp().mainframe->m_modern_tabbar->HideSliceButton();
+                                    });
+    preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_SHOW_SLICE_BUTTON,
+                                    [](SimpleEvent &)
+                                    {
+                                        if (wxGetApp().mainframe && wxGetApp().mainframe->m_modern_tabbar)
+                                            wxGetApp().mainframe->m_modern_tabbar->ShowSliceButton();
+                                    });
+    preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_TOGGLE_RENDER_STATISTIC_DIALOG,
+                                    [this](SimpleEvent &) { q->toggle_render_statistic_dialog(); });
+    preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_SHOW_AUTOSLICING_ACTION_BUTTONS,
+                                    [this](SimpleEvent &) { q->show_autoslicing_action_buttons(); });
+    preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_SWITCH_TO_AUTOSLICING,
+                                    [this](SimpleEvent &) { wxGetApp().sidebar().switch_to_autoslicing_mode(); });
+    preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_SWITCH_FROM_AUTOSLICING,
+                                    [this](SimpleEvent &) { wxGetApp().sidebar().switch_from_autoslicing_mode(); });
+    preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_OBJECT_LIST_CHANGED,
+                                    [this](SimpleEvent &) { q->object_list_changed(); });
+    preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_COLLAPSE_SIDEBAR_TOGGLE,
+                                    [this](SimpleEvent &) { q->collapse_sidebar(!q->is_sidebar_collapsed()); });
+    preview->get_wxglcanvas()->Bind(EVT_GLCANVAS_MINIMIZE_WINDOW,
+                                    [](SimpleEvent &)
+                                    {
+                                        if (wxGetApp().mainframe)
+                                            wxGetApp().mainframe->Iconize();
+                                    });
     preview->get_wxglcanvas()->Bind(
         EVT_GLCANVAS_RIGHT_CLICK,
         [this](RBtnEvent &evt)
@@ -1072,12 +1421,7 @@ void Plater::priv::init()
                       [this](EjectDriveNotificationClickedEvent &) { this->q->eject_drive(); });
         this->q->Bind(EVT_EXPORT_GCODE_NOTIFICAION_CLICKED,
                       [this](ExportGcodeNotificationClickedEvent &) { this->q->export_gcode(true); });
-        this->q->Bind(EVT_PRESET_UPDATE_AVAILABLE_CLICKED,
-                      [](PresetUpdateAvailableClickedEvent &)
-                      {
-                          GUI_App &app = wxGetApp();
-                          app.get_preset_updater_wrapper()->on_update_notification_confirm();
-                      });
+        // EVT_PRESET_UPDATE_AVAILABLE_CLICKED binding removed - update system disabled
         this->q->Bind(
             EVT_REMOVABLE_DRIVE_EJECTED,
             [this](RemovableDriveEjectEvent &evt)
@@ -1559,7 +1903,7 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path> &input_
                     *generator_version > Semver(SLIC3R_VERSION))
                 {
                     wxString title = _L("Configuration was not loaded");
-                    const wxString url = "https://oozebot.com/preflight";
+                    const wxString url = "https://preflight3d.com/";
                     // TRN: %1% is filename of the project, %2% is url link.
                     wxString message = format_wxstr(
                         _L("<b>Unable to load configuration from project\n\nFile: </b>%1%\n\n"
@@ -1601,17 +1945,70 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path> &input_
             if (!config_substitutions.empty())
                 show_substitutions_info(config_substitutions.substitutions, filename.string());
 
-            // Alert the user if post_process scripts were suppressed from the 3MF
-            if (load_stats.post_process_suppressed)
+            // Notify if post-process scripts were stripped (always stripped for security)
+            if (load_stats.post_process_stripped)
             {
                 MessageDialog dlg(q,
-                                  _L("This 3MF file contained post-processing scripts that were "
-                                     "suppressed for security.\n\n"
-                                     "Embedded scripts in 3MF files can execute arbitrary commands "
-                                     "on your system. If you trust this file's source, you can "
-                                     "re-add your scripts in Print Settings > Output options."),
+                                  _L("This project file contained post-processing scripts that were "
+                                     "removed for security.\n\n"
+                                     "Post-processing is deprecated. Please consider migrating to "
+                                     "Pre-processing instead."),
                                   _L("Security Notice"), wxICON_WARNING | wxOK);
                 dlg.ShowModal();
+            }
+
+            // Handle preprocessing scripts from the 3MF.
+            // Preprocessing scripts get a trust dialog; user's existing scripts are always preserved.
+            bool import_preprocessing_scripts = false;
+            std::map<std::string, std::vector<std::string>> saved_scripts;
+            std::map<std::string, std::vector<std::string>> incoming_scripts;
+            std::map<std::string, bool> incoming_enable_flags;
+
+            if (load_stats.scripts_suppressed)
+            {
+                // Snapshot current preprocessing scripts before the 3MF replaces presets
+                auto *bundle = wxGetApp().preset_bundle;
+                if (bundle)
+                {
+                    auto snapshot = [&](const std::string &key, PresetCollection &presets)
+                    {
+                        auto *opt = presets.get_edited_preset().config.option<ConfigOptionStrings>(key);
+                        if (opt)
+                            saved_scripts[key] = opt->values;
+                    };
+                    snapshot("preprocessing_scripts_print", bundle->prints);
+                    snapshot("preprocessing_scripts_filament", bundle->filaments);
+                    snapshot("preprocessing_scripts_printer", bundle->printers);
+                }
+
+                MessageDialog dlg(q,
+                                  _L("This project file references preprocessing scripts.\n\n"
+                                     "Preprocessing scripts are Python programs that run during slicing "
+                                     "and have full access to your system. The scripts themselves are not "
+                                     "embedded in the project - only the file paths are stored.\n\n"
+                                     "Do you want to add these script references to your configuration?"),
+                                  _L("Project References Preprocessing Scripts"), wxICON_WARNING | wxYES | wxNO);
+                import_preprocessing_scripts = (dlg.ShowModal() == wxID_YES);
+
+                // Save the 3MF's scripts before stripping, then strip from config.
+                // After presets load, we'll restore user's scripts and optionally merge 3MF scripts.
+                for (const auto &key :
+                     {"preprocessing_scripts_print", "preprocessing_scripts_filament", "preprocessing_scripts_printer"})
+                {
+                    if (auto *opt = config.opt<ConfigOptionStrings>(key))
+                    {
+                        incoming_scripts[key] = opt->values;
+                        opt->values.clear();
+                    }
+                }
+                // Save and strip enable flags - restored after merge if user accepts import
+                for (const auto &key :
+                     {"preprocessing_enabled_print", "preprocessing_enabled_filament", "preprocessing_enabled_printer"})
+                    if (auto *opt = config.opt<ConfigOptionBool>(key))
+                    {
+                        incoming_enable_flags[key] = opt->value;
+                        opt->value = false;
+                    }
             }
 
             if (!config.empty())
@@ -1718,6 +2115,71 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path> &input_
 
                 // For exporting from the 3mf we shouldn't check printer_presets for the containing information about "Print Host upload"
                 wxGetApp().load_current_presets(false);
+
+                // Restore or merge preprocessing scripts after presets have been replaced
+                if (!saved_scripts.empty())
+                {
+                    auto restore_or_merge =
+                        [&](const std::string &key, PresetCollection &presets, const std::vector<std::string> &incoming)
+                    {
+                        auto &cfg = presets.get_edited_preset().config;
+                        auto *opt = cfg.option<ConfigOptionStrings>(key);
+                        if (!opt)
+                            return;
+
+                        // Start with the user's saved scripts
+                        auto it = saved_scripts.find(key);
+                        std::vector<std::string> result = (it != saved_scripts.end()) ? it->second
+                                                                                      : std::vector<std::string>();
+
+                        if (import_preprocessing_scripts)
+                        {
+                            // Merge: add non-duplicate scripts from the 3MF to the end
+                            for (const auto &s : incoming)
+                            {
+                                if (s.empty())
+                                    continue;
+                                if (std::find(result.begin(), result.end(), s) == result.end())
+                                    result.push_back(s);
+                            }
+                        }
+
+                        opt->values = result;
+                    };
+
+                    auto get_incoming = [&](const std::string &key) -> std::vector<std::string>
+                    {
+                        auto it = incoming_scripts.find(key);
+                        return (it != incoming_scripts.end()) ? it->second : std::vector<std::string>();
+                    };
+
+                    restore_or_merge("preprocessing_scripts_print", preset_bundle->prints,
+                                     get_incoming("preprocessing_scripts_print"));
+                    restore_or_merge("preprocessing_scripts_filament", preset_bundle->filaments,
+                                     get_incoming("preprocessing_scripts_filament"));
+                    restore_or_merge("preprocessing_scripts_printer", preset_bundle->printers,
+                                     get_incoming("preprocessing_scripts_printer"));
+
+                    // Restore enable flags from the 3MF when the user accepted the import
+                    // and has granted preprocessing consent
+                    if (import_preprocessing_scripts &&
+                        wxGetApp().app_config->get_bool("preprocessing_consent_accepted"))
+                    {
+                        auto enable_if_flagged = [&](const std::string &enable_key, PresetCollection &presets)
+                        {
+                            auto it = incoming_enable_flags.find(enable_key);
+                            if (it != incoming_enable_flags.end() && it->second)
+                            {
+                                auto &cfg = presets.get_edited_preset().config;
+                                if (cfg.has(enable_key))
+                                    cfg.set_key_value(enable_key, new ConfigOptionBool(true));
+                            }
+                        };
+                        enable_if_flagged("preprocessing_enabled_print", preset_bundle->prints);
+                        enable_if_flagged("preprocessing_enabled_filament", preset_bundle->filaments);
+                        enable_if_flagged("preprocessing_enabled_printer", preset_bundle->printers);
+                    }
+                }
 
                 // If user chose to keep current printer, restore the physical printer selection
                 // (load_current_presets may have changed it)
@@ -1999,7 +2461,8 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path> &input_
             view3D->get_canvas3d()->update_gizmos_on_off_state();
     }
 
-    GLGizmoSimplify::add_simplify_suggestion_notification(obj_idxs, model.objects, *notification_manager);
+    GLGizmoSimplify::add_simplify_suggestion_notification(obj_idxs, model.objects, *notification_manager,
+                                                          *view3D->get_canvas3d());
 
     for (size_t idx : obj_idxs)
     {
@@ -3876,53 +4339,6 @@ void Plater::priv::on_slicing_update(SlicingStatusEvent &evt)
         }
     }
 
-    // Check template filaments and add warning
-    // This is more convinient to do here than in slicing backend, so it happens on "Slicing complete".
-    if (evt.status.percent >= 100 && this->printer_technology == ptFFF)
-    {
-        size_t templ_cnt = 0;
-        const auto &preset_bundle = wxGetApp().preset_bundle;
-        std::string names;
-        for (const auto &extruder_filaments : preset_bundle->extruders_filaments)
-        {
-            const Preset *preset = extruder_filaments.get_selected_preset();
-            if (preset && preset->vendor && preset->vendor->templates_profile)
-            {
-                names += "\n" + preset->name;
-                templ_cnt++;
-            }
-        }
-        if (templ_cnt > 0)
-        {
-            const std::string message_notif = GUI::format(
-                "%1%\n%2%\n\n%3%\n\n%4% ",
-                _L_PLURAL("You are using template filament preset.", "You are using template filament presets.",
-                          templ_cnt),
-                names,
-                _u8L(
-                    "Please note that template presets are not customized for specific printer and should only be used as a starting point for creating your own user presets."),
-                _u8L("More info at"));
-            // warning dialog proccessing cuts text at first '/n' - pass the text without new lines (and without filament names).
-            const std::string message_dial = GUI::format(
-                "%1% %2% %3%",
-                _L_PLURAL("You are using template filament preset.", "You are using template filament presets.",
-                          templ_cnt),
-                _u8L(
-                    "Please note that template presets are not customized for specific printer and should only be used as a starting point for creating your own user presets."),
-                "<a href=https://ooze.bot/preflight/article/template-filaments_467599>https://ooze.bot/preflight/</a>");
-            BOOST_LOG_TRIVIAL(warning) << message_notif;
-            notification_manager->push_slicing_warning_notification(
-                message_notif, false, 0, 0, "https://ooze.bot/preflight/",
-                [](wxEvtHandler *evnthndlr)
-                {
-                    wxGetApp().open_browser_with_warning_dialog(
-                        "https://ooze.bot/preflight/article/template-filaments_467599");
-                    return false;
-                });
-            add_warning({PrintStateBase::WarningLevel::CRITICAL, true, message_dial, 0}, 0);
-        }
-    }
-
     if (evt.status.flags &
         (PrintBase::SlicingStatus::RELOAD_SCENE | PrintBase::SlicingStatus::RELOAD_SLA_SUPPORT_POINTS))
     {
@@ -4042,8 +4458,6 @@ void Plater::priv::on_slicing_completed(wxCommandEvent &evt)
         else
             this->update_sla_scene();
     }
-
-    // (No additional status needed - Print.cpp handles 100% completion)
 }
 
 void Plater::priv::on_export_began(wxCommandEvent &evt)

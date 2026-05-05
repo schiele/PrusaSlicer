@@ -6,6 +6,7 @@
 ///|/
 #include "libslic3r/libslic3r.h"
 #include "GLGizmosManager.hpp"
+#include "slic3r/GUI/InputEvents_wx.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/3DScene.hpp"
 #include "slic3r/GUI/Camera.hpp"
@@ -231,7 +232,7 @@ bool GLGizmosManager::check_gizmos_closed_except(EType type) const
 {
     if (get_current_type() != type && get_current_type() != Undefined)
     {
-        wxGetApp().plater()->get_notification_manager()->push_notification(
+        m_parent.get_notification_manager()->push_notification(
             NotificationType::CustomSupportsAndSeamRemovedAfterRepair,
             NotificationManager::NotificationLevel::PrintInfoNotificationLevel,
             _u8L("ERROR: Please close all manipulators available from "
@@ -414,26 +415,25 @@ std::string GLGizmosManager::get_tooltip() const
     return (curr != nullptr) ? curr->get_tooltip() : "";
 }
 
-bool GLGizmosManager::on_mouse_wheel(const wxMouseEvent &evt)
+bool GLGizmosManager::on_mouse_wheel(const MouseInput &mouse)
 {
     bool processed = false;
 
     if (m_current == FdmSupports || m_current == Seam || m_current == ColorMixing || m_current == FuzzySkin ||
         m_current == BrimEars || m_current == CounterboreBridge)
     {
-        float rot = (float) evt.GetWheelRotation() / (float) evt.GetWheelDelta();
+        float rot = (mouse.wheel_delta != 0) ? (float) mouse.wheel_rotation / (float) mouse.wheel_delta : 0.f;
         if (gizmo_event((rot > 0.f ? SLAGizmoEventType::MouseWheelUp : SLAGizmoEventType::MouseWheelDown),
-                        Vec2d::Zero(), evt.ShiftDown(), evt.AltDown(), evt.ControlDown()))
+                        Vec2d::Zero(), mouse.shift, mouse.alt, mouse.ctrl))
             processed = true;
     }
 
     return processed;
 }
 
-bool GLGizmosManager::gizmos_toolbar_on_mouse(const wxMouseEvent &mouse_event)
+bool GLGizmosManager::gizmos_toolbar_on_mouse(const MouseInput &mouse)
 {
     assert(m_enabled);
-    // keep information about events to process
     struct MouseCapture
     {
         bool left = false;
@@ -451,28 +451,21 @@ bool GLGizmosManager::gizmos_toolbar_on_mouse(const wxMouseEvent &mouse_event)
     };
     static MouseCapture mc;
 
-    // wxCoord == int --> wx/types.h
-    Vec2i mouse_coord(mouse_event.GetX(), mouse_event.GetY());
-    Vec2d mouse_pos = mouse_coord.cast<double>();
-
+    Vec2d mouse_pos(mouse.x, mouse.y);
     EType gizmo = get_gizmo_from_mouse(mouse_pos);
     bool selected_gizmo = gizmo != Undefined;
 
-    // fast reaction on move mouse
-    if (mouse_event.Moving())
+    if (mouse.type == MouseEventType::Motion && !mouse.dragging)
     {
         assert(!mc.any());
         if (selected_gizmo)
         {
             mc.exist_tooltip = true;
             update_hover_state(gizmo);
-            // at this moment is enebled to process mouse move under gizmo
-            // tools bar e.g. Do not interupt dragging.
             return false;
         }
         else if (mc.exist_tooltip)
         {
-            // first move out of gizmo tool bar - unselect tooltip
             mc.exist_tooltip = false;
             update_hover_state(Undefined);
             return false;
@@ -482,19 +475,18 @@ bool GLGizmosManager::gizmos_toolbar_on_mouse(const wxMouseEvent &mouse_event)
 
     if (selected_gizmo)
     {
-        // mouse is above toolbar
-        if (mouse_event.LeftDown() || mouse_event.LeftDClick())
+        if (mouse.type == MouseEventType::LeftDown || mouse.type == MouseEventType::LeftDClick)
         {
             mc.left = true;
             open_gizmo(gizmo);
             return true;
         }
-        else if (mouse_event.RightDown())
+        else if (mouse.type == MouseEventType::RightDown)
         {
             mc.right = true;
             return true;
         }
-        else if (mouse_event.MiddleDown())
+        else if (mouse.type == MouseEventType::MiddleDown)
         {
             mc.middle = true;
             return true;
@@ -503,159 +495,128 @@ bool GLGizmosManager::gizmos_toolbar_on_mouse(const wxMouseEvent &mouse_event)
 
     if (mc.any())
     {
-        // Check if exist release of event started above toolbar?
-        if (mouse_event.Dragging())
+        if (mouse.dragging)
         {
             if (!selected_gizmo && mc.exist_tooltip)
             {
-                // dragging out of gizmo let tooltip disapear
                 mc.exist_tooltip = false;
                 update_hover_state(Undefined);
             }
-            // draging start on toolbar so no propagation into scene
             return true;
         }
-        else if (mc.left && mouse_event.LeftUp())
+        else if (mc.left && mouse.type == MouseEventType::LeftUp)
         {
             mc.left = false;
             return true;
         }
-        else if (mc.right && mouse_event.RightUp())
+        else if (mc.right && mouse.type == MouseEventType::RightUp)
         {
             mc.right = false;
             return true;
         }
-        else if (mc.middle && mouse_event.MiddleUp())
+        else if (mc.middle && mouse.type == MouseEventType::MiddleUp)
         {
             mc.middle = false;
             return true;
         }
-
-        // event out of window is not porocessed
-        // left down on gizmo -> keep down -> move out of window -> release left
-        if (mouse_event.Leaving())
+        if (mouse.type == MouseEventType::Leave)
             mc.reset();
     }
     return false;
 }
 
-bool GLGizmosManager::on_mouse(const wxMouseEvent &mouse_event)
+bool GLGizmosManager::on_mouse(const MouseInput &mouse)
 {
     if (!m_enabled)
         return false;
 
-    // tool bar wants to use event?
-    if (gizmos_toolbar_on_mouse(mouse_event))
+    if (gizmos_toolbar_on_mouse(mouse))
         return true;
 
-    // current gizmo wants to use event?
-    if (m_current != Undefined &&
-        // check if gizmo override method could be slower than simple call virtual function
-        // &m_gizmos[m_current]->on_mouse != &GLGizmoBase::on_mouse &&
-        m_gizmos[m_current]->on_mouse(mouse_event))
+    if (m_current != Undefined && m_gizmos[m_current]->on_mouse(mouse))
         return true;
 
     return false;
 }
 
-bool GLGizmosManager::on_char(wxKeyEvent &evt)
+bool GLGizmosManager::on_char(const KeyInput &key)
 {
-    // see include/wx/defs.h enum wxKeyCode
-    int keyCode = evt.GetKeyCode();
-    int ctrlMask = wxMOD_CONTROL;
-
+    int keyCode = key.key_code;
     bool processed = false;
 
-    if ((evt.GetModifiers() & ctrlMask) != 0)
+    if (key.ctrl)
     {
         switch (keyCode)
         {
 #ifdef __APPLE__
         case 'a':
         case 'A':
-#else  /* __APPLE__ */
+#else
         case WXK_CONTROL_A:
-#endif /* __APPLE__ */
+#endif
         {
-            // Sla gizmo selects all support points
             if ((m_current == Cut) && gizmo_event(SLAGizmoEventType::SelectAll))
                 processed = true;
-
             break;
         }
         }
     }
-    else if (!evt.HasModifiers())
+    else if (!key.shift && !key.ctrl && !key.alt && !key.meta)
     {
         switch (keyCode)
         {
-        // key ESC
         case WXK_ESCAPE:
         {
             if (m_current != Undefined)
             {
                 if ((m_current == Measure || m_current == Seam) && gizmo_event(SLAGizmoEventType::Escape))
                 {
-                    // do nothing - let the gizmo handle it
                 }
                 else
                     reset_all_states();
-
                 processed = true;
             }
             break;
         }
         case WXK_RETURN:
-        {
             break;
-        }
-
         case 'r':
         case 'R':
         {
             if ((m_current == FdmSupports || m_current == Seam || m_current == ColorMixing || m_current == FuzzySkin) &&
                 gizmo_event(SLAGizmoEventType::ResetClippingPlane))
                 processed = true;
-
             break;
         }
-
         case WXK_BACK:
         case WXK_DELETE:
         {
             if ((m_current == Cut || m_current == Measure || m_current == BrimEars) &&
                 gizmo_event(SLAGizmoEventType::Delete))
                 processed = true;
-
             break;
         }
         case 'A':
         case 'a':
-        {
             break;
-        }
         case 'M':
         case 'm':
-        {
             break;
-        }
         case 'F':
         case 'f':
         {
             if (m_current == Scale)
             {
                 if (!is_dragging())
-                    wxGetApp().plater()->scale_selection_to_fit_print_volume();
-
+                    m_parent.event_poster()->postEvent(CanvasEventType::ScaleSelectionToFitPrintVolume);
                 processed = true;
             }
-
             break;
         }
         }
     }
 
-    if (!processed && !evt.HasModifiers())
+    if (!processed && !key.shift && !key.ctrl && !key.alt && !key.meta)
     {
         if (handle_shortcut(keyCode))
             processed = true;
@@ -667,12 +628,12 @@ bool GLGizmosManager::on_char(wxKeyEvent &evt)
     return processed;
 }
 
-bool GLGizmosManager::on_key(wxKeyEvent &evt)
+bool GLGizmosManager::on_key(const KeyInput &key)
 {
-    const int keyCode = evt.GetKeyCode();
+    const int keyCode = key.key_code;
     bool processed = false;
 
-    if (evt.GetEventType() == wxEVT_KEY_UP)
+    if (key.type == KeyEventType::KeyUp)
     {
         if (m_current == Cut)
         {
@@ -682,13 +643,11 @@ bool GLGizmosManager::on_key(wxKeyEvent &evt)
 
             if (keyCode == WXK_SHIFT)
             {
-                // shift has been just released - SLA gizmo might want to close rectangular selection.
                 if (gizmo_event(SLAGizmoEventType::ShiftUp) || (is_editing && is_rectangle_dragging))
                     processed = true;
             }
             else if (keyCode == WXK_ALT)
             {
-                // alt has been just released - SLA gizmo might want to close rectangular selection.
                 if (gizmo_event(SLAGizmoEventType::AltUp) || (is_editing && is_rectangle_dragging))
                     processed = true;
             }
@@ -696,15 +655,12 @@ bool GLGizmosManager::on_key(wxKeyEvent &evt)
         else if (m_current == Measure)
         {
             if (keyCode == WXK_CONTROL)
-                gizmo_event(SLAGizmoEventType::CtrlUp, Vec2d::Zero(), evt.ShiftDown(), evt.AltDown(), evt.CmdDown());
+                gizmo_event(SLAGizmoEventType::CtrlUp, Vec2d::Zero(), key.shift, key.alt, key.cmd);
             else if (keyCode == WXK_SHIFT)
-                gizmo_event(SLAGizmoEventType::ShiftUp, Vec2d::Zero(), evt.ShiftDown(), evt.AltDown(), evt.CmdDown());
+                gizmo_event(SLAGizmoEventType::ShiftUp, Vec2d::Zero(), key.shift, key.alt, key.cmd);
         }
-
-        //        if (processed)
-        //            m_parent.set_cursor(GLCanvas3D::Standard);
     }
-    else if (evt.GetEventType() == wxEVT_KEY_DOWN)
+    else if (key.type == KeyEventType::KeyDown)
     {
         if (m_current == Cut)
         {
@@ -719,25 +675,17 @@ bool GLGizmosManager::on_key(wxKeyEvent &evt)
             {
             case WXK_NUMPAD_UP:
             case WXK_UP:
-            {
                 do_move(1.0);
                 break;
-            }
             case WXK_NUMPAD_DOWN:
             case WXK_DOWN:
-            {
                 do_move(-1.0);
                 break;
-            }
             case WXK_SHIFT:
             case WXK_ALT:
-            {
                 processed = get_current()->is_in_editing_mode();
-            }
             default:
-            {
                 break;
-            }
             }
         }
         else if (m_current == Simplify && keyCode == WXK_ESCAPE)
@@ -749,9 +697,9 @@ bool GLGizmosManager::on_key(wxKeyEvent &evt)
         else if (m_current == Measure)
         {
             if (keyCode == WXK_CONTROL)
-                gizmo_event(SLAGizmoEventType::CtrlDown, Vec2d::Zero(), evt.ShiftDown(), evt.AltDown(), evt.CmdDown());
+                gizmo_event(SLAGizmoEventType::CtrlDown, Vec2d::Zero(), key.shift, key.alt, key.cmd);
             else if (keyCode == WXK_SHIFT)
-                gizmo_event(SLAGizmoEventType::ShiftDown, Vec2d::Zero(), evt.ShiftDown(), evt.AltDown(), evt.CmdDown());
+                gizmo_event(SLAGizmoEventType::ShiftDown, Vec2d::Zero(), key.shift, key.alt, key.cmd);
         }
     }
 
@@ -1180,8 +1128,8 @@ bool GLGizmosManager::activate_gizmo(EType type)
         old_gizmo.unregister_raycasters_for_picking();
 
         if (!m_serializing && old_gizmo.wants_enter_leave_snapshots())
-            Plater::TakeSnapshot snapshot(wxGetApp().plater(), old_gizmo.get_gizmo_leaving_text(),
-                                          UndoRedo::SnapshotType::LeavingGizmoWithAction);
+            m_parent.take_typed_snapshot(old_gizmo.get_gizmo_leaving_text(),
+                                         static_cast<int>(UndoRedo::SnapshotType::LeavingGizmoWithAction));
     }
 
     if (type == Undefined)
@@ -1199,8 +1147,8 @@ bool GLGizmosManager::activate_gizmo(EType type)
         return false;
 
     if (!m_serializing && new_gizmo.wants_enter_leave_snapshots())
-        Plater::TakeSnapshot snapshot(wxGetApp().plater(), new_gizmo.get_gizmo_entering_text(),
-                                      UndoRedo::SnapshotType::EnteringGizmo);
+        m_parent.take_typed_snapshot(new_gizmo.get_gizmo_entering_text(),
+                                     static_cast<int>(UndoRedo::SnapshotType::EnteringGizmo));
 
     m_current = type;
     new_gizmo.set_state(GLGizmoBase::On);

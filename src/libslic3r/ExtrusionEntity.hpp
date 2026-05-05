@@ -199,6 +199,10 @@ struct ExtrusionAttributes : ExtrusionFlow
     // Identifies which contour feature (perimeter group from PerimeterOrder) this entity belongs to.
     // Used to interleave interlocking with their correct perimeter group.
     std::optional<uint16_t> feature_id;
+    // Area of the fill region (mm^2) and infill pattern for preprocessing API.
+    // Set in make_fills() for infill, from island boundary for perimeters.
+    float region_area_mm2{0.0f};
+    int fill_pattern{-1}; // InfillPattern enum value, -1 = not a fill
 };
 
 inline bool operator==(const ExtrusionAttributes &lhs, const ExtrusionAttributes &rhs)
@@ -259,6 +263,7 @@ public:
     double length() const override;
 
     const ExtrusionAttributes &attributes() const { return m_attributes; }
+    ExtrusionAttributes &attributes() { return m_attributes; }
     void set_feature_id(uint16_t id) { m_attributes.feature_id = id; }
     ExtrusionRole role() const override { return m_attributes.role; }
     float width() const { return m_attributes.width; }
