@@ -254,6 +254,7 @@ public:
     void force_invalidate_slice();
     void send_gcode();
     void send_gcode_inner(DynamicPrintConfig *physical_printer_config);
+    void export_to_script();
     void eject_drive();
 
     std::optional<PrintHostJob> get_connect_print_host_job(bool multiple_beds);

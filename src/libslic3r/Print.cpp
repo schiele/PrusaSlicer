@@ -53,6 +53,7 @@
 #include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/regex.hpp>
+#include "PerfTiming.hpp"
 
 namespace Slic3r
 {
@@ -468,6 +469,29 @@ std::string Print::validate(std::vector<std::string> *warnings) const
         if (!this->has_same_shrinkage_compensations())
             warnings->emplace_back("_FILAMENT_SHRINKAGE_DIFFER");
 
+        {
+            // Collect all extruder IDs that will be used: object-assigned plus custom G-code tool changes
+            std::vector<unsigned int> all_used = extruders;
+            for (const auto &gc : model().custom_gcode_per_print_z().gcodes)
+                if (gc.type == CustomGCode::ToolChange && gc.extruder > 0)
+                    all_used.push_back(static_cast<unsigned int>(gc.extruder - 1));
+            sort_remove_duplicates(all_used);
+
+            if (all_used.size() > 1)
+            {
+                bool any_pa = false, any_no_pa = false;
+                for (unsigned int id : all_used)
+                {
+                    if (m_config.filament_enable_pressure_advance.get_at(id))
+                        any_pa = true;
+                    else
+                        any_no_pa = true;
+                }
+                if (any_pa && any_no_pa)
+                    warnings->emplace_back("_PRESSURE_ADVANCE_MISMATCH");
+            }
+        }
+
         // This warns at slice time if extrusion widths were changed such that existing mm overlap values
         // are now outside the valid range (-100% to 80%/100% of reference width)
         {
@@ -758,21 +782,20 @@ std::string Print::validate(std::vector<std::string> *warnings) const
                 return _u8L("One or more object were assigned an extruder that the printer does not have.");
 #endif
 
-        auto validate_extrusion_width =
-            [/*min_nozzle_diameter,*/ max_nozzle_diameter](const ConfigBase &config, const char *opt_key,
-                                                           double layer_height, std::string &err_msg) -> bool
+        auto validate_extrusion_width = [min_nozzle_diameter,
+                                         max_nozzle_diameter](const ConfigBase &config, const char *opt_key,
+                                                              double layer_height, bool pct_of_nozzle,
+                                                              std::string &err_msg) -> bool
         {
-            // This may change in the future, if we switch to "extrusion width wrt. nozzle diameter"
-            // instead of currently used logic "extrusion width wrt. layer height", see GH issues #1923 #2829.
-            //        	double extrusion_width_min = config.get_abs_value(opt_key, min_nozzle_diameter);
-            //        	double extrusion_width_max = config.get_abs_value(opt_key, max_nozzle_diameter);
-            double extrusion_width_min = config.get_abs_value(opt_key, layer_height);
-            double extrusion_width_max = extrusion_width_min;
+            double base_min = pct_of_nozzle ? min_nozzle_diameter : layer_height;
+            double base_max = pct_of_nozzle ? max_nozzle_diameter : layer_height;
+            double extrusion_width_min = config.get_abs_value(opt_key, base_min);
+            double extrusion_width_max = config.get_abs_value(opt_key, base_max);
             if (extrusion_width_min == 0)
             {
                 // Default "auto-generated" extrusion width is always valid.
             }
-            else if (extrusion_width_min <= layer_height)
+            else if (extrusion_width_min < layer_height)
             {
                 err_msg = (boost::format(_u8L("%1%=%2% mm is too low to be printable at a layer height %3% mm")) %
                            opt_key % extrusion_width_min % layer_height)
@@ -878,16 +901,18 @@ std::string Print::validate(std::vector<std::string> *warnings) const
 
             // Validate extrusion widths.
             std::string err_msg;
-            if (!validate_extrusion_width(object->config(), "extrusion_width", layer_height, err_msg))
+            bool pct_of_nozzle = object->config().extrusion_width_percent_of_nozzle.value;
+            if (!validate_extrusion_width(object->config(), "extrusion_width", layer_height, pct_of_nozzle, err_msg))
                 return err_msg;
             if ((object->has_support() || object->has_raft()) &&
-                !validate_extrusion_width(object->config(), "support_material_extrusion_width", layer_height, err_msg))
+                !validate_extrusion_width(object->config(), "support_material_extrusion_width", layer_height,
+                                          pct_of_nozzle, err_msg))
                 return err_msg;
             for (const char *opt_key :
                  {"perimeter_extrusion_width", "external_perimeter_extrusion_width", "infill_extrusion_width",
                   "solid_infill_extrusion_width", "top_infill_extrusion_width", "bridge_extrusion_width"})
                 for (const PrintRegion &region : object->all_regions())
-                    if (!validate_extrusion_width(region.config(), opt_key, layer_height, err_msg))
+                    if (!validate_extrusion_width(region.config(), opt_key, layer_height, pct_of_nozzle, err_msg))
                         return err_msg;
         }
     }
@@ -998,7 +1023,8 @@ Flow Print::brim_flow() const
     return Flow::new_from_config_width(frPerimeter, width,
                                        (float) m_config.nozzle_diameter.get_at(
                                            m_print_regions.front()->config().perimeter_extruder - 1),
-                                       (float) this->skirt_first_layer_height());
+                                       (float) this->skirt_first_layer_height(),
+                                       m_objects.front()->config().extrusion_width_percent_of_nozzle.value);
 }
 
 Flow Print::skirt_flow() const
@@ -1017,7 +1043,8 @@ Flow Print::skirt_flow() const
     return Flow::new_from_config_width(frPerimeter, width,
                                        (float) m_config.nozzle_diameter.get_at(
                                            m_objects.front()->config().support_material_extruder - 1),
-                                       (float) this->skirt_first_layer_height());
+                                       (float) this->skirt_first_layer_height(),
+                                       m_objects.front()->config().extrusion_width_percent_of_nozzle.value);
 }
 
 bool Print::has_support_material() const
@@ -1051,6 +1078,7 @@ void Print::auto_assign_extruders(ModelObject *model_object) const
 void Print::process()
 {
     name_tbb_thread_pool_threads_set_locale();
+    perf_slice_start() = std::chrono::steady_clock::now();
 
     BOOST_LOG_TRIVIAL(info) << "Starting the slicing process." << log_memory_info();
 
@@ -1322,6 +1350,7 @@ std::string Print::export_gcode(const std::string &path_template, GCodeProcessor
 
     // Create GCode on heap, it has quite a lot of data.
     std::unique_ptr<GCodeGenerator> gcode(new GCodeGenerator(const_cast<const Print *>(this)));
+    gcode->set_preview_detail_threshold(m_preview_detail_threshold);
     gcode->do_export(this, path.c_str(), result, thumbnail_cb);
 
     this->set_status(85, _u8L("Preparing preview data"));
@@ -1331,6 +1360,13 @@ std::string Print::export_gcode(const std::string &path_template, GCodeProcessor
 
     if (result)
         result->sequential_collision_detected = m_sequential_collision_detected;
+
+    {
+        auto total_ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - perf_slice_start()).count();
+        perf_print("\n[TIMING] ========== TOTAL SLICE-TO-PREVIEW: %.1fms (%.1fs) ==========\n\n", total_ms,
+                   total_ms / 1000.0);
+    }
 
     return path.c_str();
 }

@@ -22,13 +22,14 @@
 ///|/ preFlight is based on PrusaSlicer and released under AGPLv3 or higher
 ///|/
 #include "Config.hpp"
+#include "PerfTiming.hpp"
 #include "Geometry.hpp"
 #include "Geometry/Circle.hpp"
 #include "libslic3r.h"
 #include "libslic3r/GCode/ExtrusionProcessor.hpp"
 #include "I18N.hpp"
 #include "GCode.hpp"
-#include "GCode/VirtualGCodeFile.hpp"
+#include "GCode/GCodeObject.hpp"
 
 #ifdef _WIN32
 #include <malloc.h> // For _heapmin()
@@ -713,6 +714,8 @@ void GCodeGenerator::do_export(Print *print, const char *path, GCodeProcessorRes
     }
 
     BOOST_LOG_TRIVIAL(info) << "Exporting G-code..." << log_memory_info();
+    PerfStageTimer gx_timer;
+    gx_timer.reset();
 
     // Remove the old g-code if it exists.
     boost::nowide::remove(path);
@@ -733,7 +736,7 @@ void GCodeGenerator::do_export(Print *print, const char *path, GCodeProcessorRes
     // No need to check is_open() since we're not using a file
 
     // Virtual file mode: G-code is processed in-memory instead of writing to disk
-    file.enable_virtual_file();
+    file.enable_gcode_object();
 
     try
     {
@@ -772,19 +775,16 @@ void GCodeGenerator::do_export(Print *print, const char *path, GCodeProcessorRes
         throw Slic3r::PlaceholderParserError(msg);
     }
 
+    gx_timer.stage("gcode: _do_export (generation)");
     BOOST_LOG_TRIVIAL(debug) << "Start processing gcode, " << log_memory_info();
 
-    m_processor.initialize_result_moves();
+    if (GCodeObject *gco = file.release_gcode_object())
+        m_processor.set_gcode_object(gco);
 
-    if (file.is_using_virtual_file())
-    {
-        VirtualGCodeFile *vf = file.get_virtual_file();
-        m_processor.set_virtual_file(vf);
-        // The processor will take full ownership of the virtual file
-    }
-
+    gx_timer.stage("gcode: initialize_result_moves");
     // Post-process the G-code to update time stamps.
     m_processor.finalize(true);
+    gx_timer.stage("gcode: processor.finalize");
     //    DoExport::update_print_estimated_times_stats(m_processor, print->m_print_statistics);
     DoExport::update_print_estimated_stats(m_processor, m_writer.extruders(), print->m_print_statistics);
     if (result != nullptr)
@@ -800,6 +800,7 @@ void GCodeGenerator::do_export(Print *print, const char *path, GCodeProcessorRes
             result->filename = "";
         }
     }
+    gx_timer.stage("gcode: extract_result + stats");
     BOOST_LOG_TRIVIAL(debug) << "Finished processing gcode, " << log_memory_info();
 
 // Force garbage collection and heap compaction
@@ -817,18 +818,10 @@ void GCodeGenerator::do_export(Print *print, const char *path, GCodeProcessorRes
             throw Slic3r::RuntimeError(std::string("Cannot open output file for writing: ") + path);
         }
 
-        // Use output virtual file if available, otherwise fall back to input
-        VirtualGCodeFile *vf_to_export = result->output_virtual_file ? result->output_virtual_file
-                                                                     : result->virtual_gcode_file;
-
-        if (vf_to_export)
+        if (result->gcode_object)
         {
-            // Write each line efficiently
-            for (size_t i = 0; i < vf_to_export->line_count(); ++i)
-            {
-                std::string line = vf_to_export->get_line(i);
-                fwrite(line.c_str(), 1, line.length(), output_file);
-            }
+            const std::string &buf = result->gcode_object->text_buffer();
+            fwrite(buf.c_str(), 1, buf.size(), output_file);
         }
 
         fclose(output_file);
@@ -842,7 +835,7 @@ void GCodeGenerator::do_export(Print *print, const char *path, GCodeProcessorRes
 namespace DoExport
 {
 static void init_gcode_processor(const PrintConfig &config, GCodeProcessor &processor,
-                                 bool &silent_time_estimator_enabled)
+                                 bool &silent_time_estimator_enabled, size_t preview_detail_threshold = 10'000'000)
 {
     silent_time_estimator_enabled = (config.gcode_flavor == gcfMarlinLegacy ||
                                      config.gcode_flavor == gcfMarlinFirmware) &&
@@ -851,6 +844,7 @@ static void init_gcode_processor(const PrintConfig &config, GCodeProcessor &proc
     processor.initialize_result_moves();
     processor.apply_config(config);
     processor.enable_stealth_time_estimator(silent_time_estimator_enabled);
+    processor.set_preview_detail_threshold(preview_detail_threshold);
 }
 
 static double autospeed_volumetric_limit(const Print &print)
@@ -1190,7 +1184,8 @@ void GCodeGenerator::_do_export(Print &print, GCodeOutputStream &file, Thumbnail
     }
 
     // modifies m_silent_time_estimator_enabled
-    DoExport::init_gcode_processor(print.config(), m_processor, m_silent_time_estimator_enabled);
+    DoExport::init_gcode_processor(print.config(), m_processor, m_silent_time_estimator_enabled,
+                                   m_preview_detail_threshold);
 
     if (!print.config().gcode_substitutions.values.empty())
     {
@@ -1858,13 +1853,16 @@ void GCodeGenerator::process_layers(const Print &print, const ToolOrdering &tool
                                     const GCode::SmoothPathCache &smooth_path_cache_global,
                                     GCodeOutputStream &output_stream)
 {
+    // Per-stage timing accumulators (pipeline is serial, no atomics needed)
+    PerfAccumTimer t_smooth, t_generator, t_cooling, t_output;
+
     size_t layer_to_print_idx = 0;
     const GCode::SmoothPathCache::InterpolationParameters interpolation_params = interpolation_parameters(
         print.config());
     const auto smooth_path_interpolator = tbb::make_filter<void, std::pair<size_t, GCode::SmoothPathCache>>(
         slic3r_tbb_filtermode::serial_in_order,
-        [this, &print, &layers_to_print, &layer_to_print_idx,
-         &interpolation_params](tbb::flow_control &fc) -> std::pair<size_t, GCode::SmoothPathCache>
+        [this, &print, &layers_to_print, &layer_to_print_idx, &interpolation_params,
+         &t_smooth](tbb::flow_control &fc) -> std::pair<size_t, GCode::SmoothPathCache>
         {
             if (layer_to_print_idx >= layers_to_print.size())
             {
@@ -1891,35 +1889,38 @@ void GCodeGenerator::process_layers(const Print &print, const ToolOrdering &tool
                     int progress = 33 + static_cast<int>(((idx + 1) * 17.0) / layers_to_print.size());
                     const_cast<Print &>(print).set_status(progress, _u8L("Generating G-code layers"));
                 }
+                auto ts0 = std::chrono::steady_clock::now();
                 GCode::SmoothPathCache smooth_path_cache;
                 for (const ObjectLayerToPrint &l : layers_to_print[idx].second)
                     GCodeGenerator::smooth_path_interpolate(l, interpolation_params, smooth_path_cache);
+                t_smooth.add(ts0, std::chrono::steady_clock::now());
                 return {idx, std::move(smooth_path_cache)};
             }
         });
     const auto generator = tbb::make_filter<std::pair<size_t, GCode::SmoothPathCache>, LayerResult>(
         slic3r_tbb_filtermode::serial_in_order,
-        [this, &print, &tool_ordering, &print_object_instances_ordering, &layers_to_print,
-         &smooth_path_cache_global](std::pair<size_t, GCode::SmoothPathCache> in) -> LayerResult
+        [this, &print, &tool_ordering, &print_object_instances_ordering, &layers_to_print, &smooth_path_cache_global,
+         &t_generator](std::pair<size_t, GCode::SmoothPathCache> in) -> LayerResult
         {
             size_t layer_to_print_idx = in.first;
             if (layer_to_print_idx == layers_to_print.size())
             {
-                // Pressure equalizer need insert empty input. Because it returns one layer back.
-                // Insert NOP (no operation) layer;
                 return LayerResult::make_nop_layer_result();
             }
             else
             {
+                auto tg0 = std::chrono::steady_clock::now();
                 const std::pair<coordf_t, ObjectsLayerToPrint> &layer = layers_to_print[layer_to_print_idx];
                 const LayerTools &layer_tools = tool_ordering.tools_for_layer(layer.first);
                 if (m_wipe_tower && layer_tools.has_wipe_tower)
                     m_wipe_tower->next_layer();
                 print.throw_if_canceled();
-                return this->process_layer(print, layer.second, layer_tools,
-                                           GCode::SmoothPathCaches{smooth_path_cache_global, in.second},
-                                           &layer == &layers_to_print.back(), &print_object_instances_ordering,
-                                           size_t(-1));
+                auto result = this->process_layer(print, layer.second, layer_tools,
+                                                  GCode::SmoothPathCaches{smooth_path_cache_global, in.second},
+                                                  &layer == &layers_to_print.back(), &print_object_instances_ordering,
+                                                  size_t(-1));
+                t_generator.add(tg0, std::chrono::steady_clock::now());
+                return result;
             }
         });
     // The pipeline is variable: The vase mode filter is optional.
@@ -1948,20 +1949,26 @@ void GCodeGenerator::process_layers(const Print &print, const ToolOrdering &tool
                                                                         });
     const auto cooling = tbb::make_filter<LayerResult, std::string>(
         slic3r_tbb_filtermode::serial_in_order,
-        [cooling_buffer = this->m_cooling_buffer.get()](LayerResult in) -> std::string
+        [cooling_buffer = this->m_cooling_buffer.get(), &t_cooling](LayerResult in) -> std::string
         {
             if (in.nop_layer_result)
                 return in.gcode;
-
-            return cooling_buffer->process_layer(std::move(in.gcode), in.layer_id, in.cooling_buffer_flush);
+            auto tc0 = std::chrono::steady_clock::now();
+            auto result = cooling_buffer->process_layer(std::move(in.gcode), in.layer_id, in.cooling_buffer_flush);
+            t_cooling.add(tc0, std::chrono::steady_clock::now());
+            return result;
         });
     const auto find_replace = tbb::make_filter<std::string, std::string>(
         slic3r_tbb_filtermode::serial_in_order,
         [find_replace = this->m_find_replace.get()](std::string s) -> std::string
         { return find_replace->process_layer(std::move(s)); });
     const auto output = tbb::make_filter<std::string, void>(slic3r_tbb_filtermode::serial_in_order,
-                                                            [&output_stream](std::string s)
-                                                            { output_stream.write(s); });
+                                                            [&output_stream, &t_output](std::string s)
+                                                            {
+                                                                auto to0 = std::chrono::steady_clock::now();
+                                                                output_stream.write(s);
+                                                                t_output.add(to0, std::chrono::steady_clock::now());
+                                                            });
 
     tbb::filter<void, LayerResult> pipeline_to_layerresult = smooth_path_interpolator & generator;
     if (m_spiral_vase)
@@ -1981,6 +1988,13 @@ void GCodeGenerator::process_layers(const Print &print, const ToolOrdering &tool
     output_stream.find_replace_supress();
     tbb::parallel_pipeline(12, pipeline_to_layerresult & pipeline_to_string & output);
     output_stream.find_replace_enable();
+
+    perf_print("[TIMING]   gcode pipeline breakdown (%zu layers):\n"
+               "[TIMING]     smooth_path:    %7.1fms\n"
+               "[TIMING]     process_layer:  %7.1fms\n"
+               "[TIMING]     cooling:        %7.1fms\n"
+               "[TIMING]     output/write:   %7.1fms\n",
+               layers_to_print.size(), t_smooth.ms(), t_generator.ms(), t_cooling.ms(), t_output.ms());
 }
 
 // Process all layers of a single object instance (sequential mode) with a parallel pipeline:
@@ -1991,6 +2005,8 @@ void GCodeGenerator::process_layers(const Print &print, const ToolOrdering &tool
                                     const GCode::SmoothPathCache &smooth_path_cache_global,
                                     GCodeOutputStream &output_stream)
 {
+    PerfAccumTimer t_output;
+
     size_t layer_to_print_idx = 0;
     const GCode::SmoothPathCache::InterpolationParameters interpolation_params = interpolation_parameters(
         print.config());
@@ -2087,8 +2103,12 @@ void GCodeGenerator::process_layers(const Print &print, const ToolOrdering &tool
         [find_replace = this->m_find_replace.get()](std::string s) -> std::string
         { return find_replace->process_layer(std::move(s)); });
     const auto output = tbb::make_filter<std::string, void>(slic3r_tbb_filtermode::serial_in_order,
-                                                            [&output_stream](std::string s)
-                                                            { output_stream.write(s); });
+                                                            [&output_stream, &t_output](std::string s)
+                                                            {
+                                                                auto to0 = std::chrono::steady_clock::now();
+                                                                output_stream.write(s);
+                                                                t_output.add(to0, std::chrono::steady_clock::now());
+                                                            });
 
     tbb::filter<void, LayerResult> pipeline_to_layerresult = smooth_path_interpolator & generator;
     if (m_spiral_vase)
@@ -3017,6 +3037,10 @@ LayerResult GCodeGenerator::process_layer(
     bool first_layer = layer.id() == 0;
     unsigned int first_extruder_id = layer_tools.extruders.front();
 
+    static PerfAccumTimer s_pl_sort, s_pl_init, s_pl_extrude;
+    static int s_pl_count = 0;
+    auto pl_t0 = std::chrono::steady_clock::now();
+
     const std::vector<InstanceToPrint> instances_to_print{
         sort_print_object_instances(layers, ordering, single_object_instance_idx)};
 
@@ -3047,9 +3071,15 @@ LayerResult GCodeGenerator::process_layer(
 
     const float height = first_layer ? static_cast<float>(print_z) : static_cast<float>(print_z) - m_last_layer_z;
 
+    s_pl_sort.add(pl_t0, std::chrono::steady_clock::now());
+    auto pl_t1 = std::chrono::steady_clock::now();
+
     using GCode::ExtrusionOrder::ExtruderExtrusions;
     std::vector<ExtruderExtrusions> extrusions{
         this->get_sorted_extrusions(print, layers, layer_tools, instances_to_print, smooth_path_caches, first_layer)};
+
+    s_pl_sort.add(pl_t1, std::chrono::steady_clock::now());
+    pl_t0 = std::chrono::steady_clock::now();
 
     if (extrusions.empty())
     {
@@ -3068,6 +3098,7 @@ LayerResult GCodeGenerator::process_layer(
     m_label_objects.update(first_instance);
 
     std::string gcode;
+    gcode.reserve(16384);
 
     assert(is_decimal_separator_point()); // for the sprintfs
 
@@ -3215,6 +3246,9 @@ LayerResult GCodeGenerator::process_layer(
     this->m_moved_to_first_layer_point = false;
 
     // Extrude the skirt, brim, support, perimeters, infill ordered by the extruders.
+    s_pl_init.add(pl_t0, std::chrono::steady_clock::now());
+    pl_t0 = std::chrono::steady_clock::now();
+
     for (ExtruderExtrusions &extruder_extrusions : extrusions)
     {
         gcode += (layer_tools.has_wipe_tower && m_wipe_tower)
@@ -3361,6 +3395,21 @@ LayerResult GCodeGenerator::process_layer(
 
     BOOST_LOG_TRIVIAL(trace) << "Exported layer " << layer.id() << " print_z " << print_z << log_memory_info();
 
+    s_pl_extrude.add(pl_t0, std::chrono::steady_clock::now());
+    s_pl_count++;
+    if (last_layer)
+    {
+        perf_print("[TIMING]   process_layer breakdown (%d layers):\n"
+                   "[TIMING]     sort/get_ext:   %7.1fms\n"
+                   "[TIMING]     layer_init:     %7.1fms\n"
+                   "[TIMING]     extrude:        %7.1fms\n",
+                   s_pl_count, s_pl_sort.ms(), s_pl_init.ms(), s_pl_extrude.ms());
+        s_pl_sort.reset();
+        s_pl_init.reset();
+        s_pl_extrude.reset();
+        s_pl_count = 0;
+    }
+
     result.gcode = std::move(gcode);
     result.cooling_buffer_flush = object_layer || raft_layer || last_layer;
     return result;
@@ -3487,7 +3536,7 @@ std::string GCodeGenerator::extrude_interlocking_gap_fills(const LayerRegion *la
             {
                 m_last_width = scaled_width;
                 gcode += std::string(";") + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Width) +
-                         float_to_string_decimal_point(m_last_width) + "\n";
+                         format_width(m_last_width) + "\n";
             }
 
             // Emit height comment
@@ -4858,12 +4907,6 @@ void GCodeGenerator::GCodeOutputStream::flush()
 
 void GCodeGenerator::GCodeOutputStream::close()
 {
-    if (m_use_virtual_file && m_virtual_file)
-    {
-        // Don't clear pointers here - we still need them for processing
-        return;
-    }
-
     if (this->f)
     {
         ::fclose(this->f);
@@ -4871,16 +4914,14 @@ void GCodeGenerator::GCodeOutputStream::close()
     }
 }
 
-void GCodeGenerator::GCodeOutputStream::enable_virtual_file()
+void GCodeGenerator::GCodeOutputStream::enable_gcode_object()
 {
-    if (m_virtual_file)
+    if (m_gcode_object)
     {
-        // This shouldn't happen - it means we're reusing a GCodeOutputStream
-        delete m_virtual_file;
-        m_virtual_file = nullptr;
+        delete m_gcode_object;
+        m_gcode_object = nullptr;
     }
-    m_use_virtual_file = true;
-    m_virtual_file = new VirtualGCodeFile();
+    m_gcode_object = new GCodeObject();
 }
 
 void GCodeGenerator::GCodeOutputStream::write(const char *what)
@@ -4892,22 +4933,14 @@ void GCodeGenerator::GCodeOutputStream::write(const char *what)
         {
             std::string gcode(m_find_replace ? m_find_replace->process_layer(what) : what);
 
-            if (m_use_virtual_file)
-            {
-                if (!m_virtual_file)
-                {
-                    throw std::runtime_error("Virtual file is null in write()");
-                }
-                m_virtual_file->write(gcode.c_str());
-                // Don't process buffer here - we'll process the virtual file later
-                return;
-            }
-
             if (this->f)
             {
                 fwrite(gcode.data(), 1, gcode.size(), this->f);
             }
-            // Only process buffer when NOT using virtual file
+
+            if (m_gcode_object)
+                m_gcode_object->append_text(gcode.c_str());
+
             m_processor.process_buffer(gcode);
         }
         catch (const std::exception &)
@@ -5689,7 +5722,7 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
     {
         m_last_width = current_width;
         gcode += std::string(";") + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Width) +
-                 float_to_string_decimal_point(m_last_width) + "\n";
+                 format_width(m_last_width) + "\n";
     }
 
     if (last_was_wipe_tower || std::abs(m_last_height - current_height) > EPSILON)
@@ -5887,7 +5920,7 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
                     {
                         m_last_width = new_width;
                         gcode += std::string(";") + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Width) +
-                                 float_to_string_decimal_point(m_last_width) + "\n";
+                                 format_width(m_last_width) + "\n";
                     }
                     if (std::abs(m_last_height - new_height) > EPSILON)
                     {
@@ -6008,7 +6041,7 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
                             {
                                 m_last_width = width;
                                 gcode += std::string(";") + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Width) +
-                                         float_to_string_decimal_point(m_last_width) + "\n";
+                                         format_width(m_last_width) + "\n";
                             }
                             if (std::abs(m_last_height - height) > EPSILON)
                             {
@@ -6422,6 +6455,9 @@ std::string GCodeGenerator::set_extruder(unsigned int extruder_id, double print_
                                                       &config);
             check_add_eol(gcode);
         }
+        // Emit pressure advance command if enabled for this filament
+        if (m_config.filament_enable_pressure_advance.get_at(extruder_id))
+            gcode += m_writer.set_pressure_advance(m_config.filament_pressure_advance.get_at(extruder_id), extruder_id);
         gcode += m_writer.toolchange(extruder_id);
         return gcode;
     }
@@ -6515,6 +6551,10 @@ std::string GCodeGenerator::set_extruder(unsigned int extruder_id, double print_
         gcode += this->placeholder_parser_process("start_filament_gcode", start_filament_gcode, extruder_id, &config);
         check_add_eol(gcode);
     }
+    // Emit pressure advance command if enabled for this filament
+    if (m_config.filament_enable_pressure_advance.get_at(extruder_id))
+        gcode += m_writer.set_pressure_advance(m_config.filament_pressure_advance.get_at(extruder_id), extruder_id);
+
     // Set the new extruder to the operating temperature.
     if (m_ooze_prevention.enable)
         gcode += m_ooze_prevention.post_toolchange(*this);

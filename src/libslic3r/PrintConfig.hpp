@@ -931,9 +931,9 @@ PRINT_CONFIG_CLASS_DEFINE(
         (ConfigOptionFloat, brim_ears_max_angle))((ConfigOptionFloat, brim_ears_detection_length))(
         (ConfigOptionEnum<ColorMixingBaseExtruder>, color_mixing_base_extruder))(
         (ConfigOptionInt, color_mixing_base_layers))((ConfigOptionBool, dont_support_bridges))(
-        (ConfigOptionFloat, elefant_foot_compensation))((ConfigOptionFloatOrPercent, extrusion_width))(
-        (ConfigOptionFloat, first_layer_acceleration_over_raft))((ConfigOptionFloatOrPercent,
-                                                                  first_layer_speed_over_raft))
+        (ConfigOptionFloat, elefant_foot_compensation))((ConfigOptionBool, extrusion_width_percent_of_nozzle))(
+        (ConfigOptionFloatOrPercent, extrusion_width))((ConfigOptionFloat, first_layer_acceleration_over_raft))(
+        (ConfigOptionFloatOrPercent, first_layer_speed_over_raft))
     // ((ConfigOptionBool,                infill_only_where_needed))
     // Force the generation of solid shells between adjacent materials/volumes.
     ((ConfigOptionBool, interface_shells))((ConfigOptionFloat, layer_height))((ConfigOptionFloat,
@@ -1109,6 +1109,7 @@ PRINT_CONFIG_CLASS_DEFINE(
         (ConfigOptionFloats, extrusion_multiplier))((ConfigOptionFloats, filament_diameter))(
         (ConfigOptionFloats, filament_density))((ConfigOptionStrings, filament_type))(
         (ConfigOptionBools, filament_soluble))((ConfigOptionBools, filament_abrasive))(
+        (ConfigOptionBools, filament_enable_pressure_advance))((ConfigOptionFloats, filament_pressure_advance))(
         (ConfigOptionFloats, filament_cost))((ConfigOptionFloats, filament_spool_weight))(
         (ConfigOptionFloats, filament_max_volumetric_speed))((ConfigOptionFloats, filament_infill_max_speed))(
         (ConfigOptionFloats, filament_infill_max_crossing_speed))((ConfigOptionFloats, filament_loading_speed))(
@@ -1206,7 +1207,8 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
         (ConfigOptionFloats, print_nozzle_diameters))((ConfigOptionBools, print_high_flow_nozzle))(
         (ConfigOptionBool, only_retract_when_crossing_perimeters))((ConfigOptionBool, ooze_prevention))(
         (ConfigOptionString, output_filename_format))((ConfigOptionFloat, perimeter_acceleration))(
-        (ConfigOptionStrings, post_process))((ConfigOptionBool, preprocessing_enabled_filament))(
+        (ConfigOptionStrings, post_process))((ConfigOptionBool, export_script_enabled))(
+        (ConfigOptionString, export_script))((ConfigOptionBool, preprocessing_enabled_filament))(
         (ConfigOptionBool, preprocessing_enabled_print))((ConfigOptionBool, preprocessing_enabled_printer))(
         (ConfigOptionStrings, preprocessing_scripts_filament))((ConfigOptionStrings, preprocessing_scripts_print))(
         (ConfigOptionStrings, preprocessing_scripts_printer))((ConfigOptionBool, prefer_clockwise_movements))(

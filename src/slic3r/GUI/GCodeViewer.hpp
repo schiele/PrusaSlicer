@@ -227,9 +227,13 @@ struct SequentialView
         Range m_cache_range;
         size_t m_max_line_length{0};
 
-        VirtualGCodeFile *m_virtual_file = nullptr;
+        GCodeObject *const *m_gcode_object_ref = nullptr;
+        GCodeObject *gcode_object() const
+        {
+            return (m_gcode_object_ref && *m_gcode_object_ref) ? *m_gcode_object_ref : nullptr;
+        }
 
-        int m_scroll_request{0}; // Number of lines to scroll (positive = forward, negative = backward)
+        int m_scroll_request{0};
 
     public:
         void load_gcode(const GCodeProcessorResult &gcode_result);
@@ -238,7 +242,7 @@ struct SequentialView
             m_lines_ends.clear();
             m_lines_cache.clear();
             m_filename.clear();
-            m_virtual_file = nullptr; // Clear virtual file pointer to prevent stale data
+            m_gcode_object_ref = nullptr;
         }
         void toggle_visibility() { m_visible = !m_visible; }
         void set_imgui(ImGuiWrapper *imgui) { m_imgui = imgui; }

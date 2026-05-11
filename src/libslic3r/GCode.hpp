@@ -56,7 +56,7 @@ namespace Slic3r
 // Forward declarations.
 class GCodeGenerator;
 struct WipeTowerData;
-class VirtualGCodeFile;
+class GCodeObject;
 namespace
 {
 struct Item;
@@ -120,6 +120,8 @@ class GCodeGenerator
 public:
     GCodeGenerator(const Print *print = nullptr); // The default value is only used in unit tests.
     ~GCodeGenerator() = default;
+
+    void set_preview_detail_threshold(size_t threshold) { m_preview_detail_threshold = threshold; }
 
     // throws std::runtime_exception on error,
     // throws CanceledException through print->throw_if_canceled().
@@ -200,7 +202,7 @@ private:
         GCodeOutputStream(FILE *f, GCodeProcessor &processor) : f(f), m_processor(processor) {}
         ~GCodeOutputStream()
         {
-            // Don't delete virtual file here - processor will take ownership
+            delete m_gcode_object;
             this->close();
         }
         // Set a find-replace post-processor to modify the G-code before GCodePostProcessor.
@@ -232,20 +234,20 @@ private:
         // Formats and write into a file the given data.
         void write_format(const char *format, ...);
 
-        void enable_virtual_file();
-        VirtualGCodeFile *get_virtual_file() { return m_virtual_file; }
-        bool is_using_virtual_file() const { return m_use_virtual_file && m_virtual_file != nullptr; }
+        void enable_gcode_object();
+        GCodeObject *release_gcode_object()
+        {
+            auto *p = m_gcode_object;
+            m_gcode_object = nullptr;
+            return p;
+        }
 
     private:
         FILE *f{nullptr};
-        // Find-replace post-processor to be called before GCodePostProcessor.
         GCodeFindReplace *m_find_replace{nullptr};
-        // If suppressed, the backoup holds m_find_replace.
         GCodeFindReplace *m_find_replace_backup{nullptr};
         GCodeProcessor &m_processor;
-
-        class VirtualGCodeFile *m_virtual_file = nullptr;
-        bool m_use_virtual_file = false; // Enable with env var for testing
+        GCodeObject *m_gcode_object = nullptr;
     };
     void _do_export(Print &print, GCodeOutputStream &file, ThumbnailsGeneratorCallback thumbnail_cb);
 
@@ -427,6 +429,8 @@ private:
     float m_last_layer_z{0.0f};
     float m_max_layer_z{0.0f};
     float m_last_width{0.0f};
+    // Round width to 0.001mm for clean G-code output (float can't represent values like 0.64 exactly)
+    static std::string format_width(float w) { return float_to_string_decimal_point(std::round(w * 1000.0) / 1000.0); }
     float m_last_region_area{0.0f};
     int m_last_fill_pattern{-1};
     double m_last_interlocking_flow_multiplier{-1.0}; // -1.0 = sentinel, ensures first interlocking gets comment
@@ -459,6 +463,7 @@ private:
 
     // Processor
     GCodeProcessor m_processor;
+    size_t m_preview_detail_threshold{10'000'000};
 
     // Back-pointer to Print (const).
     const Print *m_print;

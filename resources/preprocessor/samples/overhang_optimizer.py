@@ -18,32 +18,43 @@ BRIDGE_SPEED_FACTOR = 0.4       # bridges need even more care
 
 
 def process(gcode: preFlight.GCode):
+    base_temp = int(gcode.settings.temperature.split(";")[0])
     modified_layers = 0
+    prev_layer_had_overhangs = False
+
     for layer in gcode.layers:
         overhang_moves = layer.moves_by_role(ExtrusionRole.OverhangPerimeter)
-        if not overhang_moves:
-            continue
+        has_overhangs = len(overhang_moves) > 0
 
-        modified_layers += 1
-        for move in layer.moves:
-            if move.type != MoveType.Extrude:
-                continue
+        if has_overhangs:
+            modified_layers += 1
+            for move in layer.moves:
+                if move.type != MoveType.Extrude:
+                    continue
 
-            if move.role == ExtrusionRole.OverhangPerimeter:
-                move.annotation = "overhang"
-                move.feedrate *= OVERHANG_SPEED_FACTOR
-                move.fan_speed = OVERHANG_FAN
-                move.temperature -= OVERHANG_TEMP_DROP
+                if move.role == ExtrusionRole.OverhangPerimeter:
+                    move.annotation = "overhang"
+                    move.feedrate *= OVERHANG_SPEED_FACTOR
+                    move.fan_speed = OVERHANG_FAN
+                    move.temperature = base_temp - OVERHANG_TEMP_DROP
 
-            elif move.role == ExtrusionRole.ExternalPerimeter:
-                move.annotation = "external perimeter cooling"
-                move.feedrate *= EXTERNAL_SPEED_FACTOR
-                move.fan_speed = max(move.fan_speed, 80)
+                elif move.role == ExtrusionRole.ExternalPerimeter:
+                    move.annotation = "external perimeter cooling"
+                    move.feedrate *= EXTERNAL_SPEED_FACTOR
+                    move.fan_speed = max(move.fan_speed, 80)
 
-            elif move.role == ExtrusionRole.BridgeInfill:
-                move.annotation = "bridge"
-                move.feedrate *= BRIDGE_SPEED_FACTOR
-                move.fan_speed = OVERHANG_FAN
-                move.temperature -= OVERHANG_TEMP_DROP
+                elif move.role == ExtrusionRole.BridgeInfill:
+                    move.annotation = "bridge"
+                    move.feedrate *= BRIDGE_SPEED_FACTOR
+                    move.fan_speed = OVERHANG_FAN
+                    move.temperature = base_temp - OVERHANG_TEMP_DROP
+
+        elif prev_layer_had_overhangs:
+            first_ext = next((m for m in layer.moves if m.type == MoveType.Extrude), None)
+            if first_ext:
+                first_ext.temperature = base_temp
+                first_ext.annotation = "restore temp after overhang"
+
+        prev_layer_had_overhangs = has_overhangs
 
     print(f"[overhang_optimizer] Tuned {modified_layers} layers with overhangs")

@@ -112,6 +112,13 @@ static const t_config_enum_values s_keys_map_CanvasMsaaMode = {
 
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(CanvasMsaaMode)
 
+static const t_config_enum_values s_keys_map_PreviewDetailLevel = {
+    {"1000000", PreviewDetail1M},   {"5000000", PreviewDetail5M}, {"10000000", PreviewDetail10M},
+    {"20000000", PreviewDetail20M}, {"0", PreviewDetailFull},
+};
+
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(PreviewDetailLevel)
+
 namespace GUI
 {
 
@@ -733,6 +740,18 @@ void PreferencesDialog::build()
                     app_config->set(opt_key, it->second);
                 return;
             }
+            if (opt_key == "preview_detail")
+            {
+                int val_int = boost::any_cast<int>(value);
+                static const std::map<int, std::string> detail_keys = {
+                    {PreviewDetail1M, "1000000"},   {PreviewDetail5M, "5000000"}, {PreviewDetail10M, "10000000"},
+                    {PreviewDetail20M, "20000000"}, {PreviewDetailFull, "0"},
+                };
+                auto it = detail_keys.find(val_int);
+                if (it != detail_keys.end())
+                    app_config->set(opt_key, it->second);
+                return;
+            }
             if (opt_key == "cpu_max_slicing_threads")
             {
                 int val_int = boost::any_cast<int>(value);
@@ -856,6 +875,39 @@ void PreferencesDialog::build()
                  {"16", L("16x")}});
         }
 
+        // Preview detail level
+        {
+            const std::string current_detail = app_config->get("preview_detail");
+            PreviewDetailLevel current_level = PreviewDetail10M;
+            auto it = s_keys_map_PreviewDetailLevel.find(current_detail);
+            if (it != s_keys_map_PreviewDetailLevel.end())
+                current_level = static_cast<PreviewDetailLevel>(it->second);
+
+            append_enum_option<PreviewDetailLevel>(
+                m_optgroup_cpu, "preview_detail", L("Preview Detail"),
+                L("Controls how much detail is computed for the G-code preview on large prints. "
+                  "Lower values reduce memory usage and speed up slicing at the cost of less detailed "
+                  "preview data. Does not affect print output, G-code, or time estimation."),
+                new ConfigOptionEnum<PreviewDetailLevel>(current_level),
+                {{"1000000",
+#if defined(__linux__) && defined(__aarch64__)
+                  L("1M segments (default)")
+#else
+                  L("1M segments")
+#endif
+                 },
+                 {"5000000", L("5M segments")},
+                 {"10000000",
+#if defined(__linux__) && defined(__aarch64__)
+                  L("10M segments")
+#else
+                  L("10M segments (default)")
+#endif
+                 },
+                 {"20000000", L("20M segments")},
+                 {"0", L("Full (no limit)")}});
+        }
+
         // NVIDIA GPU: optional per-app driver profile fix. Only shown when an NVIDIA driver is
         // actually present on the machine, so AMD/Intel users don't see an irrelevant option.
         const bool has_nvidia = Slic3r::nvidia_driver_available();
@@ -923,9 +975,14 @@ void PreferencesDialog::build()
                 field->set_value(boost::any(val_int), false);
         }
 
-        // Restore the NVIDIA checkbox's displayed state from AppConfig. The option was registered
-        // with factory-default false so the tooltip advertises the correct default value; we update
-        // the actual checkbox here without firing on_change.
+        {
+            const std::string current = app_config->get("preview_detail");
+            auto it = s_keys_map_PreviewDetailLevel.find(current);
+            int val_int = it != s_keys_map_PreviewDetailLevel.end() ? it->second : PreviewDetail10M;
+            if (Field *field = m_optgroup_cpu->get_field("preview_detail"))
+                field->set_value(boost::any(val_int), false);
+        }
+
         if (has_nvidia)
         {
             if (Field *field = m_optgroup_cpu->get_field("cpu_nvidia_disable_threaded_opt"))

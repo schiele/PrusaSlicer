@@ -29,8 +29,9 @@
 #include "libslic3r/Print.hpp"
 // #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/Utils.hpp"
-#include "libslic3r/GCode/VirtualGCodeFile.hpp"
+#include "libslic3r/GCode/GCodeObject.hpp"
 #include "libslic3r/GCode/PostProcessor.hpp"
+#include "libslic3r/GCode/PreProcessor.hpp"
 // #include "libslic3r/Format/SL1.hpp"
 #include "libslic3r/Thread.hpp"
 #include "libslic3r/libslic3r.h"
@@ -190,6 +191,26 @@ std::string BackgroundSlicingProcess::output_filepath_for_project(const boost::f
 void BackgroundSlicingProcess::process_fff()
 {
     assert(m_print == m_fff_print);
+    {
+        const AppConfig *app_config = GUI::wxGetApp().app_config;
+        size_t threshold = 10'000'000;
+        if (app_config)
+        {
+            std::string val = app_config->get("preview_detail");
+            if (!val.empty())
+            {
+                try
+                {
+                    threshold = std::stoull(val);
+                }
+                catch (...)
+                {
+                    threshold = 10'000'000;
+                }
+            }
+        }
+        m_fff_print->set_preview_detail_threshold(threshold);
+    }
     m_print->process();
     m_slicing_event_poster->postSlicingCompleted(
         (int) (m_fff_print->step_state_with_timestamp(PrintStep::psSlicingFinished).timestamp));
@@ -718,15 +739,11 @@ void BackgroundSlicingProcess::direct_export_gcode(const std::string &path, bool
     // Perform the final post-processing of the export path by applying the print statistics over the file name.
     std::string export_path = m_fff_print->print_statistics().finalize_output_path(path);
 
-    // Get virtual file to export
-    VirtualGCodeFile *vf_to_export = nullptr;
-    if (m_gcode_result)
-    {
-        vf_to_export = m_gcode_result->output_virtual_file ? m_gcode_result->output_virtual_file
-                                                           : m_gcode_result->virtual_gcode_file;
-    }
+    const std::string *export_buffer = (m_gcode_result && m_gcode_result->gcode_object)
+                                           ? &m_gcode_result->gcode_object->text_buffer()
+                                           : nullptr;
 
-    if (!vf_to_export)
+    if (!export_buffer)
     {
         throw Slic3r::ExportError("No G-code available for export");
     }
@@ -740,12 +757,10 @@ void BackgroundSlicingProcess::direct_export_gcode(const std::string &path, bool
             throw Slic3r::ExportError(GUI::format(_L("Failed to open G-code file for writing: %1%"), export_path));
         }
 
-        // Bulk write entire buffer in one shot (fast!)
-        const std::string &buffer = vf_to_export->get_buffer();
-        size_t written = fwrite(buffer.c_str(), 1, buffer.size(), file);
+        size_t written = fwrite(export_buffer->c_str(), 1, export_buffer->size(), file);
         fclose(file);
 
-        if (written != buffer.size())
+        if (written != export_buffer->size())
         {
             boost::filesystem::remove(export_path);
             throw Slic3r::ExportError(GUI::format(_L("Failed to write complete G-code to file: %1%"), export_path));
@@ -768,15 +783,11 @@ void BackgroundSlicingProcess::direct_export_gcode(const std::string &path, bool
 // and sets the source path on the upload job so it's ready for enqueue().
 void BackgroundSlicingProcess::direct_prepare_upload(Slic3r::PrintHostJob &upload_job)
 {
-    // Get virtual file from memory
-    VirtualGCodeFile *vf_to_export = nullptr;
-    if (m_gcode_result)
-    {
-        vf_to_export = m_gcode_result->output_virtual_file ? m_gcode_result->output_virtual_file
-                                                           : m_gcode_result->virtual_gcode_file;
-    }
+    const std::string *export_buffer = (m_gcode_result && m_gcode_result->gcode_object)
+                                           ? &m_gcode_result->gcode_object->text_buffer()
+                                           : nullptr;
 
-    if (!vf_to_export)
+    if (!export_buffer)
     {
         throw Slic3r::ExportError("No G-code available for upload. Please slice the model first.");
     }
@@ -786,18 +797,16 @@ void BackgroundSlicingProcess::direct_prepare_upload(Slic3r::PrintHostJob &uploa
                                           boost::filesystem::unique_path("." SLIC3R_APP_KEY
                                                                          ".upload.%%%%-%%%%-%%%%-%%%%");
 
-    // Bulk write the entire G-code buffer to the temp file
-    const std::string &buffer = vf_to_export->get_buffer();
     FILE *file = boost::nowide::fopen(source_path.string().c_str(), "wb");
     if (!file)
     {
         throw Slic3r::ExportError("Failed to open temporary file for upload");
     }
 
-    size_t written = fwrite(buffer.c_str(), 1, buffer.size(), file);
+    size_t written = fwrite(export_buffer->c_str(), 1, export_buffer->size(), file);
     fclose(file);
 
-    if (written != buffer.size())
+    if (written != export_buffer->size())
     {
         boost::filesystem::remove(source_path);
         throw Slic3r::ExportError("Failed to write G-code to temporary file for upload");
@@ -817,6 +826,25 @@ void BackgroundSlicingProcess::direct_prepare_upload(Slic3r::PrintHostJob &uploa
     upload_job.upload_data.source_path = std::move(source_path);
 }
 
+// Export G-code via a user-provided Python script.
+// The script receives the G-code as a list of lines and handles all output.
+void BackgroundSlicingProcess::direct_export_to_script(const std::string &script_path,
+                                                       const std::string &output_filename)
+{
+    const std::string *export_buffer = (m_gcode_result && m_gcode_result->gcode_object)
+                                           ? &m_gcode_result->gcode_object->text_buffer()
+                                           : nullptr;
+    if (!export_buffer)
+        throw Slic3r::ExportError("No G-code available for export");
+
+    ExportScriptResult result = run_export_script(script_path, *export_buffer, output_filename);
+
+    if (!result.success)
+        throw Slic3r::ExportError(result.error_message);
+
+    m_print->set_status(100, _u8L("G-code exported via script"));
+}
+
 // G-code is generated in m_temp_output_path.
 // Optionally run a post-processing script on a copy of m_temp_output_path.
 // Copy the final G-code to target location (possibly a SD card, if it is a removable media, then verify that the file was written without an error).
@@ -826,17 +854,12 @@ void BackgroundSlicingProcess::finalize_gcode(const std::string &path, const boo
 
     // Perform the final post-processing of the export path by applying the print statistics over the file name.
     std::string export_path = m_fff_print->print_statistics().finalize_output_path(path);
-    // Check if we have a virtual file to export
-    VirtualGCodeFile *vf_to_export = nullptr;
-    if (m_gcode_result)
-    {
-        vf_to_export = m_gcode_result->output_virtual_file ? m_gcode_result->output_virtual_file
-                                                           : m_gcode_result->virtual_gcode_file;
-    }
+    const std::string *export_buffer = (m_gcode_result && m_gcode_result->gcode_object)
+                                           ? &m_gcode_result->gcode_object->text_buffer()
+                                           : nullptr;
 
-    if (vf_to_export)
+    if (export_buffer)
     {
-        // Write virtual file directly to export path
         try
         {
             FILE *file = boost::nowide::fopen(export_path.c_str(), "wb");
@@ -845,51 +868,15 @@ void BackgroundSlicingProcess::finalize_gcode(const std::string &path, const boo
                 throw Slic3r::ExportError(GUI::format(_L("Failed to open G-code file for writing: %1%"), export_path));
             }
 
-            // Write in large chunks to minimize system calls
-            const size_t CHUNK_SIZE = 32 * 1024 * 1024;      // 32MB chunks
-            const size_t FILE_BUFFER_SIZE = 8 * 1024 * 1024; // 8MB file buffer
-
-            // Set large file buffer to reduce kernel calls
-            setvbuf(file, nullptr, _IOFBF, FILE_BUFFER_SIZE);
-
-            // Reserve chunk buffer
-            std::string chunk_buffer;
-            chunk_buffer.reserve(CHUNK_SIZE);
-
-            // Accumulate lines into chunks and write
-            for (size_t i = 0; i < vf_to_export->line_count(); ++i)
-            {
-                std::string line = vf_to_export->get_line(i);
-                chunk_buffer.append(line);
-
-                // Write chunk when it's large enough
-                if (chunk_buffer.size() >= CHUNK_SIZE)
-                {
-                    if (fwrite(chunk_buffer.c_str(), 1, chunk_buffer.size(), file) != chunk_buffer.size())
-                    {
-                        fclose(file);
-                        boost::filesystem::remove(export_path);
-                        throw Slic3r::ExportError(GUI::format(_L("Failed to write G-code to file: %1%"), export_path));
-                    }
-                    chunk_buffer.clear();
-                }
-            }
-
-            // Write any remaining data
-            if (!chunk_buffer.empty())
-            {
-                if (fwrite(chunk_buffer.c_str(), 1, chunk_buffer.size(), file) != chunk_buffer.size())
-                {
-                    fclose(file);
-                    boost::filesystem::remove(export_path);
-                    throw Slic3r::ExportError(GUI::format(_L("Failed to write G-code to file: %1%"), export_path));
-                }
-            }
-
+            size_t written = fwrite(export_buffer->c_str(), 1, export_buffer->size(), file);
             fclose(file);
 
-            // Run post-processing scripts on the exported file (in-place, no temp copy
-            // needed since preview reads from the in-memory virtual file, not this file)
+            if (written != export_buffer->size())
+            {
+                boost::filesystem::remove(export_path);
+                throw Slic3r::ExportError(GUI::format(_L("Failed to write G-code to file: %1%"), export_path));
+            }
+
             run_post_process_scripts(export_path, m_fff_print->full_print_config());
         }
         catch (const std::exception &e)

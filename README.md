@@ -74,6 +74,8 @@ To ensure the integrity of your installation and protect yourself, please follow
 | **Athena Perimeter Generator** | Independent overlap control no other slicer offers |
 | **Interlocking Perimeters** | Enhanced Z-bonding without added cost or complexity |
 | **G-code Preprocessing** | Python scripting runs in-process during slicing, not as a post-export step |
+| **Export to Script** | Python-based export to any destination: disk, FTP, networked printers, all at once |
+| **CMYK+W Color Mixing** | Beer-Lambert transmission physics with up to 512 palette entries |
 | **True 64-bit Architecture** | No coordinate overflow, no silent failures |
 | **High Precision** | Clipper2 compiled with 10-decimal high precision |
 | **In-Memory Processing** | No temp files, ~50% less RAM usage |
@@ -110,10 +112,6 @@ We forked Arachne to modernize it in several ways. Athena uses **fixed extrusion
 - Full thin wall support
 - Configurable thin wall snap grid (0.001 - 0.1mm) to control width oscillation on uniform thin walls
 
-**When to Use Athena:** You need control over how perimeters bond, want consistent external perimeter width, or are tuning for strength/flex behavior.
-
-**When to Use Arachne:** You prefer automatic overlap calculation or don't care about perimeter spacing.
-
 <br>
 
 ### Interlocking Perimeters
@@ -142,7 +140,7 @@ A novel approach to layer bonding using **spacing variation and compression bond
 
 ### G-code Preprocessing (Python Scripting)
 
-**Embedded Python scripting engine with 150+ APIs and full access to all slicer settings.**
+**Embedded Python scripting engine with 150 APIs and full access to all slicer settings.**
 
 Run Python scripts against sliced G-code before preview and export. Pre-processing runs inside the slicing pipeline, giving scripts access to move data, layer structure, settings, and raw G-code that no external post-processor can match.
 
@@ -153,12 +151,42 @@ Run Python scripts against sliced G-code before preview and export. Pre-processi
 - **Full G-code control** - Insert, rewrite, prepend, append, annotate moves with optional comments
 - **State isolation** - Each script run snapshots and restores sys.path, sys.modules, signal handlers, and CWD
 - **Error reporting** - Script errors surface as breadcrumb notifications with line numbers
-- **18 sample scripts included** - Pressure advance tuning, flow limiting, fan curves, motion optimization, and more
+- **19 sample scripts included** - Pressure advance tuning, flow limiting, fan curves, motion optimization, and more
 - **Type stubs** - `preFlight.py` stub for autocomplete/intellisense in external editors
+- **Security** - Consent dialog required on first enable. 3MF files with script references prompt the user on load
 
 <br>
 
-## Exclusive Features
+### Export to Script
+
+**A Python-based export pathway that hands G-code to a user-configured script for output handling.**
+
+After slicing, click "Export to Script" and preFlight passes the finished G-code to your Python script. The script receives `gcode.data` (a mutable list of G-code lines) and `gcode.filename` (the suggested output filename). What happens next is your code: save to disk, upload via FTP, send to any networked printer, or all three at once.
+
+- **Standard Python** - No proprietary API. `gcode.data` is a plain `List[str]`, fully mutable
+- **Multi-destination** - A single script can output to multiple targets simultaneously
+- **Bundled runtime** - Uses the same embedded Python interpreter as Preprocessing
+- **Sample scripts included** - Save to folder, FTPS upload (implicit TLS, port 990), save and upload
+- **Type stubs** - `preFlight.py` stub for IDE autocomplete on the `ExportGCode` object
+- **Security** - Consent dialog required on first enable. 3MF files with script references prompt the user on load
+
+<br>
+
+### CMYK+W Color Mixing (Preview)
+
+**Multi-filament color blending using Beer-Lambert transmission physics.**
+
+Paint any achievable color directly onto your model. The color prediction uses Beer-Lambert transmission with a per-filament Transmission Distance (TD) so the preview adapts to the actual translucency of each spool rather than a fixed pigment-blend approximation.
+
+- **Target color solving** - Enter a hex color and the optimizer searches pairwise and single-filament candidates across all ratios, scored with CIEDE2000 delta-E
+- **Up to 512 palette entries** - Auto-generated from pure filaments, pairwise blends, tints, shades, and triples
+- **16-bit state** - Up to 65,535 recipes per volume (256x the upstream 8-bit limit)
+- **TD1S sensor integration** - Measure spool translucency, write TD into the preset, and both preview and pattern-solving consume the measured value
+- **Eyedropper** - Alt+click to pick the painted state under the cursor into the active brush slot
+- **Base layer lock** - Lock the bottom N layers to a single filament for a uniform bottom face
+- **Stable palette IDs** - Painted intent survives filament swaps via FNV-1a keying and runtime re-resolution
+
+<br>
 
 ### True 64-bit Architecture
 
@@ -312,7 +340,7 @@ Hover over the G-code window and scroll to scrub through commands in real-time. 
 
 ### OrcaSlicer Profile Import
 
-Import printer, filament, and process profiles from `.orca_printer`, `.orca_filament`, and `.zip` bundles via File > Import > Import OrcaSlicer Bundle. Includes key mapping with value transforms, bed temperature plate selection, G-code macro translation, and a results dialog showing imported profiles, lossy mappings, dropped settings, and G-code warnings.
+PrusaSlicer profiles import natively. OrcaSlicer profiles go through a 230+ setting mapping engine: import printer, filament, and process profiles from `.orca_printer`, `.orca_filament`, and `.zip` bundles via File > Import > Import OrcaSlicer Bundle. Includes key mapping with value transforms, bed temperature plate selection, G-code macro translation, and a results dialog showing imported profiles, lossy mappings, dropped settings, and G-code warnings.
 
 <br>
 

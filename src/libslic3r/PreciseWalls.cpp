@@ -120,11 +120,12 @@ ConfigOptionFloatOrPercent PreciseWalls::get_effective_perimeter_overlap(const C
 // - Gap-filled widths (explicitly set by applyGapFillingAdjustments) = intentionally different
 // We only need to snap floating-point drift to exact nominal values.
 void PreciseWalls::enforce_exact_widths(std::vector<Athena::VariableWidthLines> &perimeters, coord_t ext_width,
-                                        coord_t int_width)
+                                        coord_t int_width, coord_t snap_precision)
 {
-    // Snap floating-point drift to exact nominal widths (e.g., 0.500001mm -> 0.5mm)
-    // Anything significantly different is intentional (gap-fill) and should be preserved
-    constexpr coord_t drift_tolerance = 1; // 1 nanometer (1nm in scaled units)
+    // Snap widths that are close to nominal back to exact values.
+    // Uses the same snap precision grid as thin wall snapping so that percentage-derived
+    // widths (which may not land on clean float values) get snapped consistently.
+    coord_t snap_threshold = snap_precision / 2;
 
     for (auto &perimeter_level : perimeters)
     {
@@ -134,12 +135,10 @@ void PreciseWalls::enforce_exact_widths(std::vector<Athena::VariableWidthLines> 
 
             for (auto &junction : extrusion_line.junctions)
             {
-                // Only snap if within 1nm (floating point drift)
-                if (std::abs(junction.w - target_width) <= drift_tolerance)
+                if (std::abs(junction.w - target_width) <= snap_threshold)
                 {
                     junction.w = target_width;
                 }
-                // else: intentionally different (gap-filled), preserve it
             }
         }
     }

@@ -106,7 +106,8 @@ class Preview : public wxPanel
     bool m_keep_current_preview_type{false};
 
     bool m_loaded{false};
-    int m_last_layer_pos{-1}; // Layer position to restore after reslice (-1 = no restore)
+    bool m_preview_gpu_loaded{false};
+    int m_last_layer_pos{-1};
 
     std::unique_ptr<DoubleSlider::DSForLayers> m_layers_slider{nullptr};
     std::unique_ptr<DoubleSlider::DSForGcode> m_moves_slider{nullptr};

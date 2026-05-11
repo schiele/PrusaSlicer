@@ -7,7 +7,7 @@
 ///|/
 #include "libslic3r/libslic3r.h"
 #include "GCodeViewer.hpp"
-#include "../../libslic3r/GCode/VirtualGCodeFile.hpp"
+#include "../../libslic3r/GCode/GCodeObject.hpp"
 
 #include "libslic3r/BuildVolume.hpp"
 #include "libslic3r/Print.hpp"
@@ -815,10 +815,7 @@ void GCodeViewer::SequentialView::GCodeWindow::load_gcode(const GCodeProcessorRe
     m_filename = gcode_result.filename;
     m_is_binary_file = gcode_result.is_binary_file;
 
-    // Prefer output virtual file (post-processed with M73), fall back to input
-    // FIXED: Always use lines_ends from processor - don't create our own
-    m_virtual_file = gcode_result.output_virtual_file ? gcode_result.output_virtual_file
-                                                      : gcode_result.virtual_gcode_file;
+    m_gcode_object_ref = &gcode_result.gcode_object;
 
     // Always use lines_ends from gcode_result - it's properly populated by the processor
     m_lines_ends = gcode_result.lines_ends;
@@ -863,7 +860,7 @@ void GCodeViewer::SequentialView::GCodeWindow::render(float top, float bottom, s
         m_lines_cache.clear();
         m_lines_cache.reserve(m_cache_range.size());
 
-        if (m_virtual_file != nullptr)
+        if (gcode_object() != nullptr)
         {
             // Read lines directly from the virtual file
             for (size_t id = *m_cache_range.min; id <= *m_cache_range.max; ++id)
@@ -871,9 +868,9 @@ void GCodeViewer::SequentialView::GCodeWindow::render(float top, float bottom, s
                 assert(id > 0);
                 // Virtual file is 0-indexed, but line IDs are 1-indexed
                 size_t vf_index = id - 1;
-                if (vf_index < m_virtual_file->line_count())
+                if (vf_index < gcode_object()->line_count())
                 {
-                    std::string line = m_virtual_file->get_line(vf_index);
+                    std::string line(gcode_object()->get_line_text(vf_index));
                     // Remove trailing newline for display
                     if (!line.empty() && line.back() == '\n')
                     {
@@ -1044,10 +1041,10 @@ void GCodeViewer::SequentialView::GCodeWindow::render(float top, float bottom, s
     // m_visible = true; // Removed to hide during slicing like the legend
 
     // Always return early if no data is available (prevents showing stale data)
-    if (m_virtual_file != nullptr)
+    if (gcode_object() != nullptr)
     {
         // When using virtual file, we don't need a filename
-        if (m_virtual_file->line_count() == 0)
+        if (gcode_object()->line_count() == 0)
         {
             return;
         }
@@ -1063,10 +1060,10 @@ void GCodeViewer::SequentialView::GCodeWindow::render(float top, float bottom, s
 
     // Calculate total lines available
     size_t lines_ends_count = 0;
-    if (m_virtual_file != nullptr)
+    if (gcode_object() != nullptr)
     {
         // When using virtual file, count lines directly
-        lines_ends_count = m_virtual_file->line_count();
+        lines_ends_count = gcode_object()->line_count();
     }
     else
     {
@@ -1144,10 +1141,10 @@ void GCodeViewer::SequentialView::GCodeWindow::render(float top, float bottom, s
         return;
     }
 
-    if (m_virtual_file != nullptr)
+    if (gcode_object() != nullptr)
     {
         // When using virtual file, we don't need lines_ends
-        if (m_virtual_file->line_count() == 0)
+        if (gcode_object()->line_count() == 0)
         {
             if (gcode_legend_font)
                 ImGui::PopFont();
@@ -1204,7 +1201,7 @@ void GCodeViewer::SequentialView::GCodeWindow::render(float top, float bottom, s
 
     // Virtual file (in-memory from slicing) takes priority over file-based readers.
     // Binary gcode format only applies to on-disk files.
-    const bool use_binary = m_is_binary_file && m_virtual_file == nullptr;
+    const bool use_binary = m_is_binary_file && gcode_object() == nullptr;
 
     // update cache if needed
     if (m_cache_range.empty() || !m_cache_range.contains(visible_range))

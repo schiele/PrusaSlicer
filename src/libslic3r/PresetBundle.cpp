@@ -408,7 +408,8 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
                                                                  compatibility_rule)
                                               .first);
                     std::vector<std::string> duplicates = this->merge_presets(std::move(other));
-                    if (!duplicates.empty())
+                    // Skip duplicate warnings for local profiles - overlapping names are expected
+                    if (!duplicates.empty() && !boost::algorithm::iends_with(name, "_local"))
                     {
                         errors_cummulative += "Vendor configuration file " + name +
                                               " contains the following presets with names used by other vendors: ";

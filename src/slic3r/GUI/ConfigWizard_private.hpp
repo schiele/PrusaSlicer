@@ -245,6 +245,7 @@ struct PageUpdateManager : ConfigWizardPage
 
     PageUpdateManager(ConfigWizard *parent);
     void populate_vendor_list();
+    void import_local_vendor_bundle();
 };
 
 struct PagePrinters : ConfigWizardPage

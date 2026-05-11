@@ -1,0 +1,53 @@
+Export to Script - preFlight
+============================
+
+Export to Script lets you run a Python script when exporting G-code.
+The script receives the G-code data and decides what to do with it:
+save to a folder, upload via FTP, send to a network printer, or all of the above.
+
+Setup
+-----
+1. Go to Print Settings > Output options > Export to Script
+2. Check "Enable export script"
+3. Browse to select your Python script (.py file)
+4. After slicing, click the Export dropdown and choose "Export to Script"
+
+Writing a Script
+----------------
+Your script must define an export(gcode) function:
+
+    def export(gcode):
+        # gcode.data     - list of strings, one per G-code line (with trailing newline)
+        # gcode.filename - suggested output filename (string)
+
+        # Write to disk
+        with open(f"/path/to/{gcode.filename}", 'w') as f:
+            f.writelines(gcode.data)
+
+The gcode.data list is mutable. You can modify, insert, or remove lines
+before writing. Standard Python list operations all work:
+
+    gcode.data.insert(0, "; My custom header\n")
+    gcode.data = [line for line in gcode.data if not line.startswith("M300")]
+    gcode.data.append("; End of file\n")
+
+The script runs using preFlight's embedded Python interpreter.
+Standard library modules (ftplib, ssl, io, json, os, etc.) are available.
+Packages installed via pip in preFlight's bundled Python are also available.
+
+Sample Scripts
+--------------
+The samples/ folder contains ready-to-use scripts:
+
+  save_to_folder.py   - Save G-code to a configurable output folder
+  ftps_upload.py      - Upload via FTPS (implicit TLS, port 990)
+  save_and_upload.py  - Save locally AND upload via FTPS
+
+Copy a sample, edit the configuration section at the top, and point
+Export to Script at your copy.
+
+Type Hints (IDE Support)
+------------------------
+The preFlight.py file provides type stubs for IDE auto-completion.
+Copy it alongside your script or add this folder to your IDE's
+extra paths for full IntelliSense support.

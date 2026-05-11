@@ -27,7 +27,7 @@ namespace Slic3r
 {
 
 class Print;
-class VirtualGCodeFile;
+class GCodeObject;
 
 enum class EMoveType : unsigned char
 {
@@ -196,10 +196,8 @@ struct GCodeProcessorResult
     std::array<RoleMetrics, static_cast<size_t>(GCodeExtrusionRole::Count)> role_metrics{};
     RoleMetrics overall_metrics{};
 
-    VirtualGCodeFile *virtual_gcode_file = nullptr;  // Input (from generator)
-    VirtualGCodeFile *output_virtual_file = nullptr; // Output (post-processed with M73)
-    bool owns_virtual_file = false;                  // Whether this result owns the input file
-    bool owns_output_virtual_file = false;           // Whether this result owns the output file
+    GCodeObject *gcode_object = nullptr;
+    bool owns_gcode_object = false;
 
     ~GCodeProcessorResult();
 
@@ -211,6 +209,9 @@ struct GCodeProcessorResult
     GCodeProcessorResult &operator=(const GCodeProcessorResult &) = delete;
 
     void reset();
+
+    // Free move data and line linkage after preview load, keeping text for export.
+    void release_preview_data();
 };
 
 struct FirmwareRetractionConfig
@@ -445,7 +446,8 @@ private:
 
         void calculate_time(GCodeProcessorResult &result, PrintEstimatedStatistics::ETimeMode mode,
                             size_t keep_last_n_blocks = 0, float additional_time = 0.0f, float time_compensation = 0.0f,
-                            std::function<void(int)> progress_callback = nullptr);
+                            std::function<void(int)> progress_callback = nullptr,
+                            bool skip_speed_interpolation = false);
     };
 
     struct TimeProcessor
@@ -677,8 +679,15 @@ private:
     GCodeProcessorResult m_result;
     static unsigned int s_result_id;
 
-    VirtualGCodeFile *m_virtual_file = nullptr;
-    bool m_use_virtual_file = false;
+    // Preview detail threshold: skip accel/decel speed interpolation when move
+    // count exceeds this value. 0 = full detail (no limit). Read from AppConfig.
+    size_t m_preview_detail_threshold = 10'000'000;
+    bool m_large_print_optimization_applied = false;
+
+    // Per-job state for calculate_time progress reporting (was static locals)
+    size_t m_ct_total_lines = 0;
+    size_t m_ct_last_move_count = 0;
+    int m_ct_last_progress = 50;
 
 public:
     GCodeProcessor();
@@ -722,11 +731,8 @@ public:
     void process_buffer(const std::string &buffer);
     void finalize(bool post_process);
 
-    void set_virtual_file(VirtualGCodeFile *file)
-    {
-        m_virtual_file = file;
-        m_use_virtual_file = (file != nullptr);
-    }
+    void set_gcode_object(GCodeObject *gco);
+    void set_preview_detail_threshold(size_t threshold) { m_preview_detail_threshold = threshold; }
 
     float get_time(PrintEstimatedStatistics::ETimeMode mode) const;
     std::string get_time_dhm(PrintEstimatedStatistics::ETimeMode mode) const;
@@ -890,7 +896,7 @@ private:
     // 2) update used filament data
     void post_process();
 
-    void post_process_virtual_file();
+    void post_process_gcode_object();
 
     void store_move_vertex(EMoveType type, bool internal_only = false);
 

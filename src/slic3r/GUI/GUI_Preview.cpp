@@ -1148,9 +1148,6 @@ void Preview::move_slider_by_key(int arrow_key, int delta, bool from_gcode_scrol
 
 void Preview::update_moves_slider(std::optional<int> visible_range_min, std::optional<int> visible_range_max)
 {
-    if (active_gcode_result()->moves.empty())
-        return;
-
     const libvgcode::Interval &range = m_canvas->get_gcode_view_enabled_range();
     uint32_t last_gcode_id = m_canvas->get_gcode_vertex_at(range[0]).gcode_id;
     std::optional<uint32_t> gcode_id_min =
@@ -1276,7 +1273,11 @@ void Preview::load_print_as_fff(bool keep_z_range)
     }
 
     libvgcode::EViewType gcode_view_type = m_canvas->get_gcode_view_type();
-    const bool gcode_preview_data_valid = !active_gcode_result()->moves.empty();
+    // GPU preview is valid if: moves exist (fresh slice), OR moves were freed after GPU
+    // upload but gcode_object still exists (distinguishes from result reset for new slice)
+    if (m_preview_gpu_loaded && !active_gcode_result()->gcode_object)
+        m_preview_gpu_loaded = false;
+    const bool gcode_preview_data_valid = !active_gcode_result()->moves.empty() || m_preview_gpu_loaded;
     const bool is_pregcode_preview = !gcode_preview_data_valid && wxGetApp().is_editor();
 
     const std::vector<std::string> tool_colors = wxGetApp().plater()->get_extruder_color_strings_from_plater_config(
@@ -1301,7 +1302,11 @@ void Preview::load_print_as_fff(bool keep_z_range)
         {
             // Load the real G-code preview.
             m_canvas->load_gcode_preview(*active_gcode_result(), tool_colors, color_print_colors);
-            // the view type may have been changed by the call m_canvas->load_gcode_preview()
+            if (!m_preview_gpu_loaded)
+            {
+                m_preview_gpu_loaded = true;
+                active_gcode_result()->release_preview_data();
+            }
             gcode_view_type = m_canvas->get_gcode_view_type();
             zs = m_canvas->get_gcode_layers_zs();
             m_loaded = true;

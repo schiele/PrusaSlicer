@@ -2020,6 +2020,8 @@ wxPanel *PrintSettingsPanel::BuildAdvancedContent()
     // Extrusion width group
     {
         auto *width_group = CreateFlatStaticBoxSizer(content, _L("Extrusion width"));
+        CreateSettingRow(content, width_group, "extrusion_width_percent_of_nozzle",
+                         _L("Percentages relative to nozzle size"));
         CreateSettingRow(content, width_group, "extrusion_width", _L("Default extrusion width"));
 
         // "Set all widths to default extrusion width" button - centered
@@ -2081,7 +2083,7 @@ wxPanel *PrintSettingsPanel::BuildAdvancedContent()
         CreateSettingRow(content, width_group, "support_material_extrusion_width", _L("Support material"));
         CreateSettingRow(content, width_group, "support_material_interface_extrusion_width",
                          _L("Support material interface"));
-        CreateSettingRow(content, width_group, "automatic_extrusion_widths", _L("Automatic extrusion widths"));
+        CreateSettingRow(content, width_group, "automatic_extrusion_widths", _L("Auto extrusion widths"));
         sizer->Add(width_group, 0, wxEXPAND | wxALL, em / 4);
     }
 
@@ -6534,17 +6536,28 @@ wxPanel *FilamentSettingsPanel::BuildFilamentContent()
     auto *sizer = new wxBoxSizer(wxVERTICAL);
     int em = wxGetApp().em_unit();
 
-    // Filament group
+    // Properties group
     {
-        auto *filament_group = CreateFlatStaticBoxSizer(content, _L("Filament"));
-        CreateSettingRow(content, filament_group, "filament_colour", _L("Color"));
-        CreateSettingRow(content, filament_group, "filament_transmission_distance", _L("Transmission distance"));
-        CreateSettingRow(content, filament_group, "filament_diameter", _L("Diameter"));
-        CreateSettingRow(content, filament_group, "extrusion_multiplier", _L("Extrusion multiplier"));
-        CreateSettingRow(content, filament_group, "filament_density", _L("Density"));
-        CreateSettingRow(content, filament_group, "filament_cost", _L("Cost"));
-        CreateSettingRow(content, filament_group, "filament_spool_weight", _L("Spool weight"));
-        sizer->Add(filament_group, 0, wxEXPAND | wxALL, em / 4);
+        auto *props_group = CreateFlatStaticBoxSizer(content, _L("Properties"));
+        CreateSettingRow(content, props_group, "filament_type", _L("Filament type"));
+        CreateSettingRow(content, props_group, "filament_colour", _L("Color"));
+        CreateSettingRow(content, props_group, "filament_soluble", _L("Soluble material"));
+        CreateSettingRow(content, props_group, "filament_abrasive", _L("Abrasive material"));
+        CreateSettingRow(content, props_group, "filament_transmission_distance", _L("Transmission distance"));
+        CreateSettingRow(content, props_group, "filament_diameter", _L("Diameter"));
+        CreateSettingRow(content, props_group, "extrusion_multiplier", _L("Extrusion multiplier"));
+        CreateSettingRow(content, props_group, "filament_density", _L("Density"));
+        CreateSettingRow(content, props_group, "filament_cost", _L("Cost"));
+        CreateSettingRow(content, props_group, "filament_spool_weight", _L("Spool weight"));
+        sizer->Add(props_group, 0, wxEXPAND | wxALL, em / 4);
+    }
+
+    // Pressure advance group
+    {
+        auto *pa_group = CreateFlatStaticBoxSizer(content, _L("Pressure advance"));
+        CreateSettingRow(content, pa_group, "filament_enable_pressure_advance", _L("Enable pressure advance"));
+        CreateSettingRow(content, pa_group, "filament_pressure_advance", _L("Pressure advance"));
+        sizer->Add(pa_group, 0, wxEXPAND | wxALL, em / 4);
     }
 
     // Temperature group
@@ -6662,15 +6675,6 @@ wxPanel *FilamentSettingsPanel::BuildAdvancedContent()
     content->SetForegroundColour(SidebarColors::Foreground());
     auto *sizer = new wxBoxSizer(wxVERTICAL);
     int em = wxGetApp().em_unit();
-
-    // Filament properties group
-    {
-        auto *props_group = CreateFlatStaticBoxSizer(content, _L("Filament properties"));
-        CreateSettingRow(content, props_group, "filament_type", _L("Filament type"));
-        CreateSettingRow(content, props_group, "filament_soluble", _L("Soluble material"));
-        CreateSettingRow(content, props_group, "filament_abrasive", _L("Abrasive material"));
-        sizer->Add(props_group, 0, wxEXPAND | wxALL, em / 4);
-    }
 
     // Print speed override group
     {
@@ -8613,6 +8617,10 @@ void FilamentSettingsPanel::ApplyToggleLogic()
     bool multitool_ramming = config.opt_bool("filament_multitool_ramming", 0);
     ToggleOption("filament_multitool_ramming_volume", multitool_ramming);
     ToggleOption("filament_multitool_ramming_flow", multitool_ramming);
+
+    // Pressure advance value depends on enable checkbox
+    bool pa_enabled = config.opt_bool("filament_enable_pressure_advance", 0);
+    ToggleOption("filament_pressure_advance", pa_enabled);
 }
 
 void FilamentSettingsPanel::msw_rescale()

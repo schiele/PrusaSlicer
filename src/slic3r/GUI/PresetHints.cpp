@@ -194,16 +194,17 @@ std::string PresetHints::maximum_volumetric_flow_description(const PresetBundle 
                 speed_normal = first_layer_speed.get_abs_value(speed_normal);
             return (speed_normal > 0.) ? speed_normal : speed_max;
         };
+        bool pct_of_nozzle = print_config.opt_bool("extrusion_width_percent_of_nozzle");
         auto test_flow = [first_layer_extrusion_width_ptr, extrusion_width, nozzle_diameter, lh, bridging, bridge_speed,
                           bridge_flow_ratio, limit_by_first_layer_speed, max_print_speed, &max_flow,
-                          &max_flow_extrusion_type](FlowRole flow_role,
-                                                    const ConfigOptionFloatOrPercent &this_extrusion_width,
-                                                    double speed, const char *err_msg)
+                          &max_flow_extrusion_type,
+                          pct_of_nozzle](FlowRole flow_role, const ConfigOptionFloatOrPercent &this_extrusion_width,
+                                         double speed, const char *err_msg)
         {
             Flow flow = bridging ? Flow::new_from_config_width(flow_role,
                                                                first_positive(first_layer_extrusion_width_ptr,
                                                                               this_extrusion_width, extrusion_width),
-                                                               nozzle_diameter, lh)
+                                                               nozzle_diameter, lh, pct_of_nozzle)
                                  : Flow::bridging_flow(nozzle_diameter * bridge_flow_ratio, nozzle_diameter);
             double volumetric_flow = flow.mm3_per_mm() *
                                      (bridging ? bridge_speed : limit_by_first_layer_speed(speed, max_print_speed));
@@ -261,6 +262,7 @@ std::string PresetHints::recommended_thin_wall_thickness(const PresetBundle &pre
     int num_perimeters = print_config.opt_int("perimeters");
     bool thin_walls = print_config.opt_bool("thin_walls");
     float nozzle_diameter = float(printer_config.opt_float("nozzle_diameter", 0));
+    bool pct_of_nozzle = print_config.opt_bool("extrusion_width_percent_of_nozzle");
 
     std::string out;
     if (layer_height <= 0.f)
@@ -281,11 +283,11 @@ std::string PresetHints::recommended_thin_wall_thickness(const PresetBundle &pre
             Flow external_perimeter_flow = Flow::new_from_config_width(frExternalPerimeter,
                                                                        *print_config.opt<ConfigOptionFloatOrPercent>(
                                                                            "external_perimeter_extrusion_width"),
-                                                                       nozzle_diameter, layer_height);
+                                                                       nozzle_diameter, layer_height, pct_of_nozzle);
             Flow perimeter_flow = Flow::new_from_config_width(frPerimeter,
                                                               *print_config.opt<ConfigOptionFloatOrPercent>(
                                                                   "perimeter_extrusion_width"),
-                                                              nozzle_diameter, layer_height);
+                                                              nozzle_diameter, layer_height, pct_of_nozzle);
             double width = external_perimeter_flow.width() + external_perimeter_flow.spacing();
             for (int i = 2; i <= num_lines; thin_walls ? ++i : i += 2)
             {

@@ -740,8 +740,6 @@ double ConfigBase::get_abs_value(const t_config_option_key &opt_key) const
         const ConfigOptionDef *opt_def = def->get(opt_key);
         assert(opt_def != nullptr);
         // Compute absolute value over the absolute value of the base option.
-        //FIXME there are some ratio_over chains, which end with empty ratio_with.
-        // For example, XXX_extrusion_width parameters are not handled by get_abs_value correctly.
         return opt_def->ratio_over.empty() ? 0.
                                            : static_cast<const ConfigOptionFloatOrPercent *>(raw_opt)->get_abs_value(
                                                  this->get_abs_value(opt_def->ratio_over));

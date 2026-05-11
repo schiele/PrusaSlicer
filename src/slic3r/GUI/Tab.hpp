@@ -452,6 +452,9 @@ protected:
     std::string m_preprocessing_enable_key;
     std::string m_preprocessing_scripts_key;
     void update_preprocessing_panel_visibility();
+
+    wxPanel *m_export_script_panel{nullptr};
+    void update_export_script_panel_visibility();
     void compatible_widget_reload(PresetDependencies &deps);
     void load_key_value(const std::string &opt_key, const boost::any &value, bool saved_value = false);
 
@@ -495,6 +498,7 @@ private:
     ogStaticText *m_recommended_thin_wall_thickness_description_line = nullptr;
     ogStaticText *m_top_bottom_shell_thickness_explanation = nullptr;
     ogStaticText *m_post_process_explanation = nullptr;
+    ogStaticText *m_export_script_explanation = nullptr;
     ScalableButton *m_del_all_substitutions_btn{nullptr};
     SubstitutionManager m_subst_manager;
 };

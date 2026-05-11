@@ -161,6 +161,15 @@ void AppConfig::set_defaults()
         if (get("canvas_msaa").empty())
             set("canvas_msaa", "auto");
 
+        if (get("preview_detail").empty())
+        {
+#if defined(__linux__) && defined(__aarch64__)
+            set("preview_detail", "1000000");
+#else
+            set("preview_detail", "10000000");
+#endif
+        }
+
         if (get("use_inches").empty())
             set("use_inches", "0");
 

@@ -53,6 +53,15 @@
 #include "libslic3r/Polyline.hpp"
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/ShortestPath.hpp"
+#include "libslic3r/PerfTiming.hpp"
+
+namespace Slic3r
+{
+PerfAccumTimer g_mf_group_fills;
+PerfAccumTimer g_mf_intersection;
+PerfAccumTimer g_mf_fill_surface;
+std::atomic<int> g_mf_layer_count{0};
+} // namespace Slic3r
 
 namespace Slic3r
 {
@@ -348,6 +357,7 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
     // We always collect top solid polygons (needed for both merge and concentric fallback).
     bool config_allows_merge = false;
     std::vector<Polygons> region_top_solid_polygons(layer.regions().size());
+    std::vector<BoundingBox> region_top_solid_bboxes(layer.regions().size());
 
     for (size_t region_id = 0; region_id < layer.regions().size(); ++region_id)
     {
@@ -367,27 +377,13 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                 append(region_top_solid_polygons[region_id], polys);
             }
         }
+        if (!region_top_solid_polygons[region_id].empty())
+            region_top_solid_bboxes[region_id] = get_extents(region_top_solid_polygons[region_id]);
     }
 
-    // Check if an internal solid surface is spatially adjacent to (touching/overlapping) any top solid surface
-    // in the same region. Returns true only when merge is enabled.
-    auto is_surface_adjacent_to_top_solid = [&](const Surface &surface, size_t region_id) -> bool
-    {
-        if (!config_allows_merge || surface.surface_type != stInternalSolid)
-            return false;
-
-        const Polygons &top_solid_polys = region_top_solid_polygons[region_id];
-        if (top_solid_polys.empty())
-            return false;
-
-        // Check if this internal solid surface intersects with any top solid surface
-        Polygons internal_polys = to_polygons(surface.expolygon);
-        Polygons intersection_result = intersection(internal_polys, top_solid_polys);
-        return !intersection_result.empty();
-    };
-
-    // Used to determine if internal solid should use concentric pattern when merge is disabled
-    auto is_internal_solid_touching_top = [&](const Surface &surface, size_t region_id) -> bool
+    // Check if an internal solid surface spatially intersects any top solid surface in the same region.
+    // Uses bbox pre-filter to skip expensive Clipper2 intersection when surfaces are clearly disjoint.
+    auto internal_solid_touches_top = [&](const Surface &surface, size_t region_id) -> bool
     {
         if (surface.surface_type != stInternalSolid)
             return false;
@@ -396,63 +392,12 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
         if (top_solid_polys.empty())
             return false;
 
+        BoundingBox surface_bb = surface.expolygon.contour.bounding_box();
+        if (!surface_bb.overlap(region_top_solid_bboxes[region_id]))
+            return false;
+
         Polygons internal_polys = to_polygons(surface.expolygon);
-        Polygons intersection_result = intersection(internal_polys, top_solid_polys);
-        return !intersection_result.empty();
-    };
-
-    // Check if a solid surface is too narrow for good rectilinear fill.
-    // Uses medial axis to find the MAXIMUM width anywhere in the surface.
-    // If max width < threshold, the surface is considered narrow.
-    // Returns the estimated maximum width of a solid surface in scaled coordinates.
-    // Uses area/perimeter ratio for fast reject, then medial axis for precision.
-    // The threshold_multiplier controls the fast-reject cutoff - pass the widest
-    // threshold you'll compare against to avoid unnecessary medial axis computation.
-    auto surface_max_width = [](const Surface &surface, const Flow &flow, float threshold_multiplier) -> coordf_t
-    {
-        if (!surface.is_solid())
-            return std::numeric_limits<coordf_t>::max();
-
-        const coordf_t threshold_width = flow.scaled_width() * threshold_multiplier;
-
-        // Estimate average width from area-to-perimeter ratio. Works for all shapes
-        // including annular rings where bounding box dimensions are misleading.
-        double total_perimeter = surface.expolygon.contour.length();
-        for (const Polygon &hole : surface.expolygon.holes)
-            total_perimeter += hole.length();
-        const coordf_t avg_width = total_perimeter > 0
-                                       ? coordf_t(2.0 * std::abs(surface.expolygon.area()) / total_perimeter)
-                                       : 0;
-
-        // Fast reject: if average width exceeds threshold, skip medial axis.
-        if (avg_width >= threshold_width)
-            return avg_width;
-
-        // Medial axis for precise local width measurement
-        const double min_width = flow.scaled_width() * 0.5;
-        const double max_width = 1e10;
-
-        ThickPolylines polylines;
-        surface.expolygon.medial_axis(min_width, max_width, &polylines);
-
-        // If medial axis returned nothing, use the average width estimate.
-        if (polylines.empty())
-            return avg_width;
-
-        // Find the maximum width anywhere in the medial axis
-        coordf_t max_found_width = 0;
-        for (const ThickPolyline &tp : polylines)
-        {
-            for (coordf_t w : tp.width)
-            {
-                if (w > max_found_width)
-                    max_found_width = w;
-            }
-        }
-
-        // Clamp against average width to guard against medial axis corner artifacts
-        // producing falsely small widths on large convex shapes.
-        return std::max(max_found_width, avg_width);
+        return !intersection(internal_polys, top_solid_polys).empty();
     };
 
     // Fill in a map of a region & surface to SurfaceFillParams.
@@ -478,34 +423,24 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                 params.pattern = region_config.fill_pattern.value;
                 params.density = float(region_config.fill_density);
 
+                const bool touches_top = internal_solid_touches_top(surface, region_id);
                 if (surface.is_solid())
                 {
                     params.density = 100.f;
-                    //FIXME for non-thick bridges, shall we allow a bottom surface pattern?
-                    // Use top fill pattern for actual top surfaces and internal solid surfaces that
-                    // are spatially adjacent to (touching) top solid surfaces
                     if (is_bridge)
                     {
                         params.pattern = ipMonotonic;
                     }
-                    else if (surface.is_top() || is_surface_adjacent_to_top_solid(surface, region_id))
+                    else if (surface.is_top() || (config_allows_merge && touches_top))
                     {
                         // Top surface, or internal solid adjacent to top when merge is enabled
                         params.pattern = region_config.top_fill_pattern.value;
                     }
-                    else if (!config_allows_merge && is_internal_solid_touching_top(surface, region_id))
+                    else if (!config_allows_merge && touches_top)
                     {
                         // When merge is disabled but internal solid is touching top solid,
                         // use concentric pattern for visual distinction
                         params.pattern = ipConcentric;
-                    }
-                    else if (surface.surface_type == stBottom && !is_bridge && layer.object()->has_support() &&
-                             layer.object()->config().support_material_contact_distance.value == stcgNoGap &&
-                             !layer.object()->config().support_material_bridge_no_gap)
-                    {
-                        // Non-bridge bottom over soluble support (bridge_no_gap OFF):
-                        // use solid_fill_pattern so this merges with adjacent stInternalSolid.
-                        params.pattern = region_config.solid_fill_pattern.value;
                     }
                     else if (surface.is_external())
                     {
@@ -519,31 +454,25 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                         params.pattern = region_config.solid_fill_pattern.value;
                     }
 
-                    // Compute surface width once for all narrow checks below.
-                    // Use the widest threshold for the fast-reject to avoid redundant medial axis calls.
+                    // Narrow surface detection via offset erosion. Each threshold gets its
+                    // own test since a binary "wider/narrower" answer at one threshold
+                    // can't be reused for a different threshold.
                     const Flow solid_flow = layerm.flow(frSolidInfill);
-                    float widest_threshold = 1.5f;
-                    if (region_config.narrow_to_athena.value)
-                        widest_threshold = std::max(widest_threshold,
-                                                    float(region_config.narrow_to_athena_threshold.value));
-                    const coordf_t surf_width = is_bridge ? std::numeric_limits<coordf_t>::max()
-                                                          : surface_max_width(surface, solid_flow, widest_threshold);
+                    const bool is_narrow_1_5x =
+                        !is_bridge && surface.is_solid() &&
+                        offset_ex(surface.expolygon, -float(solid_flow.scaled_width() * 1.5f) / 2.f).empty();
 
                     // When Athena perimeters converge, a narrow sliver may be created that should be covered
                     // by perimeters but gets classified as a fill surface. Skip these very narrow surfaces
                     // for stTop and stBottom only (internal solid may legitimately need filling).
-                    // Threshold: 1.5x extrusion width - if narrower, perimeters should cover it.
-                    if (surface.surface_type == stTop || surface.surface_type == stBottom)
+                    if (is_narrow_1_5x && (surface.surface_type == stTop || surface.surface_type == stBottom))
                     {
-                        // Don't skip large surfaces - area guard ensures only tiny slivers are skipped.
                         const double area_threshold = sqr(solid_flow.scaled_width() * 1.5f) * 4.0;
-                        if (std::abs(surface.expolygon.area()) < area_threshold &&
-                            surf_width < solid_flow.scaled_width() * 1.5f)
+                        if (std::abs(surface.expolygon.area()) < area_threshold)
                         {
-                            double a = std::abs(surface.expolygon.area()) * 1e-12;
                             dbg_fill_print("z=%.3f [FILL] SKIP_NARROW type=%-18s area=%8.4fmm2\n", layer.print_z,
-                                           dbg_stype(surface.surface_type), a);
-                            continue; // Skip this surface entirely - too narrow to fill
+                                           dbg_stype(surface.surface_type), std::abs(surface.expolygon.area()) * 1e-12);
+                            continue;
                         }
                     }
 
@@ -554,19 +483,21 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                         params.pattern != ipEnsuring && region_config.narrow_to_athena.value)
                     {
                         const float threshold = float(region_config.narrow_to_athena_threshold.value);
-                        if (surf_width < solid_flow.scaled_width() * threshold)
+                        const bool is_narrow_athena =
+                            !is_bridge &&
+                            offset_ex(surface.expolygon, -float(solid_flow.scaled_width() * threshold) / 2.f).empty();
+                        if (is_narrow_athena)
                             params.pattern = ipEnsuring;
                     }
 
                     // Unconditional fallback: if a solid surface is so thin that it would
                     // collapse under the fill offset (narrower than ~1.5x extrusion width),
                     // force Ensuring regardless of the Narrow to Athena setting.
-                    if (params.pattern != ipEnsuring &&
+                    if (is_narrow_1_5x && params.pattern != ipEnsuring &&
                         (surface.surface_type == stInternalSolid || surface.surface_type == stTop ||
                          surface.surface_type == stBottom))
                     {
-                        if (surf_width < solid_flow.scaled_width() * 1.5f)
-                            params.pattern = ipEnsuring;
+                        params.pattern = ipEnsuring;
                     }
                 }
                 else if (params.density <= 0)
@@ -592,7 +523,7 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                         {
                             // Only use TopSolidInfill role for internal solid surfaces that are
                             // spatially adjacent to (touching) actual top solid surfaces
-                            if (is_surface_adjacent_to_top_solid(surface, region_id))
+                            if (config_allows_merge && touches_top)
                             {
                                 params.extrusion_role = ExtrusionRole::TopSolidInfill;
                             }
@@ -614,9 +545,7 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
 
                 // Calculate the actual flow we'll be using for this infill.
                 params.bridge = is_bridge || Fill::use_bridge_flow(params.pattern);
-                params.flow = params.bridge ?
-                                            // Always enable thick bridges for internal bridges.
-                                  layerm.bridging_flow(extrusion_role, surface.is_bridge() && !surface.is_external())
+                params.flow = params.bridge ? layerm.bridging_flow(extrusion_role)
                                             : layerm.flow(extrusion_role,
                                                           (surface.thickness == -1) ? layer.height : surface.thickness);
 
@@ -1491,6 +1420,8 @@ void Layer::clear_fills()
 void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive::Octree *support_fill_octree,
                        FillLightning::Generator *lightning_generator)
 {
+    auto t0 = std::chrono::steady_clock::now();
+
     this->clear_fills();
 
     // Second sliver removal pass: the first runs in PrintObject after
@@ -1501,6 +1432,10 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
         this->regions()[region_id]->remove_narrow_fill_surfaces();
 
     std::vector<SurfaceFill> surface_fills = group_fills(*this);
+    {
+        extern Slic3r::PerfAccumTimer g_mf_group_fills;
+        g_mf_group_fills.add(t0, std::chrono::steady_clock::now());
+    }
     const Slic3r::BoundingBox bbox = this->object()->bounding_box();
     const auto resolution = this->object()->print()->config().gcode_resolution.value;
     const auto perimeter_generator = this->object()->config().perimeter_generator;
@@ -1535,7 +1470,12 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                     continue;
 
                 // Intersect surface fill with island boundary
+                auto ti0 = std::chrono::steady_clock::now();
                 ExPolygons island_expolygons = intersection_ex(surface_fill.expolygons, ExPolygons{island.boundary});
+                {
+                    extern Slic3r::PerfAccumTimer g_mf_intersection;
+                    g_mf_intersection.add(ti0, std::chrono::steady_clock::now());
+                }
 
                 if (island_expolygons.empty())
                     continue;
@@ -1728,6 +1668,7 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                         surface_fill.surface.expolygon = std::move(expoly);
                         Polylines polylines;
                         ThickPolylines thick_polylines;
+                        auto tf0 = std::chrono::steady_clock::now();
                         try
                         {
                             if (params.use_advanced_perimeters)
@@ -1739,6 +1680,10 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                         {
                             dbg_fill_print("z=%.3f [FILL] FILL_EXCEPTION type=%-18s InfillFailedException!\n",
                                            this->print_z, dbg_stype(surface_fill.surface.surface_type));
+                        }
+                        {
+                            extern Slic3r::PerfAccumTimer g_mf_fill_surface;
+                            g_mf_fill_surface.add(tf0, std::chrono::steady_clock::now());
                         }
 
                         // Bridge gap fill: detect uncovered regions between bridge lines
@@ -2079,6 +2024,8 @@ void Layer::make_fills(FillAdaptive::Octree *adaptive_fill_octree, FillAdaptive:
                 island.fills.erase(island.fills.begin() + k, island.fills.end());
             }
         }
+
+    g_mf_layer_count++;
 
 #ifndef NDEBUG
     for (LayerRegion *layerm : m_regions)

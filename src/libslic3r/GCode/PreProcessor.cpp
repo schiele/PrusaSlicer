@@ -4,7 +4,7 @@
 ///|/
 #include "PreProcessor.hpp"
 #include "GCodeProcessor.hpp"
-#include "VirtualGCodeFile.hpp"
+#include "GCodeObject.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r_version.h"
 
@@ -115,7 +115,7 @@ struct PyLayer
 struct PyGCode
 {
     GCodeProcessorResult *result;
-    VirtualGCodeFile *virtual_file;
+    GCodeObject *gcode_object;
     const Print *print;
     std::vector<PyLayer> layers;
 
@@ -212,10 +212,11 @@ struct PyGCode
     void insert(unsigned int line, const std::string &gcode, const std::string &position = "after",
                 const std::string &comment = "")
     {
-        if (line == 0 || (virtual_file && line > virtual_file->line_count()))
+        size_t total_lines = gcode_object ? gcode_object->line_count() : 0;
+        if (line == 0 || line > total_lines)
         {
             BOOST_LOG_TRIVIAL(warning) << "Pre-processor: insert() line " << line << " is out of range (file has "
-                                       << (virtual_file ? virtual_file->line_count() : 0) << " lines)";
+                                       << total_lines << " lines)";
             return;
         }
         std::string text = gcode;
@@ -231,10 +232,9 @@ struct PyGCode
 
     std::string get_line(unsigned int line_id) const
     {
-        if (!virtual_file || line_id == 0)
+        if (line_id == 0 || !gcode_object || (line_id - 1) >= gcode_object->line_count())
             return "";
-        // gcode_line_id is 1-based, VirtualGCodeFile is 0-based
-        return virtual_file->get_line(line_id - 1);
+        return std::string(gcode_object->get_line_text(line_id - 1));
     }
 
     void rewrite(unsigned int line_id, const std::string &gcode, const std::string &comment = "")
@@ -245,16 +245,16 @@ struct PyGCode
             line_replacements[line_id] = gcode + " ; " + comment;
     }
 
-    unsigned int line_count() const { return virtual_file ? static_cast<unsigned int>(virtual_file->line_count()) : 0; }
+    unsigned int line_count() const { return gcode_object ? static_cast<unsigned int>(gcode_object->line_count()) : 0; }
 
     // Return the 1-based line_id of the first line containing text, or 0 if not found
     unsigned int find_line(const std::string &text) const
     {
-        if (!virtual_file)
-            return 0;
-        for (size_t i = 0; i < virtual_file->line_count(); ++i)
+        size_t count = gcode_object ? gcode_object->line_count() : 0;
+        for (size_t i = 0; i < count; ++i)
         {
-            if (virtual_file->get_line(i).find(text) != std::string::npos)
+            std::string line = std::string(gcode_object->get_line_text(i));
+            if (line.find(text) != std::string::npos)
                 return static_cast<unsigned int>(i + 1);
         }
         return 0;
@@ -264,11 +264,11 @@ struct PyGCode
     py::list find_lines(const std::string &text) const
     {
         py::list found;
-        if (!virtual_file)
-            return found;
-        for (size_t i = 0; i < virtual_file->line_count(); ++i)
+        size_t count = gcode_object ? gcode_object->line_count() : 0;
+        for (size_t i = 0; i < count; ++i)
         {
-            if (virtual_file->get_line(i).find(text) != std::string::npos)
+            std::string line = std::string(gcode_object->get_line_text(i));
+            if (line.find(text) != std::string::npos)
                 found.append(static_cast<unsigned int>(i + 1));
         }
         return found;
@@ -352,6 +352,15 @@ struct PyCustomEvent
     int extruder;
     std::string color;
     std::string extra;
+};
+
+// -------------------------------------------------------------------------
+// Export script wrapper: lightweight object passed to export()
+// -------------------------------------------------------------------------
+struct PyExportGCode
+{
+    py::list data;        // G-code lines as a Python list of strings
+    std::string filename; // Suggested output filename
 };
 
 // -------------------------------------------------------------------------
@@ -771,10 +780,15 @@ class _SettingsWrapper:
                                    result["layer"] = g.result->conflict_result->layer;
                                    return result;
                                });
+
+    // Export script API (lightweight - no moves/layers/settings)
+    py::class_<PyExportGCode>(m, "ExportGCode")
+        .def_readwrite("data", &PyExportGCode::data)
+        .def_readonly("filename", &PyExportGCode::filename);
 }
 
 // -------------------------------------------------------------------------
-// Materialize all modifications into a new VirtualGCodeFile.
+// Materialize all modifications into a new GCodeObject.
 // Returns the new file and a mapping from old line_id (1-based) to new line_id.
 // -------------------------------------------------------------------------
 static void rewrite_param(std::string &gcode_line, char param, const std::string &new_value)
@@ -809,13 +823,12 @@ static void rewrite_param(std::string &gcode_line, char param, const std::string
     }
 }
 
-// Write text that may contain multiple lines, ensuring correct line offset tracking.
-static void write_text(VirtualGCodeFile *output, const std::string &text)
+static void write_text(GCodeObject *output, const std::string &text)
 {
     std::string t = text;
     if (!t.empty() && t.back() != '\n')
         t += '\n';
-    output->write(t.c_str());
+    output->append_text(t.c_str());
 }
 
 static double safe_stod(const std::string &s, double fallback = 0.0)
@@ -842,12 +855,10 @@ static float safe_stof(const std::string &s, float fallback = 0.0f)
     }
 }
 
-static VirtualGCodeFile *materialize_modifications(VirtualGCodeFile *input, const PreProcessorResult &pp_result,
-                                                   std::unordered_map<unsigned int, unsigned int> &id_remap)
+static GCodeObject *materialize_modifications(GCodeObject *input, const PreProcessorResult &pp_result,
+                                              std::unordered_map<unsigned int, unsigned int> &id_remap)
 {
-    auto output = std::make_unique<VirtualGCodeFile>();
-    output->reserve_lines(input->line_count() + pp_result.gcode_insertions.size() +
-                          pp_result.gcode_insertions_before.size());
+    auto output = std::make_unique<GCodeObject>();
 
     float current_fan = 0.0f;
     float current_temp = 0.0f;
@@ -857,7 +868,7 @@ static VirtualGCodeFile *materialize_modifications(VirtualGCodeFile *input, cons
     for (size_t line_idx = 0; line_idx < input->line_count(); ++line_idx)
     {
         unsigned int old_line_id = static_cast<unsigned int>(line_idx + 1);
-        std::string gcode_line = input->get_line(line_idx);
+        std::string gcode_line(input->get_line_text(line_idx));
 
         // Skip removed lines
         if (pp_result.has_removals() && pp_result.removed_lines.count(old_line_id))
@@ -962,7 +973,7 @@ static VirtualGCodeFile *materialize_modifications(VirtualGCodeFile *input, cons
                 {
                     char fan_buf[64];
                     snprintf(fan_buf, sizeof(fan_buf), "M106 S%.0f", mod.fan_speed * 255.0f / 100.0f);
-                    output->write_line(fan_buf);
+                    write_text(output.get(), fan_buf);
                 }
 
                 // Insert M104 only if the script changed temperature
@@ -973,7 +984,7 @@ static VirtualGCodeFile *materialize_modifications(VirtualGCodeFile *input, cons
                                                    << old_line_id << " exceeds 500C - verify this is intentional";
                     char temp_buf[64];
                     snprintf(temp_buf, sizeof(temp_buf), "M104 S%.0f", mod.temperature);
-                    output->write_line(temp_buf);
+                    write_text(output.get(), temp_buf);
                 }
 
                 // Add annotation comment
@@ -1051,8 +1062,7 @@ static VirtualGCodeFile *materialize_modifications(VirtualGCodeFile *input, cons
         unsigned int new_line_id = static_cast<unsigned int>(output->line_count() + 1);
         id_remap[old_line_id] = new_line_id;
 
-        // Write the (possibly modified) line
-        output->write_line(gcode_line);
+        write_text(output.get(), gcode_line);
 
         // Emit layer append after this line
         if (pp_result.has_layer_injections())
@@ -1131,162 +1141,129 @@ static PreProcessorResult collect_script_result(GCodeProcessorResult &result,
 }
 
 // -------------------------------------------------------------------------
-// Main entry point: run all scripts with per-script materialization
+// Shared Python interpreter initialization (used by both preprocessing and export)
 // -------------------------------------------------------------------------
-PreProcessorResult run_pre_processor_scripts(GCodeProcessorResult &result, VirtualGCodeFile *&virtual_file,
-                                             const std::vector<std::string> &script_paths,
-                                             const std::string &resources_dir, const Print *print)
+static bool s_python_interpreter_ok = false;
+static bool s_python_setup_ok = false;
+static std::once_flag s_python_init_flag;
+static std::once_flag s_python_setup_flag;
+
+static void ensure_python_initialized()
 {
-    PreProcessorResult pp_result;
-    if (script_paths.empty())
-        return pp_result;
-
-    PyGCode gcode;
-    gcode.result = &result;
-    gcode.virtual_file = virtual_file;
-    gcode.print = print;
-    gcode.build_layers();
-
-    std::atomic<bool> scripts_running{true};
-    std::thread cancel_watchdog;
-
-    try
-    {
-        // Two-phase init: (1) interpreter startup, (2) post-init setup.
-        // Separated so the Py_IsInitialized() guard on retry doesn't skip setup.
-        static bool python_interpreter_ok = false;
-        static bool python_setup_ok = false;
-        static std::once_flag python_init_flag;
-        static std::once_flag python_setup_flag;
-
-        std::call_once(python_init_flag,
-                       []()
-                       {
-                           auto exe_dir = boost::dll::program_location().parent_path();
+    // Two-phase init: (1) interpreter startup, (2) post-init setup.
+    // Separated so the Py_IsInitialized() guard on retry doesn't skip setup.
+    std::call_once(s_python_init_flag,
+                   []()
+                   {
+                       auto exe_dir = boost::dll::program_location().parent_path();
 #ifdef _WIN32
-                           auto home_path = exe_dir / "python";
+                       auto home_path = exe_dir / "python";
 #elif defined(__APPLE__)
-                           auto home_path = exe_dir / ".." / "python";
+                       auto home_path = exe_dir / ".." / "python";
 #else
-                           auto home_path = exe_dir / ".." / "python";
+                       auto home_path = exe_dir / ".." / "python";
 #endif
-                           // Bundled Python runtime: use PyConfig API for direct path control.
-                           // We bypass py::initialize_interpreter() because PyConfig is the only
-                           // way to set module_search_paths on Python 3.12+ (Py_SetPath removed).
-                           // pybind11's internal state (get_internals()) bootstraps lazily on
-                           // first pybind11 API call, so this is safe.
-                           if (boost::filesystem::exists(home_path) && !Py_IsInitialized())
+                       if (boost::filesystem::exists(home_path) && !Py_IsInitialized())
+                       {
+                           auto home_w = home_path.wstring();
+                           auto exe_w = boost::dll::program_location().wstring();
+                           auto ver_str = std::to_wstring(PY_MAJOR_VERSION) + std::to_wstring(PY_MINOR_VERSION);
+
+                           PyConfig config;
+                           PyConfig_InitPythonConfig(&config);
+                           config.install_signal_handlers = 0;
+                           config.module_search_paths_set = 1;
+
+                           PyStatus status;
+                           bool config_ok = true;
+
+#ifdef _WIN32
+                           auto zip_path = (home_path / (L"python" + ver_str + L".zip")).wstring();
+                           status = PyWideStringList_Append(&config.module_search_paths, zip_path.c_str());
+                           config_ok = config_ok && !PyStatus_Exception(status);
+                           status = PyWideStringList_Append(&config.module_search_paths, home_w.c_str());
+                           config_ok = config_ok && !PyStatus_Exception(status);
+#else
+                           auto lib_ver = std::string("python") + std::to_string(PY_MAJOR_VERSION) + "." +
+                                          std::to_string(PY_MINOR_VERSION);
+                           auto stdlib_path = (home_path / "lib" / lib_ver).wstring();
+                           auto dynload_path = (home_path / "lib" / lib_ver / "lib-dynload").wstring();
+                           status = PyWideStringList_Append(&config.module_search_paths, stdlib_path.c_str());
+                           config_ok = config_ok && !PyStatus_Exception(status);
+                           status = PyWideStringList_Append(&config.module_search_paths, dynload_path.c_str());
+                           config_ok = config_ok && !PyStatus_Exception(status);
+                           status = PyWideStringList_Append(&config.module_search_paths, home_w.c_str());
+                           config_ok = config_ok && !PyStatus_Exception(status);
+#endif
+#ifdef _WIN32
+                           auto site_packages = (home_path / "Lib" / "site-packages").wstring();
+#else
+                           auto site_packages = (home_path / "lib" / lib_ver / "site-packages").wstring();
+#endif
+                           status = PyWideStringList_Append(&config.module_search_paths, site_packages.c_str());
+                           config_ok = config_ok && !PyStatus_Exception(status);
+
+                           status = PyConfig_SetString(&config, &config.home, home_w.c_str());
+                           config_ok = config_ok && !PyStatus_Exception(status);
+                           status = PyConfig_SetString(&config, &config.program_name, exe_w.c_str());
+                           config_ok = config_ok && !PyStatus_Exception(status);
+
+                           if (!config_ok)
                            {
-                               auto home_w = home_path.wstring();
-                               auto exe_w = boost::dll::program_location().wstring();
-                               auto ver_str = std::to_wstring(PY_MAJOR_VERSION) + std::to_wstring(PY_MINOR_VERSION);
-
-                               PyConfig config;
-                               PyConfig_InitPythonConfig(&config);
-                               config.install_signal_handlers = 0;
-                               config.module_search_paths_set = 1;
-
-                               PyStatus status;
-                               bool config_ok = true;
-
-                // Windows: flat layout with python3XX.zip + .pyd files in home dir
-                // Linux/macOS: standard install layout with lib/python3.XX/ tree
-#ifdef _WIN32
-                               auto zip_path = (home_path / (L"python" + ver_str + L".zip")).wstring();
-                               status = PyWideStringList_Append(&config.module_search_paths, zip_path.c_str());
-                               config_ok = config_ok && !PyStatus_Exception(status);
-                               status = PyWideStringList_Append(&config.module_search_paths, home_w.c_str());
-                               config_ok = config_ok && !PyStatus_Exception(status);
-#else
-                               // Source-built Python: stdlib in lib/pythonX.Y/, extensions in lib-dynload/
-                               auto lib_ver = std::string("python") + std::to_string(PY_MAJOR_VERSION) +
-                                              "." + std::to_string(PY_MINOR_VERSION);
-                               auto stdlib_path = (home_path / "lib" / lib_ver).wstring();
-                               auto dynload_path = (home_path / "lib" / lib_ver / "lib-dynload").wstring();
-                               status = PyWideStringList_Append(&config.module_search_paths, stdlib_path.c_str());
-                               config_ok = config_ok && !PyStatus_Exception(status);
-                               status = PyWideStringList_Append(&config.module_search_paths, dynload_path.c_str());
-                               config_ok = config_ok && !PyStatus_Exception(status);
-                               status = PyWideStringList_Append(&config.module_search_paths, home_w.c_str());
-                               config_ok = config_ok && !PyStatus_Exception(status);
-#endif
-                // User-installed packages via pip (site-packages inside the python/ tree)
-#ifdef _WIN32
-                               auto site_packages = (home_path / "Lib" / "site-packages").wstring();
-#else
-                               auto site_packages = (home_path / "lib" / lib_ver / "site-packages").wstring();
-#endif
-                               status = PyWideStringList_Append(&config.module_search_paths, site_packages.c_str());
-                               config_ok = config_ok && !PyStatus_Exception(status);
-
-                               status = PyConfig_SetString(&config, &config.home, home_w.c_str());
-                               config_ok = config_ok && !PyStatus_Exception(status);
-                               status = PyConfig_SetString(&config, &config.program_name, exe_w.c_str());
-                               config_ok = config_ok && !PyStatus_Exception(status);
-
-                               if (!config_ok)
-                               {
-                                   BOOST_LOG_TRIVIAL(error) << "Pre-processor: PyConfig setup failed, "
-                                                               "falling back to system Python";
-                                   PyConfig_Clear(&config);
-                                   py::initialize_interpreter();
-                               }
-                               else
-                               {
-                                   status = Py_InitializeFromConfig(&config);
-                                   PyConfig_Clear(&config);
-                                   if (PyStatus_Exception(status))
-                                   {
-                                       BOOST_LOG_TRIVIAL(error) << "Pre-processor: Py_InitializeFromConfig failed, "
-                                                                   "falling back to system Python";
-                                       if (!Py_IsInitialized())
-                                           py::initialize_interpreter();
-                                   }
-                                   // GIL remains held after init, matching py::initialize_interpreter() behavior.
-                                   // pybind11's py::exec/py::module_::import expect the caller to hold the GIL.
-                               }
-
-                               // Runtime version sanity check (major.minor)
-                               const char *runtime_ver = Py_GetVersion();
-                               if (runtime_ver)
-                               {
-                                   int rt_major = 0, rt_minor = 0;
-                                   if (sscanf(runtime_ver, "%d.%d", &rt_major, &rt_minor) == 2)
-                                   {
-                                       if (rt_major != PY_MAJOR_VERSION || rt_minor != PY_MINOR_VERSION)
-                                           BOOST_LOG_TRIVIAL(error)
-                                               << "Pre-processor: Python version mismatch! Built against "
-                                               << PY_MAJOR_VERSION << "." << PY_MINOR_VERSION << " but runtime is "
-                                               << runtime_ver;
-                                   }
-                               }
-
-                               BOOST_LOG_TRIVIAL(info)
-                                   << "Pre-processor: using bundled Python at " << home_path << " (runtime "
-                                   << (runtime_ver ? runtime_ver : "unknown") << ")";
+                               BOOST_LOG_TRIVIAL(error)
+                                   << "Python: PyConfig setup failed, falling back to system Python";
+                               PyConfig_Clear(&config);
+                               py::initialize_interpreter();
                            }
                            else
                            {
-                               if (!Py_IsInitialized())
-                                   py::initialize_interpreter();
+                               status = Py_InitializeFromConfig(&config);
+                               PyConfig_Clear(&config);
+                               if (PyStatus_Exception(status))
+                               {
+                                   BOOST_LOG_TRIVIAL(error)
+                                       << "Python: Py_InitializeFromConfig failed, falling back to system Python";
+                                   if (!Py_IsInitialized())
+                                       py::initialize_interpreter();
+                               }
                            }
 
-                           python_interpreter_ok = true;
-                       });
+                           const char *runtime_ver = Py_GetVersion();
+                           if (runtime_ver)
+                           {
+                               int rt_major = 0, rt_minor = 0;
+                               if (sscanf(runtime_ver, "%d.%d", &rt_major, &rt_minor) == 2)
+                               {
+                                   if (rt_major != PY_MAJOR_VERSION || rt_minor != PY_MINOR_VERSION)
+                                       BOOST_LOG_TRIVIAL(error)
+                                           << "Python: version mismatch! Built against " << PY_MAJOR_VERSION << "."
+                                           << PY_MINOR_VERSION << " but runtime is " << runtime_ver;
+                               }
+                           }
 
-        if (!python_interpreter_ok)
-            throw Slic3r::RuntimeError("Python interpreter initialization failed");
-
-        // Post-init setup runs independently of interpreter init so it always
-        // executes even if call_once retried after a partial first attempt.
-        std::call_once(python_setup_flag,
-                       [&]()
+                           BOOST_LOG_TRIVIAL(info) << "Python: using bundled runtime at " << home_path << " (runtime "
+                                                   << (runtime_ver ? runtime_ver : "unknown") << ")";
+                       }
+                       else
                        {
-                           auto exe_dir = boost::dll::program_location().parent_path();
+                           if (!Py_IsInitialized())
+                               py::initialize_interpreter();
+                       }
 
-                           py::module_::import("preFlight").attr("exe_dir") = exe_dir.string();
+                       s_python_interpreter_ok = true;
+                   });
 
-                           py::exec(R"(
+    if (!s_python_interpreter_ok)
+        throw Slic3r::RuntimeError("Python interpreter initialization failed");
+
+    std::call_once(s_python_setup_flag,
+                   [&]()
+                   {
+                       auto exe_dir = boost::dll::program_location().parent_path();
+
+                       py::module_::import("preFlight").attr("exe_dir") = exe_dir.string();
+
+                       py::exec(R"(
 import sys, os, preFlight
 
 class _StdoutRedirect:
@@ -1309,11 +1286,36 @@ sys.dont_write_bytecode = True
 
 os.chdir(preFlight.exe_dir)
 )");
-                           python_setup_ok = true;
-                       });
+                       s_python_setup_ok = true;
+                   });
 
-        if (!python_setup_ok)
-            throw Slic3r::RuntimeError("Python post-init setup failed");
+    if (!s_python_setup_ok)
+        throw Slic3r::RuntimeError("Python post-init setup failed");
+}
+
+// -------------------------------------------------------------------------
+// Main entry point: run all scripts with per-script materialization
+// -------------------------------------------------------------------------
+PreProcessorResult run_pre_processor_scripts(GCodeProcessorResult &result, GCodeObject *&gcode_object,
+                                             const std::vector<std::string> &script_paths,
+                                             const std::string &resources_dir, const Print *print)
+{
+    PreProcessorResult pp_result;
+    if (script_paths.empty())
+        return pp_result;
+
+    PyGCode gcode;
+    gcode.result = &result;
+    gcode.gcode_object = gcode_object;
+    gcode.print = print;
+    gcode.build_layers();
+
+    std::atomic<bool> scripts_running{true};
+    std::thread cancel_watchdog;
+
+    try
+    {
+        ensure_python_initialized();
 
         // Watchdog thread: polls the cancel flag and interrupts Python if canceled
         if (print)
@@ -1427,8 +1429,7 @@ os.chdir(preFlight.exe_dir)
                     if (script_result.has_any_changes())
                     {
                         std::unordered_map<unsigned int, unsigned int> id_remap;
-                        VirtualGCodeFile *new_vf = materialize_modifications(gcode.virtual_file, script_result,
-                                                                             id_remap);
+                        GCodeObject *new_gco = materialize_modifications(gcode.gcode_object, script_result, id_remap);
 
                         // Remap gcode_id on all MoveVertex entries; zero out removed moves
                         for (auto &mv : result.moves)
@@ -1440,10 +1441,11 @@ os.chdir(preFlight.exe_dir)
                                 mv.gcode_id = 0;
                         }
 
-                        // Swap virtual file (delete old if we allocated it)
-                        if (gcode.virtual_file != virtual_file)
-                            delete gcode.virtual_file;
-                        gcode.virtual_file = new_vf;
+                        // Don't delete the old GCodeObject here - the caller manages ownership.
+                        // For multi-script chains, delete the intermediate (non-original) object.
+                        if (gcode.gcode_object != gcode_object)
+                            delete gcode.gcode_object;
+                        gcode.gcode_object = new_gco;
 
                         // Rebuild layers with fresh gcode_ids
                         gcode.build_layers();
@@ -1559,10 +1561,10 @@ os.chdir(preFlight.exe_dir)
         if (cancel_watchdog.joinable())
             cancel_watchdog.join();
 
-        // Update the caller's virtual file pointer if we materialized
-        if (gcode.virtual_file != virtual_file)
+        // Update the caller's GCodeObject pointer if we materialized
+        if (gcode.gcode_object != gcode_object)
         {
-            virtual_file = gcode.virtual_file;
+            gcode_object = gcode.gcode_object;
         }
     }
     catch (const std::exception &e)
@@ -1578,6 +1580,164 @@ os.chdir(preFlight.exe_dir)
     // All modifications are already baked into the virtual file.
     // Return empty result so pass 2 skips PP modification logic.
     return pp_result;
+}
+
+// -------------------------------------------------------------------------
+// Export to Script: run a user script with the raw G-code data
+// -------------------------------------------------------------------------
+// Module names that must never be used as export script filenames
+static const std::unordered_set<std::string> s_reserved_module_names = {
+    "os",          "sys",        "io",       "re",       "ssl",      "json",   "csv",       "ftplib",
+    "socket",      "http",       "urllib",   "email",    "logging",  "math",   "time",      "datetime",
+    "threading",   "subprocess", "ctypes",   "struct",   "hashlib",  "base64", "shutil",    "pathlib",
+    "tempfile",    "signal",     "queue",    "copy",     "types",    "abc",    "functools", "itertools",
+    "collections", "preFlight",  "pybind11", "builtins", "importlib"};
+
+ExportScriptResult run_export_script(const std::string &script_path, const std::string &gcode_buffer,
+                                     const std::string &filename)
+{
+    ExportScriptResult result;
+    namespace fs = boost::filesystem;
+
+    try
+    {
+        ensure_python_initialized();
+
+        std::string script_name = fs::path(script_path).filename().string();
+        std::string script_dir = fs::path(script_path).parent_path().string();
+        std::string module_name = fs::path(script_path).stem().string();
+
+        // Reject scripts whose filename shadows a standard library module
+        if (s_reserved_module_names.count(module_name))
+        {
+            result.error_message = "Export script '" + script_name +
+                                   "' cannot be used because its name conflicts with Python's built-in '" +
+                                   module_name + "' module. Please rename the script file.";
+            BOOST_LOG_TRIVIAL(error) << result.error_message;
+            return result;
+        }
+
+        // Split the G-code buffer into lines (preserving trailing newlines)
+        PyExportGCode gcode;
+        gcode.filename = filename;
+
+        {
+            size_t pos = 0;
+            while (pos < gcode_buffer.size())
+            {
+                size_t nl = gcode_buffer.find('\n', pos);
+                if (nl == std::string::npos)
+                {
+                    gcode.data.append(py::str(gcode_buffer.substr(pos)));
+                    break;
+                }
+                gcode.data.append(py::str(gcode_buffer.substr(pos, nl - pos + 1)));
+                pos = nl + 1;
+            }
+        }
+
+        BOOST_LOG_TRIVIAL(info) << "Export script: running " << script_name;
+
+        // Snapshot sys.path and sys.modules for restoration after the script
+        py::module_ sys_mod = py::module_::import("sys");
+        py::list sys_path = sys_mod.attr("path");
+        py::list path_snapshot(sys_path);
+        py::dict sys_modules = sys_mod.attr("modules");
+        py::list modules_snapshot(sys_modules.attr("keys")());
+
+        // Add script directory to sys.path
+        sys_path.attr("insert")(0, script_dir);
+
+        try
+        {
+            py::module_ script_mod = py::module_::import(module_name.c_str());
+
+            if (py::hasattr(script_mod, "export"))
+            {
+                script_mod.attr("export")(py::cast(&gcode, py::return_value_policy::reference));
+                BOOST_LOG_TRIVIAL(info) << "Export script: " << script_name << " completed successfully";
+                result.success = true;
+            }
+            else
+            {
+                result.error_message = "Export script '" + script_name + "' has no export() function";
+                BOOST_LOG_TRIVIAL(error) << result.error_message;
+            }
+        }
+        catch (const py::error_already_set &e)
+        {
+            if (e.matches(PyExc_SystemExit))
+            {
+                result.error_message =
+                    "Export script '" + script_name +
+                    "' called sys.exit(). Use 'raise RuntimeError(...)' instead of sys.exit() in export scripts.";
+            }
+            else if (e.matches(PyExc_KeyboardInterrupt))
+            {
+                result.error_message = "Export script interrupted by user";
+            }
+            else
+            {
+                result.error_message = "Export script '" + script_name + "' failed:\n" + std::string(e.what());
+            }
+            BOOST_LOG_TRIVIAL(error) << result.error_message;
+        }
+
+        // Restore sys.path from snapshot (always runs, even after exceptions)
+        sys_mod.attr("path") = path_snapshot;
+
+        // Two-phase module cleanup: collect keys to remove, then pop them.
+        // Cannot pop during iteration - CPython raises RuntimeError on dict mutation.
+        std::vector<std::string> modules_to_remove;
+        for (auto item : sys_modules)
+        {
+            std::string mod_name = py::str(item.first);
+
+            bool existed_before = false;
+            for (auto existing : modules_snapshot)
+            {
+                if (py::str(existing).cast<std::string>() == mod_name)
+                {
+                    existed_before = true;
+                    break;
+                }
+            }
+            if (existed_before)
+                continue;
+
+            try
+            {
+                py::object mod_obj = py::reinterpret_borrow<py::object>(item.second);
+                if (mod_name == module_name)
+                {
+                    modules_to_remove.push_back(mod_name);
+                }
+                else if (py::hasattr(mod_obj, "__file__"))
+                {
+                    std::string mod_file = py::str(mod_obj.attr("__file__"));
+                    if (mod_file.find(script_dir) == 0)
+                        modules_to_remove.push_back(mod_name);
+                }
+            }
+            catch (...)
+            {
+            }
+        }
+        for (const auto &mod_name : modules_to_remove)
+            sys_modules.attr("pop")(mod_name, py::none());
+    }
+    catch (const py::error_already_set &e)
+    {
+        result.error_message = "Export script initialization failed: " + std::string(e.what());
+        BOOST_LOG_TRIVIAL(error) << result.error_message;
+    }
+    catch (const std::exception &e)
+    {
+        result.error_message = "Export script error: " + std::string(e.what());
+        BOOST_LOG_TRIVIAL(error) << result.error_message;
+    }
+
+    return result;
 }
 
 } // namespace Slic3r

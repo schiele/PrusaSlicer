@@ -293,6 +293,7 @@ Available samples:
     edge_slowdown.py          - slow down near bed edges
     extrusion_multiplier.py   - per-feature flow ratio
     accel_by_feature.py       - per-feature M204 acceleration
+    jerk_by_feature.py        - per-feature jerk/junction deviation
     retraction_optimizer.py   - context-aware retraction tuning
     multi_material_purge.py   - color-distance-aware purge reduction
     motion_optimizer.py       - clamp unreachable feedrates + annotate moves

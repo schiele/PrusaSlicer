@@ -1,5 +1,50 @@
 # preFlight Changelog
 
+## v0.9.15
+
+### Performance
+- Slicing has been optimized resulting in 2.5x faster processing
+  - Replaced Voronoi medial axis with offset-based erosion for narrow surface detection
+  - Parallelized 5 serialized loops in bridge_over_infill
+  - Simplified Athena's Voronoi skeleton inner contours to reduce downstream Clipper2 cost
+- Implemented GCodeObject - a unified data model carrying G-code and structured move data through the entire pipeline
+- Enabled streaming move processing during G-code generation, eliminating a redundant full re-parse of all G-code
+- Added Preview Detail setting in Preferences > Performance to control preview fidelity vs. slicing speed (1M/5M/10M/20M segments or Full)
+  - Actual Speed preview coloring shows less detail on prints exceeding the threshold
+  - Defaults to 10M on desktop, 1M on ARM Linux (Raspberry Pi)
+
+### Export to Script
+- Added Export to Script - a new export pathway that hands G-code data to a user-configured Python script for output handling (save to disk, upload via FTP, send to networked printers, or all at once)
+- Script receives gcode.data (mutable list of G-code lines) and gcode.filename (from Output filename format) - no proprietary APIs, just standard Python
+- Export to Script appears in the export dropdown alongside Save locally and Send to Printer when enabled
+- 3MF files containing script references prompt the user on load and strip settings if declined
+- Consent dialog updated to cover both Preprocessing and Export to Script under a single security prompt
+- Included sample scripts: save_to_folder.py, ftps_upload.py (implicit TLS, port 990), save_and_upload.py (multi-output)
+- Included type stubs and HOW_TO_USE documentation in resources/export
+
+### Per-Filament Pressure Advance
+- Added per-filament pressure advance settings with an enable toggle and configurable PA value - emits firmware-appropriate commands after start filament G-code on every tool/filament change
+- Added validation warning when PA enablement is inconsistent across filaments used within a print
+
+### Extrusion Widths
+- Added option to choose if extrusion widths expressed as percentages are calculated from layer height or nozzle diameter
+
+### Gap Fill
+- Enabled Athena variable-width gap-fill for single-perimeter walls
+
+### Infill / Fill
+- Fixed bottom_fill_pattern ignored when support material was enabled and top contact distance was set to "No gap"
+
+### Filament UI
+- Consolidated Filament / Filament Properties into a main Properties group
+- Expanded filament type dropdown from 20 to 45 types sourced from our profiles repo, sorted alphabetically
+
+### Preprocessor Scripts
+- Added jerk_by_feature.py sample script for per-feature jerk/junction deviation control (RepRapFirmware, Klipper, Marlin)
+
+### Profiles
+- Added local vendor profile import to Configuration Wizard - users can load vendor profile bundles from ZIP files with path traversal protection and security hardening
+
 ## v0.9.14
 
 ### G-code Preprocessing (Python Scripting) with 150 APIs and all settings

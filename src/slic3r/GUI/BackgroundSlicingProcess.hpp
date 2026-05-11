@@ -164,6 +164,9 @@ public:
     // Writes in-memory G-code to a temp file and sets it as the upload source.
     void direct_prepare_upload(Slic3r::PrintHostJob &upload_job);
 
+    // Export G-code via a user-provided Python script
+    void direct_export_to_script(const std::string &script_path, const std::string &output_filename);
+
     // Set the export path of the G-code.
     // Once the path is set, the G-code
     void schedule_export(const std::string &path, bool export_path_on_removable_media);

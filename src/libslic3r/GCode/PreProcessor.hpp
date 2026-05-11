@@ -15,7 +15,7 @@ namespace Slic3r
 {
 
 struct GCodeProcessorResult;
-class VirtualGCodeFile;
+class GCodeObject;
 
 struct MoveModification
 {
@@ -72,11 +72,18 @@ struct PreProcessorResult
 
 class Print;
 
-// Run pre-processor Python scripts from an explicit ordered list.
-// After all scripts complete, virtual_file points to the fully-materialized output.
-PreProcessorResult run_pre_processor_scripts(GCodeProcessorResult &result, VirtualGCodeFile *&virtual_file,
+PreProcessorResult run_pre_processor_scripts(GCodeProcessorResult &result, GCodeObject *&gcode_object,
                                              const std::vector<std::string> &script_paths,
                                              const std::string &resources_dir, const Print *print = nullptr);
+
+struct ExportScriptResult
+{
+    bool success = false;
+    std::string error_message;
+};
+
+ExportScriptResult run_export_script(const std::string &script_path, const std::string &gcode_buffer,
+                                     const std::string &filename);
 
 } // namespace Slic3r
 

@@ -13,7 +13,7 @@
 #include "libslic3r/I18N.hpp"
 #include "libslic3r/Geometry/ArcWelder.hpp"
 #include "GCodeProcessor.hpp"
-#include "VirtualGCodeFile.hpp"
+#include "GCodeObject.hpp"
 #ifdef SLIC3R_PYTHON_PREPROCESSOR
 #include "PreProcessor.hpp"
 #endif
@@ -425,7 +425,8 @@ static void recalculate_trapezoids(std::vector<GCodeProcessor::TimeBlock> &block
 
 void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult &result, PrintEstimatedStatistics::ETimeMode mode,
                                                  size_t keep_last_n_blocks, float additional_time,
-                                                 float time_compensation, std::function<void(int)> progress_callback)
+                                                 float time_compensation, std::function<void(int)> progress_callback,
+                                                 bool skip_speed_interpolation)
 {
     if (!enabled || blocks.size() < 2)
         return;
@@ -494,63 +495,74 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult &result, P
                     prev_move.type != EMoveType::Wipe)
                     prev_move.actual_feedrate = block.feedrate_profile.entry;
 
-                if (EPSILON < block.trapezoid.accelerate_until &&
-                    block.trapezoid.accelerate_until < block.distance - EPSILON)
-                {
-                    const float t = block.trapezoid.accelerate_until / block.distance;
-                    const Vec3f position = lerp(prev_move.position, curr_move.position, t);
-                    if ((position - prev_move.position).norm() > EPSILON &&
-                        (position - curr_move.position).norm() > EPSILON)
-                    {
-                        const float delta_extruder = interpolate
-                                                         ? lerp(prev_move.delta_extruder, curr_move.delta_extruder, t)
-                                                         : curr_move.delta_extruder;
-                        const float feedrate = interpolate ? lerp(prev_move.feedrate, curr_move.feedrate, t)
-                                                           : curr_move.feedrate;
-                        const float width = (interpolate && !interlock_transition)
-                                                ? lerp(prev_move.width, curr_move.width, t)
-                                                : curr_move.width;
-                        const float height = interpolate ? lerp(prev_move.height, curr_move.height, t)
-                                                         : curr_move.height;
-                        const float mm3_per_mm = interpolate ? lerp(prev_move.mm3_per_mm, curr_move.mm3_per_mm, t)
-                                                             : curr_move.mm3_per_mm;
-                        const float fan_speed = interpolate ? lerp(prev_move.fan_speed, curr_move.fan_speed, t)
-                                                            : curr_move.fan_speed;
-                        const float temperature = interpolate ? lerp(prev_move.temperature, curr_move.temperature, t)
-                                                              : curr_move.temperature;
-                        actual_speed_moves.push_back({block.move_id, position, block.trapezoid.cruise_feedrate,
-                                                      delta_extruder, feedrate, width, height, mm3_per_mm, fan_speed,
-                                                      temperature});
-                    }
-                }
+                // For large prints, accel/decel interpolation points can produce
+                // 50M+ insertions into the moves vector, consuming 5+ GB of RAM.
+                // Skip them entirely - the base actual_feedrate entry is still recorded.
+                const bool skip_interp = skip_speed_interpolation;
 
                 const bool has_deceleration = block.trapezoid.deceleration_distance(block.distance) > EPSILON;
-                if (has_deceleration && block.trapezoid.decelerate_after > block.trapezoid.accelerate_until + EPSILON)
+                if (!skip_interp)
                 {
-                    const float t = block.trapezoid.decelerate_after / block.distance;
-                    const Vec3f position = lerp(prev_move.position, curr_move.position, t);
-                    if ((position - prev_move.position).norm() > EPSILON &&
-                        (position - curr_move.position).norm() > EPSILON)
+                    if (EPSILON < block.trapezoid.accelerate_until &&
+                        block.trapezoid.accelerate_until < block.distance - EPSILON)
                     {
-                        const float delta_extruder = interpolate
-                                                         ? lerp(prev_move.delta_extruder, curr_move.delta_extruder, t)
-                                                         : curr_move.delta_extruder;
-                        const float feedrate = interpolate ? lerp(prev_move.feedrate, curr_move.feedrate, t)
-                                                           : curr_move.feedrate;
-                        const float width = (interpolate && !interlock_transition)
-                                                ? lerp(prev_move.width, curr_move.width, t)
-                                                : curr_move.width;
-                        const float height = interpolate ? lerp(prev_move.height, curr_move.height, t)
-                                                         : curr_move.height;
-                        const float mm3_per_mm = interpolate ? lerp(prev_move.mm3_per_mm, curr_move.mm3_per_mm, t)
-                                                             : curr_move.mm3_per_mm;
-                        const float fan_speed = interpolate ? lerp(prev_move.fan_speed, curr_move.fan_speed, t)
-                                                            : curr_move.fan_speed;
-                        const float temperature = interpolate ? lerp(prev_move.temperature, curr_move.temperature, t)
-                                                              : curr_move.temperature;
-                        actual_speed_moves.push_back({block.move_id, position, block.trapezoid.cruise_feedrate,
-                                                      delta_extruder, feedrate, width, height, mm3_per_mm, fan_speed,
-                                                      temperature});
+                        const float t = block.trapezoid.accelerate_until / block.distance;
+                        const Vec3f position = lerp(prev_move.position, curr_move.position, t);
+                        if ((position - prev_move.position).norm() > EPSILON &&
+                            (position - curr_move.position).norm() > EPSILON)
+                        {
+                            const float delta_extruder = interpolate ? lerp(prev_move.delta_extruder,
+                                                                            curr_move.delta_extruder, t)
+                                                                     : curr_move.delta_extruder;
+                            const float feedrate = interpolate ? lerp(prev_move.feedrate, curr_move.feedrate, t)
+                                                               : curr_move.feedrate;
+                            const float width = (interpolate && !interlock_transition)
+                                                    ? lerp(prev_move.width, curr_move.width, t)
+                                                    : curr_move.width;
+                            const float height = interpolate ? lerp(prev_move.height, curr_move.height, t)
+                                                             : curr_move.height;
+                            const float mm3_per_mm = interpolate ? lerp(prev_move.mm3_per_mm, curr_move.mm3_per_mm, t)
+                                                                 : curr_move.mm3_per_mm;
+                            const float fan_speed = interpolate ? lerp(prev_move.fan_speed, curr_move.fan_speed, t)
+                                                                : curr_move.fan_speed;
+                            const float temperature = interpolate
+                                                          ? lerp(prev_move.temperature, curr_move.temperature, t)
+                                                          : curr_move.temperature;
+                            actual_speed_moves.push_back({block.move_id, position, block.trapezoid.cruise_feedrate,
+                                                          delta_extruder, feedrate, width, height, mm3_per_mm,
+                                                          fan_speed, temperature});
+                        }
+                    }
+
+                    if (has_deceleration &&
+                        block.trapezoid.decelerate_after > block.trapezoid.accelerate_until + EPSILON)
+                    {
+                        const float t = block.trapezoid.decelerate_after / block.distance;
+                        const Vec3f position = lerp(prev_move.position, curr_move.position, t);
+                        if ((position - prev_move.position).norm() > EPSILON &&
+                            (position - curr_move.position).norm() > EPSILON)
+                        {
+                            const float delta_extruder = interpolate ? lerp(prev_move.delta_extruder,
+                                                                            curr_move.delta_extruder, t)
+                                                                     : curr_move.delta_extruder;
+                            const float feedrate = interpolate ? lerp(prev_move.feedrate, curr_move.feedrate, t)
+                                                               : curr_move.feedrate;
+                            const float width = (interpolate && !interlock_transition)
+                                                    ? lerp(prev_move.width, curr_move.width, t)
+                                                    : curr_move.width;
+                            const float height = interpolate ? lerp(prev_move.height, curr_move.height, t)
+                                                             : curr_move.height;
+                            const float mm3_per_mm = interpolate ? lerp(prev_move.mm3_per_mm, curr_move.mm3_per_mm, t)
+                                                                 : curr_move.mm3_per_mm;
+                            const float fan_speed = interpolate ? lerp(prev_move.fan_speed, curr_move.fan_speed, t)
+                                                                : curr_move.fan_speed;
+                            const float temperature = interpolate
+                                                          ? lerp(prev_move.temperature, curr_move.temperature, t)
+                                                          : curr_move.temperature;
+                            actual_speed_moves.push_back({block.move_id, position, block.trapezoid.cruise_feedrate,
+                                                          delta_extruder, feedrate, width, height, mm3_per_mm,
+                                                          fan_speed, temperature});
+                        }
                     }
                 }
 
@@ -707,15 +719,9 @@ void GCodeProcessor::UsedFilaments::process_caches(const GCodeProcessor *process
 
 GCodeProcessorResult::~GCodeProcessorResult()
 {
-    // Clean up virtual files if owned
-    if (virtual_gcode_file && owns_virtual_file)
+    if (gcode_object && owns_gcode_object)
     {
-        delete virtual_gcode_file;
-    }
-
-    if (output_virtual_file && owns_output_virtual_file)
-    {
-        delete output_virtual_file;
+        delete gcode_object;
     }
 }
 
@@ -744,16 +750,11 @@ GCodeProcessorResult::GCodeProcessorResult(GCodeProcessorResult &&other) noexcep
     , filename(std::move(other.filename))
     , id(other.id)
     , print_statistics(std::move(other.print_statistics))
-    , virtual_gcode_file(other.virtual_gcode_file)
-    , output_virtual_file(other.output_virtual_file)
-    , owns_virtual_file(other.owns_virtual_file)
-    , owns_output_virtual_file(other.owns_output_virtual_file)
+    , gcode_object(other.gcode_object)
+    , owns_gcode_object(other.owns_gcode_object)
 {
-    // Clear the other's pointers to prevent double-delete
-    other.virtual_gcode_file = nullptr;
-    other.output_virtual_file = nullptr;
-    other.owns_virtual_file = false;
-    other.owns_output_virtual_file = false;
+    other.gcode_object = nullptr;
+    other.owns_gcode_object = false;
 }
 
 GCodeProcessorResult &GCodeProcessorResult::operator=(GCodeProcessorResult &&other) noexcept
@@ -790,16 +791,11 @@ GCodeProcessorResult &GCodeProcessorResult::operator=(GCodeProcessorResult &&oth
         print_statistics = std::move(other.print_statistics);
 
         // Transfer virtual file ownership
-        virtual_gcode_file = other.virtual_gcode_file;
-        output_virtual_file = other.output_virtual_file;
-        owns_virtual_file = other.owns_virtual_file;
-        owns_output_virtual_file = other.owns_output_virtual_file;
+        gcode_object = other.gcode_object;
+        owns_gcode_object = other.owns_gcode_object;
 
-        // Clear the other's pointers to prevent double-delete
-        other.virtual_gcode_file = nullptr;
-        other.output_virtual_file = nullptr;
-        other.owns_virtual_file = false;
-        other.owns_output_virtual_file = false;
+        other.gcode_object = nullptr;
+        other.owns_gcode_object = false;
     }
     return *this;
 }
@@ -834,28 +830,29 @@ void GCodeProcessorResult::reset()
     role_metrics = {};
     overall_metrics = {};
 
-    // DEPRECATED: final_gcode_array has been replaced by output_virtual_file
-
-    // The viewer can access virtual files after reset is called
-    // To prevent crashes, we'll leak the memory rather than delete while viewer is active
-    // TODO: Implement proper reference counting or viewer notification
-    if (virtual_gcode_file && owns_virtual_file)
+    if (gcode_object && owns_gcode_object)
     {
-        // delete virtual_gcode_file;
-        virtual_gcode_file = nullptr;
+        delete gcode_object;
+        gcode_object = nullptr;
     }
-    owns_virtual_file = false;
-
-    if (output_virtual_file && owns_output_virtual_file)
-    {
-        // delete output_virtual_file;
-        output_virtual_file = nullptr;
-    }
-    owns_output_virtual_file = false;
+    owns_gcode_object = false;
 
 #ifdef _WIN32
     _heapmin();                                                              // Compact the heap
     SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T) -1, (SIZE_T) -1); // Trim working set
+#endif
+}
+
+void GCodeProcessorResult::release_preview_data()
+{
+    moves.clear();
+    moves.shrink_to_fit();
+    lines_ends.clear();
+    lines_ends.shrink_to_fit();
+
+#ifdef _WIN32
+    _heapmin();
+    SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T) -1, (SIZE_T) -1);
 #endif
 }
 
@@ -1580,6 +1577,14 @@ void GCodeProcessor::process_M207(const GCodeReader::GCodeLine &line)
     // (Same reasoning as the config.retract_lift exclusion above in apply_config.)
 }
 
+void GCodeProcessor::set_gcode_object(GCodeObject *gco)
+{
+    if (m_result.owns_gcode_object)
+        delete m_result.gcode_object;
+    m_result.gcode_object = gco;
+    m_result.owns_gcode_object = (gco != nullptr);
+}
+
 void GCodeProcessor::reset()
 {
     m_units = EUnits::Millimeters;
@@ -1641,6 +1646,10 @@ void GCodeProcessor::reset()
     m_time_processor.reset();
     m_accumulated_speed_moves.clear();
     m_used_filaments.reset();
+    m_large_print_optimization_applied = false;
+    m_ct_total_lines = 0;
+    m_ct_last_move_count = 0;
+    m_ct_last_progress = 50;
 
     // After extract_result(), m_result is in a moved-from state
     // We need to reconstruct it to ensure it's in a valid state
@@ -1661,114 +1670,30 @@ void GCodeProcessor::reset()
     m_single_extruder_multi_material = false;
 
     // Prevent dangling pointers when slicing multiple times
-    m_virtual_file = nullptr;
-    m_use_virtual_file = false;
 }
 
 GCodeProcessorResult &&GCodeProcessor::extract_result()
 {
     // Transfer ownership of virtual files if they exist
-    if (m_use_virtual_file && m_virtual_file)
-    {
-        m_result.virtual_gcode_file = m_virtual_file;
-        m_result.owns_virtual_file = true;
-        m_virtual_file = nullptr;
-        m_use_virtual_file = false;
-    }
-
-    // Note: output_virtual_file is already set in post_process_virtual_file
-
     return std::move(m_result);
 }
 
-void GCodeProcessor::post_process_virtual_file()
+void GCodeProcessor::post_process_gcode_object()
 {
-    if (!m_virtual_file)
-    {
-        printf("ERROR: post_process_virtual_file called with no virtual file\n");
+    GCodeObject *input_gco = m_result.gcode_object;
+    if (!input_gco)
         return;
-    }
 
-    // Create output virtual file
-    VirtualGCodeFile *output_vf = new VirtualGCodeFile();
-    output_vf->reserve_lines(m_virtual_file->line_count() * 1.1); // +10% for M73
+    size_t input_line_count = input_gco->line_count();
 
-    // Clear moves from the streaming phase and re-initialize with dummy move.
-    // Pass 1 will rebuild them via process_gcode_line.
-    m_result.moves.clear();
-    initialize_result_moves();
-    m_line_id = 0;
+    // Moves and time estimation data (g1_times_cache, machine.time, stop_times) were
+    // already built during G-code generation via streaming process_buffer() calls and
+    // finalized by the preceding finalize(true). No re-parse needed.
     size_t g1_lines_counter = 0;
 
-    // Clear and initialize lines_ends for virtual file
+    // Initialize lines_ends for the output virtual file
     m_result.lines_ends.clear();
     m_result.lines_ends.emplace_back(std::vector<size_t>());
-
-    // The machine limits (from RRF M203, M201, etc.) and acceleration values (from M204)
-    // were set during apply_config(). TimeProcessor::reset() would wipe them with defaults.
-    // We must preserve them for accurate time estimation.
-
-    // Save TimeProcessor-level settings
-    MachineEnvelopeConfig saved_machine_limits = m_time_processor.machine_limits;
-    bool saved_envelope_processing_enabled = m_time_processor.machine_envelope_processing_enabled;
-    bool saved_export_remaining_time = m_time_processor.export_remaining_time_enabled;
-    std::vector<float> saved_filament_load_times = m_time_processor.filament_load_times;
-    std::vector<float> saved_filament_unload_times = m_time_processor.filament_unload_times;
-
-    // Save per-machine settings (acceleration, enabled, M73 masks) that reset() wipes
-    struct SavedMachineState
-    {
-        float acceleration;
-        float max_acceleration;
-        float retract_acceleration;
-        float max_retract_acceleration;
-        float travel_acceleration;
-        float max_travel_acceleration;
-        float extrude_factor_override_percentage;
-        bool enabled;
-        std::string line_m73_main_mask;
-        std::string line_m73_stop_mask;
-    };
-    std::array<SavedMachineState, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> saved_machine_state;
-    for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i)
-    {
-        saved_machine_state[i] = {m_time_processor.machines[i].acceleration,
-                                  m_time_processor.machines[i].max_acceleration,
-                                  m_time_processor.machines[i].retract_acceleration,
-                                  m_time_processor.machines[i].max_retract_acceleration,
-                                  m_time_processor.machines[i].travel_acceleration,
-                                  m_time_processor.machines[i].max_travel_acceleration,
-                                  m_time_processor.machines[i].extrude_factor_override_percentage,
-                                  m_time_processor.machines[i].enabled,
-                                  m_time_processor.machines[i].line_m73_main_mask,
-                                  m_time_processor.machines[i].line_m73_stop_mask};
-    }
-
-    // Initialize time estimation
-    m_time_processor.reset();
-
-    // Restore all settings that were configured for this print
-    m_time_processor.machine_limits = saved_machine_limits;
-    m_time_processor.machine_envelope_processing_enabled = saved_envelope_processing_enabled;
-    m_time_processor.export_remaining_time_enabled = saved_export_remaining_time;
-    m_time_processor.filament_load_times = saved_filament_load_times;
-    m_time_processor.filament_unload_times = saved_filament_unload_times;
-
-    // Restore per-machine settings
-    for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i)
-    {
-        m_time_processor.machines[i].acceleration = saved_machine_state[i].acceleration;
-        m_time_processor.machines[i].max_acceleration = saved_machine_state[i].max_acceleration;
-        m_time_processor.machines[i].retract_acceleration = saved_machine_state[i].retract_acceleration;
-        m_time_processor.machines[i].max_retract_acceleration = saved_machine_state[i].max_retract_acceleration;
-        m_time_processor.machines[i].travel_acceleration = saved_machine_state[i].travel_acceleration;
-        m_time_processor.machines[i].max_travel_acceleration = saved_machine_state[i].max_travel_acceleration;
-        m_time_processor.machines[i].extrude_factor_override_percentage =
-            saved_machine_state[i].extrude_factor_override_percentage;
-        m_time_processor.machines[i].enabled = saved_machine_state[i].enabled;
-        m_time_processor.machines[i].line_m73_main_mask = saved_machine_state[i].line_m73_main_mask;
-        m_time_processor.machines[i].line_m73_stop_mask = saved_machine_state[i].line_m73_stop_mask;
-    }
 
     // Calculate filament statistics
     std::vector<double> filament_mm(m_result.extruders_count, 0.0);
@@ -2154,156 +2079,142 @@ void GCodeProcessor::post_process_virtual_file()
         return false;
     };
 
-    // PASS 1: Parse G-code to generate moves and build time estimation data.
-    // This populates m_result.moves and time processor blocks.
-    {
-        GCodeReader parser;
-        for (size_t line_idx = 0; line_idx < m_virtual_file->line_count(); ++line_idx)
-        {
-            std::string line = m_virtual_file->get_line(line_idx);
-
-            if (!line.empty() && line.back() == '\n')
-                line.pop_back();
-            if (!line.empty() && line.back() == '\r')
-                line.pop_back();
-
-            m_line_id = line_idx;
-
-            parser.parse_line(line, [&](GCodeReader &reader, const GCodeReader::GCodeLine &gline)
-                              { this->process_gcode_line(gline, true); });
-        }
-    }
-
-    // Finalize time estimation - this processes remaining time blocks and fully
-    // populates g1_times_cache, which is needed for M73 insertion in pass 2.
-    this->finalize(false);
-
 #ifdef SLIC3R_PYTHON_PREPROCESSOR
     PreProcessorResult pp_result;
     if (m_preprocessing_consent && m_print)
     {
-        // Gather scripts from active profiles in category order
-        std::vector<std::string> all_scripts;
-        auto gather_category = [&](const std::string &category)
+        // Skip the entire preprocessing pass if no category has scripts enabled.
+        const auto &cfg = m_print->config();
+        const bool any_enabled = cfg.preprocessing_enabled_print.value || cfg.preprocessing_enabled_filament.value ||
+                                 cfg.preprocessing_enabled_printer.value;
+
+        if (any_enabled)
         {
-            const auto &cfg = m_print->config();
-            bool enabled = false;
-            const std::vector<std::string> *scripts = nullptr;
-            if (category == "print")
+            // Gather scripts from active profiles in category order
+            std::vector<std::string> all_scripts;
+            auto gather_category = [&](const std::string &category)
             {
-                enabled = cfg.preprocessing_enabled_print.value;
-                scripts = &cfg.preprocessing_scripts_print.values;
-            }
-            else if (category == "filament")
-            {
-                enabled = cfg.preprocessing_enabled_filament.value;
-                scripts = &cfg.preprocessing_scripts_filament.values;
-            }
-            else if (category == "printer")
-            {
-                enabled = cfg.preprocessing_enabled_printer.value;
-                scripts = &cfg.preprocessing_scripts_printer.values;
-            }
-            if (enabled && scripts)
-            {
-                for (const auto &s : *scripts)
+                const auto &cfg = m_print->config();
+                bool enabled = false;
+                const std::vector<std::string> *scripts = nullptr;
+                if (category == "print")
                 {
-                    if (s.empty())
-                        continue;
-                    if (boost::filesystem::exists(s))
-                        all_scripts.push_back(s);
+                    enabled = cfg.preprocessing_enabled_print.value;
+                    scripts = &cfg.preprocessing_scripts_print.values;
+                }
+                else if (category == "filament")
+                {
+                    enabled = cfg.preprocessing_enabled_filament.value;
+                    scripts = &cfg.preprocessing_scripts_filament.values;
+                }
+                else if (category == "printer")
+                {
+                    enabled = cfg.preprocessing_enabled_printer.value;
+                    scripts = &cfg.preprocessing_scripts_printer.values;
+                }
+                if (enabled && scripts)
+                {
+                    for (const auto &s : *scripts)
+                    {
+                        if (s.empty())
+                            continue;
+                        if (boost::filesystem::exists(s))
+                            all_scripts.push_back(s);
+                        else
+                        {
+                            std::string name = boost::filesystem::path(s).filename().string();
+                            std::string warning = "Preprocessing script not found: " + name;
+                            BOOST_LOG_TRIVIAL(warning) << warning;
+                            pp_result.warnings.push_back(warning);
+                        }
+                    }
+                }
+            };
+
+            // Parse category order (comma-separated), skip duplicates and invalid entries
+            std::istringstream order_stream(m_preprocessing_category_order);
+            std::string category;
+            bool seen_print = false, seen_filament = false, seen_printer = false;
+            while (std::getline(order_stream, category, ','))
+            {
+                category.erase(0, category.find_first_not_of(" \t"));
+                category.erase(category.find_last_not_of(" \t") + 1);
+                if (category == "print" && !seen_print)
+                {
+                    seen_print = true;
+                    gather_category(category);
+                }
+                else if (category == "filament" && !seen_filament)
+                {
+                    seen_filament = true;
+                    gather_category(category);
+                }
+                else if (category == "printer" && !seen_printer)
+                {
+                    seen_printer = true;
+                    gather_category(category);
+                }
+            }
+
+            // Deduplicate scripts across categories (same script in multiple profiles runs only once)
+            {
+                std::vector<std::string> unique_scripts;
+                for (const auto &s : all_scripts)
+                {
+                    if (std::find(unique_scripts.begin(), unique_scripts.end(), s) == unique_scripts.end())
+                        unique_scripts.push_back(s);
                     else
                     {
                         std::string name = boost::filesystem::path(s).filename().string();
-                        std::string warning = "Preprocessing script not found: " + name;
+                        std::string warning = "Preprocessing script '" + name +
+                                              "' appears in multiple profiles, running only once";
                         BOOST_LOG_TRIVIAL(warning) << warning;
                         pp_result.warnings.push_back(warning);
                     }
                 }
+                all_scripts = std::move(unique_scripts);
             }
-        };
 
-        // Parse category order (comma-separated), skip duplicates and invalid entries
-        std::istringstream order_stream(m_preprocessing_category_order);
-        std::string category;
-        bool seen_print = false, seen_filament = false, seen_printer = false;
-        while (std::getline(order_stream, category, ','))
-        {
-            category.erase(0, category.find_first_not_of(" \t"));
-            category.erase(category.find_last_not_of(" \t") + 1);
-            if (category == "print" && !seen_print)
+            if (!all_scripts.empty())
             {
-                seen_print = true;
-                gather_category(category);
-            }
-            else if (category == "filament" && !seen_filament)
-            {
-                seen_filament = true;
-                gather_category(category);
-            }
-            else if (category == "printer" && !seen_printer)
-            {
-                seen_printer = true;
-                gather_category(category);
-            }
-        }
+                m_print->set_status(85, _u8L("Preprocessing G-code"));
 
-        // Deduplicate scripts across categories (same script in multiple profiles runs only once)
-        {
-            std::vector<std::string> unique_scripts;
-            for (const auto &s : all_scripts)
-            {
-                if (std::find(unique_scripts.begin(), unique_scripts.end(), s) == unique_scripts.end())
-                    unique_scripts.push_back(s);
-                else
+                std::string res_dir = resources_dir();
+                GCodeObject *gco_for_scripts = input_gco;
+                auto pre_warnings = std::move(pp_result.warnings);
+                pp_result = run_pre_processor_scripts(m_result, gco_for_scripts, all_scripts, res_dir, m_print);
+                pp_result.warnings.insert(pp_result.warnings.begin(), pre_warnings.begin(), pre_warnings.end());
+
+                // If scripts materialized a new GCodeObject, update the result
+                if (gco_for_scripts != input_gco)
                 {
-                    std::string name = boost::filesystem::path(s).filename().string();
-                    std::string warning = "Preprocessing script '" + name +
-                                          "' appears in multiple profiles, running only once";
-                    BOOST_LOG_TRIVIAL(warning) << warning;
-                    pp_result.warnings.push_back(warning);
+                    if (m_result.owns_gcode_object)
+                        delete m_result.gcode_object;
+                    m_result.gcode_object = gco_for_scripts;
+                    m_result.owns_gcode_object = true;
+                    input_gco = gco_for_scripts;
+                    input_line_count = input_gco->line_count();
                 }
+                if (pp_result.scripts_executed > 0)
+                    BOOST_LOG_TRIVIAL(info)
+                        << "Pre-processor: " << pp_result.scripts_executed << " script(s) executed, "
+                        << pp_result.modifications.size() << " move(s) modified";
             }
-            all_scripts = std::move(unique_scripts);
-        }
 
-        if (!all_scripts.empty())
-        {
-            m_print->set_status(85, _u8L("Preprocessing G-code"));
-
-            std::string res_dir = resources_dir();
-            VirtualGCodeFile *original_vf = m_virtual_file;
-            // Preserve warnings collected during script gathering (missing files etc.)
-            auto pre_warnings = std::move(pp_result.warnings);
-            pp_result = run_pre_processor_scripts(m_result, m_virtual_file, all_scripts, res_dir, m_print);
-            pp_result.warnings.insert(pp_result.warnings.begin(), pre_warnings.begin(), pre_warnings.end());
-            if (m_virtual_file != original_vf)
-            {
-                if (m_result.virtual_gcode_file == original_vf)
-                {
-                    m_result.virtual_gcode_file = nullptr;
-                    m_result.owns_virtual_file = false;
-                }
-                delete original_vf;
-            }
-            if (pp_result.scripts_executed > 0)
-                BOOST_LOG_TRIVIAL(info) << "Pre-processor: " << pp_result.scripts_executed << " script(s) executed, "
-                                        << pp_result.modifications.size() << " move(s) modified";
-        }
-
-        // Surface warnings and errors as Print warnings for the notification system
-        for (const auto &w : pp_result.warnings)
-            m_print->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, w);
-        for (const auto &e : pp_result.errors)
-            m_print->active_step_add_warning(PrintStateBase::WarningLevel::CRITICAL, e);
+            // Surface warnings and errors as Print warnings for the notification system
+            for (const auto &w : pp_result.warnings)
+                m_print->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, w);
+            for (const auto &e : pp_result.errors)
+                m_print->active_step_add_warning(PrintStateBase::WarningLevel::CRITICAL, e);
+        } // if (any_enabled)
     }
 #endif
 
-    // PASS 2: Post-process the virtual file using the now-complete g1_times_cache.
-    // This mirrors the file-based post_process() logic exactly.
-    for (size_t line_idx = 0; line_idx < m_virtual_file->line_count(); ++line_idx)
+    // Post-process the virtual file: insert M73 progress lines using g1_times_cache,
+    // replace placeholder comments, and handle tool change backtrace (XL printers).
+    for (size_t line_idx = 0; line_idx < input_line_count; ++line_idx)
     {
-        std::string line = m_virtual_file->get_line(line_idx);
+        std::string line(input_gco->get_line_text(line_idx));
 
         if (!line.empty() && line.back() == '\n')
             line.pop_back();
@@ -2375,21 +2286,27 @@ void GCodeProcessor::post_process_virtual_file()
             append_output(gcode_line, line_idx + 1);
     }
 
-    // Write buffered output to output virtual file
-    for (const auto &buf_line : output_lines)
-        output_vf->write_line(buf_line.line);
+    // Build post-processed GCodeObject with move linkage from output_lines.
+    {
+        GCodeObject *output_gco = new GCodeObject();
+        for (const auto &buf_line : output_lines)
+            output_gco->append_text(buf_line.line.c_str());
 
-    // Store output in result
-    m_result.output_virtual_file = output_vf;
-    m_result.owns_output_virtual_file = true;
+        if (m_result.owns_gcode_object)
+            delete m_result.gcode_object;
+        m_result.gcode_object = output_gco;
+        m_result.owns_gcode_object = true;
+    }
 
     // Populate lines_ends for compatibility with libvgcode
-    size_t cumulative_pos = 0;
-    for (size_t i = 0; i < output_vf->line_count(); ++i)
     {
-        std::string out_line = output_vf->get_line(i);
-        cumulative_pos += out_line.length();
-        m_result.lines_ends.front().push_back(cumulative_pos);
+        GCodeObject *out_gco = m_result.gcode_object;
+        size_t cumulative_pos = 0;
+        for (size_t i = 0; i < out_gco->line_count(); ++i)
+        {
+            cumulative_pos += out_gco->get_line_text(i).size();
+            m_result.lines_ends.front().push_back(cumulative_pos);
+        }
     }
 
     // Synchronize move gcode_ids with output line numbers after M73/M104 insertions
@@ -2744,11 +2661,18 @@ void GCodeProcessor::finalize(bool perform_post_process)
         }
     }
 
+    // With streaming, interpolation points accumulate before the threshold
+    // activates. Discard them to prevent a multi-GB bulk insertion.
+    if (m_preview_detail_threshold > 0 && m_result.moves.size() > m_preview_detail_threshold)
+    {
+        m_large_print_optimization_applied = true;
+        m_accumulated_speed_moves.clear();
+    }
+
     // calculate_time() will report smooth progress from 50% to 85%
     calculate_time(m_result);
 
-    // Uses the accurate time values computed by the motion planner simulation.
-    // For each move, scans forward 1 second and counts segments.
+    // Compute max commands-per-second metrics by scanning 1-second windows.
     {
         struct RoleStats
         {
@@ -2776,7 +2700,6 @@ void GCodeProcessor::finalize(bool perform_post_process)
             unsigned int start_layer = start_move.layer_id;
 
             // === OVERALL STATS: Count ALL commands in 1-second window ===
-            // Note: 0-time segments are still commands the motion controller must process
             {
                 double accumulated_time = 0.0;
                 size_t command_count = 0;
@@ -2788,12 +2711,10 @@ void GCodeProcessor::finalize(bool perform_post_process)
                     if (move.layer_id != start_layer)
                         break;
 
-                    // Accumulate time for window calculation
                     float move_time = move.time[NORMAL_MODE];
                     if (move_time > 0.0f)
                         accumulated_time += move_time;
 
-                    // Count ALL commands (including 0-time segments)
                     command_count++;
                 }
 
@@ -2820,12 +2741,10 @@ void GCodeProcessor::finalize(bool perform_post_process)
                     if (move.layer_id != start_layer)
                         break;
 
-                    // For per-role, count time from ALL moves but only count segments of same role
                     float move_time = move.time[NORMAL_MODE];
                     if (move_time > 0.0f)
                         accumulated_time += move_time;
 
-                    // Only count if same role
                     if (move.type == EMoveType::Extrude && move.extrusion_role == start_role)
                         command_count++;
                 }
@@ -2874,7 +2793,16 @@ void GCodeProcessor::finalize(bool perform_post_process)
     // update statistics (instant)
     update_estimated_statistics();
 
-    // post-process (instant)
+    if (m_large_print_optimization_applied && m_print && perform_post_process)
+    {
+        m_print->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
+                                         "Large print detected (" + std::to_string(m_result.moves.size() / 1'000'000) +
+                                             "M segments). Preview detail was reduced to improve slicing performance. "
+                                             "This does not affect print quality or time estimation.");
+        m_large_print_optimization_applied = false;
+    }
+
+    // post-process
     if (perform_post_process)
         post_process();
 }
@@ -5979,9 +5907,9 @@ void GCodeProcessor::process_T(const std::string_view command)
 
 void GCodeProcessor::post_process()
 {
-    if (m_use_virtual_file && m_virtual_file)
+    if (m_result.gcode_object)
     {
-        post_process_virtual_file();
+        post_process_gcode_object();
         return;
     }
 
@@ -7150,30 +7078,15 @@ void GCodeProcessor::process_filaments(CustomGCode::Type code)
 
 void GCodeProcessor::calculate_time(GCodeProcessorResult &result, size_t keep_last_n_blocks, float additional_time)
 {
-    static size_t s_total_lines = 0;
-    static size_t s_last_move_count = 0;
-    static int s_last_progress = 50;
-    static int s_call_num = 0;
-
-    s_call_num++;
-
     const size_t current_moves = result.moves.size();
 
-    // Reset on new job (detect when moves decrease, indicating new file)
-    if (current_moves < s_last_move_count)
-    {
-        s_total_lines = 0;
-        s_last_progress = 50;
-        s_call_num = 1;
-    }
+    if (m_ct_total_lines == 0 && result.gcode_object)
+        m_ct_total_lines = result.gcode_object->line_count();
 
-    // Get total lines from virtual file on first call
-    if (s_total_lines == 0 && result.virtual_gcode_file)
-    {
-        s_total_lines = result.virtual_gcode_file->line_count();
-    }
+    m_ct_last_move_count = current_moves;
 
-    s_last_move_count = current_moves;
+    if (m_preview_detail_threshold > 0 && current_moves > m_preview_detail_threshold)
+        m_large_print_optimization_applied = true;
 
     // calculate times
     const size_t time_mode_count = static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count);
@@ -7182,7 +7095,7 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult &result, size_t keep_la
     {
         TimeMachine &machine = m_time_processor.machines[i];
         machine.calculate_time(m_result, static_cast<PrintEstimatedStatistics::ETimeMode>(i), keep_last_n_blocks,
-                               additional_time, m_time_compensation, nullptr);
+                               additional_time, m_time_compensation, nullptr, m_large_print_optimization_applied);
 
         if (static_cast<PrintEstimatedStatistics::ETimeMode>(i) == PrintEstimatedStatistics::ETimeMode::Normal)
         {
@@ -7200,15 +7113,15 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult &result, size_t keep_la
     if (keep_last_n_blocks > 0)
     {
         // Update progress during incremental calls
-        size_t line_count = m_virtual_file ? m_virtual_file->line_count() : 0;
+        size_t line_count = m_result.gcode_object ? m_result.gcode_object->line_count() : 0;
         if (m_print && line_count > 0)
         {
             int progress = 50 + static_cast<int>((result.moves.size() * 35.0) / line_count);
             progress = std::min(progress, 85);
-            if (progress > s_last_progress)
+            if (progress > m_ct_last_progress)
             {
                 m_print->set_status(progress, _u8L("Processing G-code"));
-                s_last_progress = progress;
+                m_ct_last_progress = progress;
             }
         }
         return;
@@ -7303,7 +7216,7 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult &result, size_t keep_la
     // No block move_id remapping needed - single bulk insertion means no cross-batch index drift
 
     // Update progress based on actual line processing
-    size_t line_count = m_virtual_file ? m_virtual_file->line_count() : 0;
+    size_t line_count = m_result.gcode_object ? m_result.gcode_object->line_count() : 0;
     if (m_print && line_count > 0)
     {
         // Progress from 50% to 85% based on moves processed vs total gcode lines (35% range)
@@ -7311,11 +7224,10 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult &result, size_t keep_la
         progress = std::min(progress, 85); // Cap at 85%
 
         // Only update if progress increased (avoid UI flicker)
-        // Note: Uses s_last_progress from top of function (line 5027), which resets between jobs
-        if (progress > s_last_progress)
+        if (progress > m_ct_last_progress)
         {
             m_print->set_status(progress, _u8L("Processing G-code"));
-            s_last_progress = progress;
+            m_ct_last_progress = progress;
         }
     }
 }

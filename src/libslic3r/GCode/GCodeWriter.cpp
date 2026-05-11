@@ -15,6 +15,7 @@
 #include "GCodeWriter.hpp"
 
 #include <algorithm>
+#include <iomanip>
 #include <iostream>
 #include <string_view>
 #include <cassert>
@@ -207,6 +208,20 @@ std::string GCodeWriter::set_bed_temperature(unsigned int temperature, bool wait
     if (FLAVOR_IS(gcfTeacup) && wait)
         gcode << "M116 ; wait for bed temperature to be reached\n";
 
+    return gcode.str();
+}
+
+std::string GCodeWriter::set_pressure_advance(double pa, unsigned int extruder_id) const
+{
+    std::ostringstream gcode;
+    gcode << std::fixed << std::setprecision(4);
+    if (FLAVOR_IS(gcfRepRapFirmware) || FLAVOR_IS(gcfRapid))
+        gcode << "M572 D" << extruder_id << " S" << pa;
+    else if (FLAVOR_IS(gcfKlipper))
+        gcode << "SET_PRESSURE_ADVANCE ADVANCE=" << pa;
+    else
+        gcode << "M900 K" << pa;
+    gcode << " ; pressure advance\n";
     return gcode.str();
 }
 

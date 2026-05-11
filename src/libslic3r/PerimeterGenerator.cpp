@@ -2025,6 +2025,7 @@ void PerimeterGenerator::process_arachne(
                                            0, params.layer_height, params.object_config, params.print_config);
     Arachne::Perimeters perimeters = wall_tool_paths.getToolPaths();
     ExPolygons infill_contour = union_ex(wall_tool_paths.getInnerContour());
+    infill_contour = expolygons_simplify(infill_contour, params.scaled_resolution);
 
     // Check if there are some remaining perimeters to generate (the number of perimeters
     // is greater than one together with enabled the single perimeter on top surface feature).
@@ -2089,6 +2090,7 @@ void PerimeterGenerator::process_arachne(
 
             perimeters.insert(perimeters.end(), inner_perimeters.begin(), inner_perimeters.end());
             infill_contour = union_ex(top_expolygons, inner_wall_tool_paths.getInnerContour());
+            infill_contour = expolygons_simplify(infill_contour, params.scaled_resolution);
         }
         else
         {
@@ -2100,6 +2102,7 @@ void PerimeterGenerator::process_arachne(
                                                                   params.print_config);
             perimeters = no_single_perimeter_tool_paths.getToolPaths();
             infill_contour = union_ex(no_single_perimeter_tool_paths.getInnerContour());
+            infill_contour = expolygons_simplify(infill_contour, params.scaled_resolution);
         }
     }
 
@@ -3070,12 +3073,15 @@ void PerimeterGenerator::process_athena(
     Athena::Perimeters perimeters = wall_tool_paths.getToolPaths();
     // Arachne treats widths as "suggestions" and recalculates them. We enforce exact user values.
     // This fixes the core issue where extrusion widths vary from user settings (e.g., 0.5mm -> 0.499mm)
-    preFlight::PreciseWalls::enforce_exact_widths(perimeters, ext_perimeter_width, perimeter_width);
+    preFlight::PreciseWalls::enforce_exact_widths(perimeters, ext_perimeter_width, perimeter_width, tw_snap);
     // After Athena's spacing/width separation refactoring, skeletal trapezoidation receives
     // both spacing AND width values separately. The inner_contour calculation already accounts
     // for the actual bead widths, so no adjustment is needed (unlike the old system where only
     // spacing was passed and widths were applied later, requiring a compensating offset).
     ExPolygons infill_contour = union_ex(wall_tool_paths.getInnerContour());
+    // Athena's skeleton decomposition generates high-vertex-count inner contours.
+    // Simplify early so all downstream Clipper2 operations run on reduced geometry.
+    infill_contour = expolygons_simplify(infill_contour, params.scaled_resolution);
 
     // Debug: log perimeter loops and inner contour
     const double dbg_z = (params.layer != nullptr) ? params.layer->print_z : 0.0;
@@ -3131,7 +3137,8 @@ void PerimeterGenerator::process_athena(
                                                         perimeter_width, 0, perimeter_spacing, 0, params.layer_id,
                                                         min_bead_width_factor, tw_snap);
             Athena::Perimeters inner_perimeters = inner_wall_tool_paths.getToolPaths();
-            preFlight::PreciseWalls::enforce_exact_widths(inner_perimeters, ext_perimeter_width, perimeter_width);
+            preFlight::PreciseWalls::enforce_exact_widths(inner_perimeters, ext_perimeter_width, perimeter_width,
+                                                          tw_snap);
 
             // Recalculate indexes of inner perimeters before merging them.
             if (!perimeters.empty())
@@ -3148,6 +3155,7 @@ void PerimeterGenerator::process_athena(
 
             perimeters.insert(perimeters.end(), inner_perimeters.begin(), inner_perimeters.end());
             infill_contour = union_ex(top_expolygons, inner_wall_tool_paths.getInnerContour());
+            infill_contour = expolygons_simplify(infill_contour, params.scaled_resolution);
         }
         else
         {
@@ -3160,8 +3168,9 @@ void PerimeterGenerator::process_athena(
                                                                  ext_perimeter_spacing2, perimeter_spacing, 0,
                                                                  params.layer_id, min_bead_width_factor, tw_snap);
             perimeters = no_single_perimeter_tool_paths.getToolPaths();
-            preFlight::PreciseWalls::enforce_exact_widths(perimeters, ext_perimeter_width, perimeter_width);
+            preFlight::PreciseWalls::enforce_exact_widths(perimeters, ext_perimeter_width, perimeter_width, tw_snap);
             infill_contour = union_ex(no_single_perimeter_tool_paths.getInnerContour());
+            infill_contour = expolygons_simplify(infill_contour, params.scaled_resolution);
         }
     }
 
@@ -3877,6 +3886,7 @@ void PerimeterGenerator::process_athena(
                         // Wide visibility zones keep their fill area for solid infill.
                         append(new_inner, non_il_opened);
                         infill_contour = union_ex(new_inner);
+                        infill_contour = expolygons_simplify(infill_contour, params.scaled_resolution);
 
                         dbg_il_inner_contour(dbg_z, il_inner, geometric_inner, infill_contour);
                     }

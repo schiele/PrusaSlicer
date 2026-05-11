@@ -54,35 +54,21 @@ Flow LayerRegion::flow(FlowRole role, double layer_height) const
     return m_region->flow(*m_layer->object(), role, layer_height, m_layer->id() == 0);
 }
 
-Flow LayerRegion::bridging_flow(FlowRole role, bool force_thick_bridges) const
+Flow LayerRegion::bridging_flow(FlowRole role) const
 {
     const PrintRegion &region = this->region();
     const PrintRegionConfig &region_config = region.config();
     const PrintObject &print_object = *this->layer()->object();
-    if (print_object.config().thick_bridges || force_thick_bridges)
+
+    if (region_config.bridge_extrusion_width.value > 0)
     {
-        // The old Slic3r way (different from all other slicers): Use rounded extrusions.
-        // Get the configured nozzle_diameter for the extruder associated to the flow role requested.
-        // Here this->extruder(role) - 1 may underflow to MAX_INT, but then the get_at() will follback to zero'th element, so everything is all right.
         auto nozzle_diameter = float(print_object.print()->config().nozzle_diameter.get_at(region.extruder(role) - 1));
-        // Applies default bridge spacing.
-        return Flow::bridging_flow(float(sqrt(region_config.bridge_flow_ratio)) * nozzle_diameter, nozzle_diameter);
+        Flow bridge_flow = Flow::new_from_config_width(role, region_config.bridge_extrusion_width, nozzle_diameter,
+                                                       float(m_layer->height),
+                                                       print_object.config().extrusion_width_percent_of_nozzle.value);
+        return bridge_flow.with_flow_ratio(region_config.bridge_flow_ratio);
     }
-    else
-    {
-        // The same way as other slicers: Use normal extrusions. Apply bridge_flow_ratio while maintaining the original spacing.
-        if (region_config.bridge_extrusion_width.value > 0)
-        {
-            // Use dedicated bridge extrusion width instead of inheriting from role (e.g., solid_infill)
-            // This allows narrower bridge lines (~100% nozzle) which bond better in mid-air
-            auto nozzle_diameter = float(
-                print_object.print()->config().nozzle_diameter.get_at(region.extruder(role) - 1));
-            Flow bridge_flow = Flow::new_from_config_width(role, region_config.bridge_extrusion_width, nozzle_diameter,
-                                                           float(m_layer->height));
-            return bridge_flow.with_flow_ratio(region_config.bridge_flow_ratio);
-        }
-        return this->flow(role).with_flow_ratio(region_config.bridge_flow_ratio);
-    }
+    return this->flow(role).with_flow_ratio(region_config.bridge_flow_ratio);
 }
 
 // Fill in layerm->fill_surfaces by trimming the layerm->slices by layerm->fill_expolygons.

@@ -29,9 +29,14 @@ BeadingStrategyPtr BeadingStrategyFactory::makeStrategy(
     const coord_t ext_to_first_internal_spacing, const coord_t innermost_spacing, const coord_t actual_bead_count,
     const int layer_id, const coord_t thin_wall_snap_precision)
 {
-    // Handle a special case when there is just one external perimeter.
-    const coord_t use_spacing = max_bead_count <= 2 ? ext_perimeter_spacing : perimeter_spacing;
-    const coord_t use_width = max_bead_count <= 2 ? ext_perimeter_width : perimeter_width;
+    // Use internal perimeter spacing/width as the DistributedBeadingStrategy base even with
+    // a single perimeter (max_bead_count=2). The wider spacing shifts the skeleton's bead-count
+    // transition thresholds, producing mixed lines with non-zero junctions at the 1-to-2 bead
+    // boundary. These are extracted as gap-fill perimeters in separateOutInnerContour, honoring
+    // the "(minimum)" perimeter contract. The outer bead width is always overridden to
+    // ext_perimeter_width by RedistributeBeadingStrategy regardless of the base width here.
+    const coord_t use_spacing = max_bead_count <= 1 ? ext_perimeter_spacing : perimeter_spacing;
+    const coord_t use_width = max_bead_count <= 1 ? ext_perimeter_width : perimeter_width;
     BeadingStrategyPtr ret = std::make_unique<DistributedBeadingStrategy>(
         use_spacing, use_width, preferred_transition_length, transitioning_angle, wall_split_middle_threshold,
         wall_add_middle_threshold, inward_distributed_center_wall_count);

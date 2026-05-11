@@ -1472,9 +1472,17 @@ void _3MF_Importer::_extract_print_config_from_archive(mz_zip_archive &archive, 
              {"preprocessing_enabled_print", "preprocessing_enabled_filament", "preprocessing_enabled_printer"})
             has_preprocessing = has_preprocessing || has_enabled(key);
 
-        if (has_preprocessing)
+        // Check for export script settings
+        bool has_export_script = has_enabled("export_script_enabled");
         {
-            BOOST_LOG_TRIVIAL(info) << "3MF file \"" << archive_filename << "\" contains preprocessing scripts";
+            auto *opt = config.opt<ConfigOptionString>("export_script");
+            if (opt != nullptr && !opt->value.empty())
+                has_export_script = true;
+        }
+
+        if (has_preprocessing || has_export_script)
+        {
+            BOOST_LOG_TRIVIAL(info) << "3MF file \"" << archive_filename << "\" contains script references";
             m_scripts_suppressed = true;
         }
     }

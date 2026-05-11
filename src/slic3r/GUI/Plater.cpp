@@ -158,7 +158,7 @@
 
 #include "libslic3r/CustomGCode.hpp"
 #include "libslic3r/Platform.hpp"
-#include "libslic3r/GCode/VirtualGCodeFile.hpp"
+#include "libslic3r/GCode/GCodeObject.hpp"
 
 #include "Widgets/CheckBox.hpp"
 
@@ -1957,12 +1957,14 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path> &input_
                 dlg.ShowModal();
             }
 
-            // Handle preprocessing scripts from the 3MF.
-            // Preprocessing scripts get a trust dialog; user's existing scripts are always preserved.
+            // Handle preprocessing/export scripts from the 3MF.
+            // Scripts get a trust dialog; user's existing scripts are always preserved.
             bool import_preprocessing_scripts = false;
             std::map<std::string, std::vector<std::string>> saved_scripts;
             std::map<std::string, std::vector<std::string>> incoming_scripts;
             std::map<std::string, bool> incoming_enable_flags;
+            std::string incoming_export_script;
+            bool incoming_export_script_enabled = false;
 
             if (load_stats.scripts_suppressed)
             {
@@ -1982,12 +1984,14 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path> &input_
                 }
 
                 MessageDialog dlg(q,
-                                  _L("This project file references preprocessing scripts.\n\n"
-                                     "Preprocessing scripts are Python programs that run during slicing "
-                                     "and have full access to your system. The scripts themselves are not "
-                                     "embedded in the project - only the file paths are stored.\n\n"
+                                  _L("This project file references Python scripts.\n\n"
+                                     "This includes preprocessing scripts (which modify G-code during slicing) "
+                                     "and/or export scripts (which handle G-code output). "
+                                     "These are Python programs with full access to your system. "
+                                     "The scripts themselves are not embedded in the project - "
+                                     "only the file paths are stored.\n\n"
                                      "Do you want to add these script references to your configuration?"),
-                                  _L("Project References Preprocessing Scripts"), wxICON_WARNING | wxYES | wxNO);
+                                  _L("Project References Python Scripts"), wxICON_WARNING | wxYES | wxNO);
                 import_preprocessing_scripts = (dlg.ShowModal() == wxID_YES);
 
                 // Save the 3MF's scripts before stripping, then strip from config.
@@ -2009,6 +2013,18 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path> &input_
                         incoming_enable_flags[key] = opt->value;
                         opt->value = false;
                     }
+
+                // Save and strip export script settings
+                if (auto *opt = config.opt<ConfigOptionString>("export_script"))
+                {
+                    incoming_export_script = opt->value;
+                    opt->value.clear();
+                }
+                if (auto *opt = config.opt<ConfigOptionBool>("export_script_enabled"))
+                {
+                    incoming_export_script_enabled = opt->value;
+                    opt->value = false;
+                }
             }
 
             if (!config.empty())
@@ -2178,6 +2194,17 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path> &input_
                         enable_if_flagged("preprocessing_enabled_print", preset_bundle->prints);
                         enable_if_flagged("preprocessing_enabled_filament", preset_bundle->filaments);
                         enable_if_flagged("preprocessing_enabled_printer", preset_bundle->printers);
+                    }
+
+                    // Restore export script settings from the 3MF
+                    if (import_preprocessing_scripts && !incoming_export_script.empty() &&
+                        wxGetApp().app_config->get_bool("preprocessing_consent_accepted"))
+                    {
+                        auto &cfg = preset_bundle->prints.get_edited_preset().config;
+                        if (cfg.has("export_script"))
+                            cfg.set_key_value("export_script", new ConfigOptionString(incoming_export_script));
+                        if (cfg.has("export_script_enabled") && incoming_export_script_enabled)
+                            cfg.set_key_value("export_script_enabled", new ConfigOptionBool(true));
                     }
                 }
 
@@ -3048,6 +3075,7 @@ void Plater::priv::process_validation_warning(const std::vector<std::string> &wa
     notification_manager->close_notification_of_type(NotificationType::ShrinkageCompensationsDiffer);
     notification_manager->close_notification_of_type(NotificationType::WipeTowerNozzleDiameterDiffer);
     notification_manager->close_notification_of_type(NotificationType::SupportNozzleDiameterDiffer);
+    notification_manager->close_notification_of_type(NotificationType::PressureAdvanceMismatch);
 
     for (std::string text : warnings)
     {
@@ -3103,6 +3131,13 @@ void Plater::priv::process_validation_warning(const std::vector<std::string> &wa
             text = _u8L("Filament shrinkage will not be used because filament shrinkage "
                         "for the used filaments differs significantly.");
             notification_type = NotificationType::ShrinkageCompensationsDiffer;
+        }
+        else if (text == "_PRESSURE_ADVANCE_MISMATCH")
+        {
+            text = _u8L("PA is not enabled for all selected filaments.\n"
+                        "Filaments without PA enabled will continue to use the value "
+                        "set by the previous filament after tool/color change.");
+            notification_type = NotificationType::PressureAdvanceMismatch;
         }
         else if (text == "_WIPE_TOWER_NOZZLE_DIAMETER_DIFFER")
         {
@@ -5307,6 +5342,7 @@ void Plater::priv::show_action_buttons(const bool ready_to_slice_) const
     if (wxGetApp().mainframe && wxGetApp().mainframe->m_modern_tabbar)
     {
         wxGetApp().mainframe->m_modern_tabbar->RefreshPrinterConnectionState();
+        wxGetApp().mainframe->m_modern_tabbar->RefreshExportScriptState();
     }
 }
 
@@ -8055,6 +8091,56 @@ std::optional<PrintHostJob> Plater::get_connect_print_host_job(bool /*multiple_b
 void Plater::connect_gcode() {}
 
 void Plater::connect_gcode_all() {}
+
+void Plater::export_to_script()
+{
+    if (p->model.objects.empty())
+        return;
+
+    const DynamicPrintConfig &config = wxGetApp().preset_bundle->prints.get_edited_preset().config;
+    if (!config.has("export_script_enabled") || !config.opt_bool("export_script_enabled"))
+        return;
+
+    auto script_opt = config.option<ConfigOptionString>("export_script");
+    if (!script_opt || script_opt->value.empty())
+    {
+        show_error(this, _L("No export script configured. Set a script path in Print Settings > Output options."));
+        return;
+    }
+
+    std::string script_path = script_opt->value;
+    if (!boost::filesystem::exists(script_path))
+    {
+        show_error(this, GUI::format(_L("Export script not found: %1%"), script_path));
+        return;
+    }
+
+    // Generate the output filename from the configured output_filename_format
+    std::string output_filename;
+    try
+    {
+        const auto default_output = get_default_output_file();
+        if (default_output)
+            output_filename = default_output->filename().string();
+    }
+    catch (...)
+    {
+    }
+    if (output_filename.empty())
+        output_filename = "output.gcode";
+
+    try
+    {
+        p->background_process.direct_export_to_script(script_path, output_filename);
+        p->notification_manager->push_notification(NotificationType::CustomNotification,
+                                                   NotificationManager::NotificationLevel::RegularNotificationLevel,
+                                                   _u8L("G-code exported via script successfully"));
+    }
+    catch (const std::exception &e)
+    {
+        show_error(this, e.what());
+    }
+}
 
 void Plater::send_gcode()
 {

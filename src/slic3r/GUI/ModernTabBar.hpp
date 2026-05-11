@@ -62,8 +62,10 @@ public:
     void UpdateSliceButtonVisibility();  // Updates visibility based on current tab
     void EnableSliceButton(bool enable); // Enable/disable based on platter contents
     bool IsPrinterConnected() const;     // Check if physical printer with print_host is configured
-    void SetSendToPrinterCallback(std::function<void()> callback); // Set callback for Send to Printer
-    void RefreshPrinterConnectionState();                          // Re-evaluate printer connection and update dropdown
+    void SetSendToPrinterCallback(std::function<void()> callback);  // Set callback for Send to Printer
+    void SetExportToScriptCallback(std::function<void()> callback); // Set callback for Export to Script
+    void RefreshPrinterConnectionState(); // Re-evaluate printer connection and update dropdown
+    void RefreshExportScriptState();      // Re-evaluate export script availability
 
     // Printer webview tab methods
     void ShowPrinterWebViewTab(const wxString &printerName, std::function<void()> callback);
@@ -98,10 +100,12 @@ private:
     std::function<void()> m_slice_callback;
     std::function<void()> m_export_callback;
     std::function<void()> m_send_to_printer_callback;
+    std::function<void()> m_export_to_script_callback;
     bool m_has_sliced_object{false};
     bool m_slice_button_pressed{false};
     bool m_slice_button_enabled{true};
-    bool m_show_dropdown{false}; // Dropdown only shown in Export mode when printer connected
+    bool m_show_dropdown{false};      // Dropdown shown when extra export options are available
+    bool m_show_export_script{false}; // Whether Export to Script option is available
 
     wxColour m_color_bg_normal;
     wxColour m_color_bg_hover;

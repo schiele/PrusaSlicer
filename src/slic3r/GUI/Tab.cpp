@@ -1120,6 +1120,7 @@ void Tab::update_mode()
 
     update_visibility();
     update_preprocessing_panel_visibility();
+    update_export_script_panel_visibility();
     update_sla_vendor_specific_visibility();
 
     update_changed_tree_ui();
@@ -1373,7 +1374,7 @@ void Tab::on_value_change(const std::string &opt_key, const boost::any &value)
 
     // Preprocessing consent check: revert toggle if user declines
     if ((opt_key == "preprocessing_enabled_print" || opt_key == "preprocessing_enabled_filament" ||
-         opt_key == "preprocessing_enabled_printer") &&
+         opt_key == "preprocessing_enabled_printer" || opt_key == "export_script_enabled") &&
         m_config->has(opt_key) && m_config->opt_bool(opt_key))
     {
         auto *app_config = wxGetApp().app_config;
@@ -1381,11 +1382,13 @@ void Tab::on_value_change(const std::string &opt_key, const boost::any &value)
         {
             MessageDialog dlg(
                 nullptr,
-                _L("Enabling preprocessing allows external Python scripts to run during slicing.\n"
+                _L("Enabling this feature allows Python scripts to run during slicing or export.\n"
                    "Scripts have full access to your filesystem, network, and can execute arbitrary code.\n\n"
+                   "This applies to both Preprocessing scripts (which modify G-code during slicing)\n"
+                   "and Export to Script (which handles G-code output to disk, network, etc.).\n\n"
                    "Only enable this if you trust the scripts you are adding.\n\n"
-                   "Do you want to enable preprocessing?"),
-                _L("Preprocessing Security Warning"), wxICON_WARNING | wxYES | wxNO);
+                   "Do you want to enable Python script execution?"),
+                _L("Script Execution Security Warning"), wxICON_WARNING | wxYES | wxNO);
             if (dlg.ShowModal() == wxID_YES)
             {
                 app_config->set("preprocessing_consent_accepted", "1");
@@ -1405,6 +1408,14 @@ void Tab::on_value_change(const std::string &opt_key, const boost::any &value)
         update_preprocessing_panel_visibility();
         if (m_preprocessing_panel)
             m_preprocessing_panel->GetParent()->Layout();
+    }
+
+    // Update export script panel visibility
+    if (m_export_script_panel && opt_key == "export_script_enabled")
+    {
+        update_export_script_panel_visibility();
+        if (m_export_script_panel)
+            m_export_script_panel->GetParent()->Layout();
     }
 
     if (opt_key == "wipe_tower" || opt_key == "single_extruder_multi_material" || opt_key == "extruders_count")
@@ -2178,6 +2189,7 @@ void TabPrint::build()
     // (See Sidebar.cpp UpdatePrinterFilamentCombos for the new implementation)
 
     optgroup = page->new_optgroup_for_sidebar(L("Extrusion width"));
+    optgroup->append_single_option_line("extrusion_width_percent_of_nozzle");
     optgroup->append_single_option_line("extrusion_width");
     {
         Line line = {"", ""};
@@ -2340,6 +2352,111 @@ void TabPrint::build()
     option = optgroup->get_option("output_filename_format");
     option.opt.full_width = true;
     optgroup->append_single_option_line(option);
+
+    optgroup = page->new_optgroup(L("Export to Script"));
+    line = {"", ""};
+    line.full_width = 1;
+    line.widget = [this](wxWindow *parent)
+    {
+        wxSizer *sizer = description_line_widget(parent, &m_export_script_explanation);
+        m_export_script_explanation->SetText(
+            _L("Run a Python script to handle G-code output. The script receives G-code data "
+               "and controls where it goes - save to disk, upload via FTP, or both. "
+               "Sample scripts are included in the resources/export/samples folder."));
+        return sizer;
+    };
+    optgroup->append_line(line);
+    optgroup->append_single_option_line("export_script_enabled");
+    line = {"", ""};
+    line.full_width = 1;
+    line.widget = [this](wxWindow *parent)
+    {
+        auto *outer_sizer = new wxBoxSizer(wxVERTICAL);
+
+        // Themed panel matching the preprocessing widget style
+        m_export_script_panel = new wxPanel(parent, wxID_ANY);
+        m_export_script_panel->SetBackgroundColour(wxGetApp().get_window_default_clr());
+#ifdef _WIN32
+        wxGetApp().UpdateDarkUI(m_export_script_panel);
+#endif
+
+        // 1px border wrapper (same pattern as preprocessing list border)
+        auto *border_panel = new wxPanel(m_export_script_panel, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+                                         wxBORDER_NONE);
+#ifdef _WIN32
+        border_panel->SetBackgroundColour(UIColors::StaticBoxBorder());
+#else
+        wxColour border_clr = wxGetApp().get_label_clr_default();
+        border_clr = wxColour(border_clr.Red(), border_clr.Green(), border_clr.Blue(), 80);
+        border_panel->SetBackgroundColour(border_clr);
+#endif
+        auto *border_sizer = new wxBoxSizer(wxHORIZONTAL);
+
+        auto *path_text = new wxTextCtrl(border_panel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
+                                         wxTE_READONLY | wxBORDER_NONE);
+        path_text->SetBackgroundColour(wxGetApp().get_window_default_clr());
+        path_text->SetForegroundColour(wxGetApp().get_label_clr_default());
+        if (m_config->has("export_script"))
+            path_text->SetValue(from_u8(m_config->opt_string("export_script")));
+
+        border_sizer->Add(path_text, 1, wxEXPAND | wxALL, 1);
+        border_panel->SetSizer(border_sizer);
+
+        // Themed buttons matching preprocessing style
+        auto *btn_browse = new ScalableButton(m_export_script_panel, wxID_ANY, "open", _L("Browse..."), wxDefaultSize,
+                                              wxDefaultPosition, wxBU_LEFT | wxBU_EXACTFIT);
+        auto *btn_clear = new ScalableButton(m_export_script_panel, wxID_ANY, "remove", _L("Clear"), wxDefaultSize,
+                                             wxDefaultPosition, wxBU_LEFT | wxBU_EXACTFIT);
+
+        btn_browse->Bind(wxEVT_BUTTON,
+                         [this, path_text](wxCommandEvent &)
+                         {
+                             wxFileDialog dlg(nullptr, _L("Select export script"), wxEmptyString, wxEmptyString,
+                                              "Python scripts (*.py)|*.py", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+                             if (dlg.ShowModal() == wxID_OK)
+                             {
+                                 std::string path = into_u8(dlg.GetPath());
+                                 path_text->SetValue(from_u8(path));
+                                 m_config->set_key_value("export_script", new ConfigOptionString(path));
+                                 update_dirty();
+                                 on_value_change("export_script", path);
+                             }
+                         });
+
+        btn_clear->Bind(wxEVT_BUTTON,
+                        [this, path_text](wxCommandEvent &)
+                        {
+                            path_text->SetValue(wxEmptyString);
+                            m_config->set_key_value("export_script", new ConfigOptionString(""));
+                            update_dirty();
+                            on_value_change("export_script", std::string(""));
+                        });
+
+        auto *btn_sizer = new wxBoxSizer(wxHORIZONTAL);
+        btn_sizer->Add(btn_browse, 0, wxRIGHT, 5);
+        btn_sizer->Add(btn_clear, 0);
+
+        auto *panel_sizer = new wxBoxSizer(wxVERTICAL);
+        panel_sizer->Add(border_panel, 0, wxEXPAND | wxBOTTOM, 5);
+        panel_sizer->Add(btn_sizer, 0);
+        m_export_script_panel->SetSizer(panel_sizer);
+
+        // Start hidden; visibility controlled by enable checkbox
+        m_export_script_panel->Show(false);
+
+        // Repopulate path text when panel becomes visible (preset changes)
+        m_export_script_panel->Bind(wxEVT_SHOW,
+                                    [this, path_text](wxShowEvent &evt)
+                                    {
+                                        if (evt.IsShown() && m_config->has("export_script"))
+                                            path_text->SetValue(from_u8(m_config->opt_string("export_script")));
+                                        evt.Skip();
+                                    });
+
+        outer_sizer->Add(m_export_script_panel, 0, wxEXPAND);
+        return outer_sizer;
+    };
+    optgroup->append_line(line);
 
     optgroup = page->new_optgroup(L("Other"));
 
@@ -2967,8 +3084,15 @@ void TabFilament::build()
     load_initial_data();
 
     auto page = add_options_page(L("Filament"), "spool");
-    auto optgroup = page->new_optgroup_for_sidebar(L("Filament"));
+    auto optgroup = page->new_optgroup_for_sidebar(L("Properties"));
+    {
+        Option option = optgroup->get_option("filament_type");
+        option.opt.width = Field::def_width_wider();
+        optgroup->append_single_option_line(option);
+    }
     optgroup->append_single_option_line("filament_colour");
+    optgroup->append_single_option_line("filament_soluble");
+    optgroup->append_single_option_line("filament_abrasive");
     optgroup->append_single_option_line("filament_transmission_distance");
     optgroup->append_single_option_line("filament_diameter");
     optgroup->append_single_option_line("extrusion_multiplier");
@@ -2988,6 +3112,10 @@ void TabFilament::build()
         else
             on_value_change(opt_key, value);
     };
+
+    optgroup = page->new_optgroup_for_sidebar(L("Pressure advance"));
+    optgroup->append_single_option_line("filament_enable_pressure_advance");
+    optgroup->append_single_option_line("filament_pressure_advance");
 
     optgroup = page->new_optgroup_for_sidebar(L("Temperature"));
 
@@ -3070,14 +3198,6 @@ void TabFilament::build()
     optgroup->append_single_option_line("min_print_speed", category_path + "cooling-thresholds");
 
     page = add_options_page(L("Advanced"), "wrench");
-    optgroup = page->new_optgroup_for_sidebar(L("Filament properties"));
-    // Set size as all another fields for a better alignment
-    Option option = optgroup->get_option("filament_type");
-    option.opt.width = Field::def_width_wider();
-    optgroup->append_single_option_line(option);
-    optgroup->append_single_option_line("filament_soluble");
-    optgroup->append_single_option_line("filament_abrasive");
-
     optgroup = page->new_optgroup_for_sidebar(L("Print speed override"));
     optgroup->append_single_option_line("filament_max_volumetric_speed", "max-volumetric-speed_127176");
 
@@ -3164,7 +3284,7 @@ void TabFilament::build()
     {
         edit_custom_gcode(opt_key);
     };
-    option = optgroup->get_option("start_filament_gcode");
+    Option option = optgroup->get_option("start_filament_gcode");
     option.opt.full_width = true;
     option.opt.is_code = true;
     option.opt.height = gcode_field_height; // 150;
@@ -3317,6 +3437,9 @@ void TabFilament::toggle_options()
 
     if (m_active_page->title() == "Filament")
     {
+        bool pa_enabled = m_config->opt_bool("filament_enable_pressure_advance", 0);
+        toggle_option("filament_pressure_advance", pa_enabled);
+
         Page *page = m_active_page;
 
         const auto og_it = std::find_if(page->m_optgroups.begin(), page->m_optgroups.end(),
@@ -5029,6 +5152,25 @@ void Tab::load_current_preset()
         {
             m_config->set_key_value("print_high_flow_nozzle", new ConfigOptionBools());
         }
+
+        // Ensure export script options exist (may be missing from old presets)
+        if (!preset.config.has("export_script_enabled"))
+        {
+            const_cast<DynamicPrintConfig &>(preset.config)
+                .set_key_value("export_script_enabled", new ConfigOptionBool(false));
+        }
+        if (!m_config->has("export_script_enabled"))
+        {
+            m_config->set_key_value("export_script_enabled", new ConfigOptionBool(false));
+        }
+        if (!preset.config.has("export_script"))
+        {
+            const_cast<DynamicPrintConfig &>(preset.config).set_key_value("export_script", new ConfigOptionString(""));
+        }
+        if (!m_config->has("export_script"))
+        {
+            m_config->set_key_value("export_script", new ConfigOptionString(""));
+        }
     }
 
     update_btns_enabling();
@@ -5074,6 +5216,16 @@ void Tab::load_current_preset()
                         m_preprocessing_update_buttons();
                 }
             });
+    }
+
+    // Consent enforcement for export script
+    {
+        auto *app_cfg = wxGetApp().app_config;
+        if (app_cfg && !app_cfg->get_bool("preprocessing_consent_accepted") && m_config->has("export_script_enabled") &&
+            m_config->opt_bool("export_script_enabled"))
+        {
+            m_config->set_key_value("export_script_enabled", new ConfigOptionBool(false));
+        }
     }
 
     update();
@@ -5175,6 +5327,7 @@ void Tab::load_current_preset()
 
         update_visibility();
         update_preprocessing_panel_visibility();
+        update_export_script_panel_visibility();
 
         update_sla_vendor_specific_visibility();
 
@@ -5629,6 +5782,7 @@ void Tab::activate_selected_page(std::function<void()> throw_if_canceled)
 
     m_active_page->activate(m_mode, throw_if_canceled);
     update_preprocessing_panel_visibility();
+    update_export_script_panel_visibility();
 
     // Recursively bind to all container panels (but not input controls)
     std::function<void(wxWindow *)> bind_handler = [this, &bind_handler](wxWindow *win)
@@ -6197,6 +6351,15 @@ void Tab::update_preprocessing_panel_visibility()
     }
 }
 
+void Tab::update_export_script_panel_visibility()
+{
+    if (m_export_script_panel)
+    {
+        bool en = m_config->has("export_script_enabled") && m_config->opt_bool("export_script_enabled");
+        m_export_script_panel->Show(en);
+    }
+}
+
 wxSizer *Tab::create_preprocessing_scripts_widget(wxWindow *parent, const std::string &opt_key)
 {
     // Derive the enable key from the scripts key (e.g., "preprocessing_scripts_print" -> "preprocessing_enabled_print")
@@ -6388,11 +6551,13 @@ wxSizer *Tab::create_preprocessing_scripts_widget(wxWindow *parent, const std::s
             return true;
 
         MessageDialog dlg(nullptr,
-                          _L("Enabling preprocessing allows external Python scripts to run during slicing.\n"
+                          _L("Enabling this feature allows Python scripts to run during slicing or export.\n"
                              "Scripts have full access to your filesystem, network, and can execute arbitrary code.\n\n"
+                             "This applies to both Preprocessing scripts (which modify G-code during slicing)\n"
+                             "and Export to Script (which handles G-code output to disk, network, etc.).\n\n"
                              "Only enable this if you trust the scripts you are adding.\n\n"
-                             "Do you want to enable preprocessing?"),
-                          _L("Preprocessing Security Warning"), wxICON_WARNING | wxYES | wxNO);
+                             "Do you want to enable Python script execution?"),
+                          _L("Script Execution Security Warning"), wxICON_WARNING | wxYES | wxNO);
         if (dlg.ShowModal() == wxID_YES)
         {
             app_config->set("preprocessing_consent_accepted", "1");

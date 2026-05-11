@@ -232,6 +232,8 @@ class Settings:
     enable_manual_fan_speeds: str  # semicolon-separated bools
     end_filament_gcode: str  # semicolon-separated
     end_gcode: str
+    export_script: str
+    export_script_enabled: str  # bool (0/1)
     external_perimeter_acceleration: str  # float
     external_perimeter_extrusion_width: str  # float or percentage
     external_perimeter_overlap: str  # float or percentage
@@ -247,6 +249,7 @@ class Settings:
     extrusion_axis: str
     extrusion_multiplier: str  # semicolon-separated floats
     extrusion_width: str  # float or percentage
+    extrusion_width_percent_of_nozzle: str  # bool (0/1)
     fan_always_on: str  # semicolon-separated bools
     fan_below_layer_time: str  # semicolon-separated ints
     fan_spinup_bridge_infill: str  # semicolon-separated bools
@@ -260,6 +263,7 @@ class Settings:
     filament_cost: str  # semicolon-separated floats
     filament_density: str  # semicolon-separated floats
     filament_diameter: str  # semicolon-separated floats
+    filament_enable_pressure_advance: str  # semicolon-separated bools
     filament_infill_max_crossing_speed: str  # semicolon-separated floats
     filament_infill_max_speed: str  # semicolon-separated floats
     filament_load_time: str  # semicolon-separated floats
@@ -271,6 +275,7 @@ class Settings:
     filament_multitool_ramming_flow: str  # semicolon-separated floats
     filament_multitool_ramming_volume: str  # semicolon-separated floats
     filament_notes: str  # semicolon-separated
+    filament_pressure_advance: str  # semicolon-separated floats
     filament_purge_multiplier: str  # semicolon-separated percentages
     filament_ramming_parameters: str  # semicolon-separated
     filament_seam_gap_distance: str

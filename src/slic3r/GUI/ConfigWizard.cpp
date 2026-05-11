@@ -25,6 +25,7 @@
 #include <boost/log/trivial.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/case_conv.hpp>
+#include <boost/algorithm/string/trim.hpp>
 #include <boost/nowide/convert.hpp>
 #include <boost/nowide/fstream.hpp>
 #include <boost/property_tree/ini_parser.hpp>
@@ -78,6 +79,7 @@
 #include "slic3r/Utils/AppUpdater.hpp"
 #include "slic3r/GUI/I18N.hpp"
 #include "slic3r/Config/Version.hpp"
+#include "libslic3r/miniz_extension.hpp"
 
 /* ysFIXME - delete after testing and release
 // it looks like this workaround is no need any more after update of the wxWidgets to 3.2.0
@@ -690,6 +692,20 @@ PageUpdateManager::PageUpdateManager(ConfigWizard *parent_in)
                            cb->SetValue(false);
                    });
 
+    append_spacer(em);
+
+    auto *local_label = new wxStaticText(this, wxID_ANY,
+                                         _L("Have a vendor profile bundle? Load it here to add it to the list above."));
+    local_label->Wrap(70 * em);
+    append(local_label, 0, wxBOTTOM, em / 2);
+
+    auto *btn_load_local = new wxButton(this, wxID_ANY, _L("Load Local Profile..."));
+    wxGetApp().UpdateDarkUI(btn_load_local);
+    wxGetApp().SetWindowVariantForButton(btn_load_local);
+    append(btn_load_local);
+
+    btn_load_local->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) { import_local_vendor_bundle(); });
+
     this->Bind(wxEVT_SHOW,
                [this, parent_in](wxShowEvent &evt)
                {
@@ -774,6 +790,285 @@ void PageUpdateManager::populate_vendor_list()
     vendor_scroll->SetSizer(sizer);
     vendor_scroll->FitInside();
     vendor_scroll->Layout();
+}
+
+void PageUpdateManager::import_local_vendor_bundle()
+{
+    namespace fs = boost::filesystem;
+
+    // Allowed resource file extensions
+    static const std::set<std::string> allowed_extensions = {".ini", ".png", ".svg", ".stl", ".obj", ".idx"};
+
+    // 100 MB per-entry extraction limit
+    static constexpr size_t MAX_ENTRY_SIZE = 100 * 1024 * 1024;
+
+    wxFileDialog dialog(this, _L("Select vendor profile bundle (ZIP)"), from_u8(wxGetApp().app_config->get_last_dir()),
+                        "", file_wildcards(FT_ZIP), wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dialog.ShowModal() != wxID_OK)
+        return;
+
+    const std::string zip_path = into_u8(dialog.GetPath());
+    wxGetApp().app_config->update_config_dir(fs::path(zip_path).parent_path().string());
+
+    // RAII guard for the ZIP handle
+    mz_zip_archive zip;
+    memset(&zip, 0, sizeof(zip));
+    if (!open_zip_reader(&zip, zip_path))
+    {
+        show_error(this, _L("Failed to open ZIP file."));
+        return;
+    }
+    auto zip_guard = [&zip]()
+    {
+        close_zip_reader(&zip);
+    };
+    struct ZipCloser
+    {
+        std::function<void()> fn;
+        ~ZipCloser() { fn(); }
+    } zip_closer{zip_guard};
+
+    // Scan for the .ini file inside the ZIP
+    std::string ini_entry_name;
+    std::string ini_stem;
+    int num_files = (int) mz_zip_reader_get_num_files(&zip);
+    for (int i = 0; i < num_files; i++)
+    {
+        mz_zip_archive_file_stat stat;
+        if (!mz_zip_reader_file_stat(&zip, i, &stat))
+            continue;
+        std::string name = stat.m_filename;
+        if (name.find('/') == std::string::npos && name.find('\\') == std::string::npos &&
+            boost::algorithm::iends_with(name, ".ini"))
+        {
+            ini_entry_name = name;
+            ini_stem = fs::path(name).stem().string();
+            break;
+        }
+    }
+
+    if (ini_entry_name.empty())
+    {
+        show_error(this, _L("No vendor .ini file found in the ZIP archive.\n\n"
+                            "The ZIP should contain a vendor .ini file at the top level."));
+        return;
+    }
+
+    // Build _local ID - strip any existing _local suffix first
+    std::string local_id = ini_stem;
+    while (boost::algorithm::iends_with(local_id, "_local"))
+        local_id = local_id.substr(0, local_id.size() - 6);
+    local_id += "_local";
+
+    const fs::path vendor_dir = fs::path(Slic3r::data_dir()) / "vendor";
+    const fs::path local_ini_path = vendor_dir / (local_id + ".ini");
+    const fs::path local_res_dir = vendor_dir / local_id;
+
+    // Check for existing local profile
+    if (fs::exists(local_ini_path))
+    {
+        MessageDialog overwrite_dlg(this,
+                                    format_wxstr(_L("A local profile '%1%' already exists.\n\nOverwrite it?"),
+                                                 local_id),
+                                    _L("Profile Exists"), wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
+        if (overwrite_dlg.ShowModal() != wxID_YES)
+            return;
+
+        boost::system::error_code ec;
+        fs::remove(local_ini_path, ec);
+        if (fs::exists(local_res_dir))
+            fs::remove_all(local_res_dir, ec);
+    }
+
+    // Extract files from ZIP
+    fs::create_directories(local_res_dir);
+    bool ini_extracted = false;
+
+    for (int i = 0; i < num_files; i++)
+    {
+        mz_zip_archive_file_stat stat;
+        if (!mz_zip_reader_file_stat(&zip, i, &stat))
+            continue;
+        if (stat.m_is_directory)
+            continue;
+
+        // Size limit to prevent zip bombs
+        if (stat.m_uncomp_size > MAX_ENTRY_SIZE)
+        {
+            BOOST_LOG_TRIVIAL(warning) << "Skipping oversized ZIP entry: " << stat.m_filename << " ("
+                                       << stat.m_uncomp_size << " bytes)";
+            continue;
+        }
+        if (stat.m_uncomp_size == 0)
+            continue;
+
+        std::string name = stat.m_filename;
+        fs::path target;
+
+        if (name == ini_entry_name)
+        {
+            target = local_ini_path;
+        }
+        else if (boost::algorithm::istarts_with(name, ini_stem + "/") ||
+                 boost::algorithm::istarts_with(name, ini_stem + "\\"))
+        {
+            std::string rel = name.substr(ini_stem.size() + 1);
+            if (rel.empty())
+                continue;
+
+            // Only extract known-safe file types
+            std::string ext = fs::path(rel).extension().string();
+            boost::algorithm::to_lower(ext);
+            if (allowed_extensions.find(ext) == allowed_extensions.end())
+            {
+                BOOST_LOG_TRIVIAL(warning) << "Skipping disallowed file type in profile ZIP: " << name;
+                continue;
+            }
+
+            target = local_res_dir / rel;
+
+            // Path traversal protection - verify target stays inside resource dir
+            fs::path canonical_base = fs::weakly_canonical(local_res_dir);
+            fs::path canonical_target = fs::weakly_canonical(target);
+            std::string base_str = canonical_base.string();
+            std::string target_str = canonical_target.string();
+            if (target_str.size() < base_str.size() || target_str.compare(0, base_str.size(), base_str) != 0)
+            {
+                BOOST_LOG_TRIVIAL(error) << "Path traversal blocked in profile ZIP: " << name;
+                continue;
+            }
+        }
+        else
+        {
+            continue;
+        }
+
+        size_t buf_size = (size_t) stat.m_uncomp_size;
+        std::vector<char> buf(buf_size);
+        if (!mz_zip_reader_extract_to_mem(&zip, i, buf.data(), buf_size, 0))
+        {
+            BOOST_LOG_TRIVIAL(error) << "Failed to extract " << name << " from local profile ZIP";
+            continue;
+        }
+
+        fs::create_directories(target.parent_path());
+        boost::nowide::ofstream ofs(target.string(), std::ios::binary | std::ios::trunc);
+        if (ofs.is_open())
+        {
+            ofs.write(buf.data(), buf_size);
+            ofs.close();
+            if (name == ini_entry_name)
+                ini_extracted = true;
+        }
+    }
+
+    // ZIP is closed automatically by zip_closer
+
+    if (!ini_extracted)
+    {
+        show_error(this, _L("Failed to extract vendor profile from ZIP."));
+        boost::system::error_code ec;
+        fs::remove_all(local_res_dir, ec);
+        return;
+    }
+
+    // Patch the .ini: append " (local)" to display name, strip post_process keys
+    try
+    {
+        std::string ini_content;
+        {
+            boost::nowide::ifstream ifs(local_ini_path.string());
+            ini_content.assign(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
+        }
+
+        std::istringstream iss(ini_content);
+        std::ostringstream oss;
+        std::string line;
+        bool in_vendor_section = false;
+        bool name_patched = false;
+        while (std::getline(iss, line))
+        {
+            // Track sections
+            std::string trimmed = boost::algorithm::trim_copy(line);
+            if (!trimmed.empty() && trimmed.front() == '[' && trimmed.back() == ']')
+            {
+                in_vendor_section = (trimmed == "[vendor]");
+            }
+
+            // Strip post_process keys from all sections
+            if (boost::algorithm::istarts_with(trimmed, "post_process"))
+            {
+                size_t eq_pos = trimmed.find('=');
+                if (eq_pos != std::string::npos)
+                {
+                    std::string key = trimmed.substr(0, eq_pos);
+                    boost::algorithm::trim(key);
+                    if (boost::algorithm::iequals(key, "post_process"))
+                    {
+                        BOOST_LOG_TRIVIAL(info) << "Stripped post_process from local profile for security";
+                        continue;
+                    }
+                }
+            }
+
+            // Patch display name with "(local)" suffix
+            if (in_vendor_section && !name_patched)
+            {
+                size_t eq_pos = trimmed.find('=');
+                if (eq_pos != std::string::npos)
+                {
+                    std::string key = trimmed.substr(0, eq_pos);
+                    boost::algorithm::trim(key);
+                    if (key == "name")
+                    {
+                        std::string value = trimmed.substr(eq_pos + 1);
+                        boost::algorithm::trim(value);
+                        while (boost::algorithm::iends_with(value, " (local)"))
+                            value = value.substr(0, value.size() - 8);
+                        oss << "name = " << value << " (local)\n";
+                        name_patched = true;
+                        continue;
+                    }
+                }
+            }
+
+            oss << line << "\n";
+        }
+
+        boost::nowide::ofstream ofs(local_ini_path.string(), std::ios::trunc);
+        ofs << oss.str();
+    }
+    catch (const std::exception &e)
+    {
+        BOOST_LOG_TRIVIAL(error) << "Failed to patch local profile INI: " << e.what();
+        show_error(this, _L("Failed to process the vendor profile."));
+        boost::system::error_code ec;
+        fs::remove(local_ini_path, ec);
+        fs::remove_all(local_res_dir, ec);
+        return;
+    }
+
+    // Load the new bundle into the wizard
+    Bundle new_bundle;
+    if (new_bundle.load(local_ini_path, BundleLocation::IN_VENDOR))
+    {
+        auto *priv = wizard_p();
+        priv->bundles.erase(local_id);
+        priv->bundles.emplace(local_id, std::move(new_bundle));
+        populate_vendor_list();
+
+        if (auto it = vendor_checkboxes.find(local_id); it != vendor_checkboxes.end())
+            it->second->SetValue(true);
+
+        BOOST_LOG_TRIVIAL(info) << "Loaded local vendor profile: " << local_id;
+    }
+    else
+    {
+        show_error(this, _L("Failed to load the vendor profile. The .ini file may be invalid."));
+        boost::system::error_code ec;
+        fs::remove(local_ini_path, ec);
+        fs::remove_all(local_res_dir, ec);
+    }
 }
 
 PagePrinters::PagePrinters(ConfigWizard *parent, wxString title, wxString shortname, const VendorProfile &vendor,

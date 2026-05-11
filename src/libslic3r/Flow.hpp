@@ -129,7 +129,7 @@ public:
     }
 
     static Flow new_from_config_width(FlowRole role, const ConfigOptionFloatOrPercent &width, float nozzle_diameter,
-                                      float height);
+                                      float height, bool percent_of_nozzle = false);
 
     // Spacing of extrusions with rounded extrusion model.
     static float rounded_rectangle_extrusion_spacing(float width, float height);

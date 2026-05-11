@@ -1083,6 +1083,14 @@ void MainFrame::init_tabpanel()
                     m_plater->send_gcode();
                 }
             });
+        m_modern_tabbar->SetExportToScriptCallback(
+            [this]()
+            {
+                if (m_plater)
+                {
+                    m_plater->export_to_script();
+                }
+            });
     }
 
     if (m_plater)

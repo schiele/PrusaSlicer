@@ -9,7 +9,7 @@
 #include <oneapi/tbb/blocked_range.h>
 #include <oneapi/tbb/blocked_range2d.h>
 #include <oneapi/tbb/parallel_for.h>
-#include <mutex>
+#include <oneapi/tbb/parallel_reduce.h>
 #include <algorithm>
 #include <limits>
 #include <utility>
@@ -172,23 +172,36 @@ GroundingLocation Layer::getBestGroundingLocation(const Point &unsupported_locat
         region.min = to_grid_point(region.min, current_outlines_bbox);
         region.max = to_grid_point(region.max, current_outlines_bbox);
 
-        Point current_dist_grid_addr{std::numeric_limits<coord_t>::lowest(), std::numeric_limits<coord_t>::lowest()};
-        std::mutex current_dist_mutex;
-        tbb::parallel_for(
+        struct BestCandidate
+        {
+            coord_t dist;
+            NodeSPtr tree;
+            Point grid_addr;
+
+            bool is_better_than(const BestCandidate &other) const
+            {
+                return dist < other.dist ||
+                       (dist == other.dist &&
+                        (grid_addr.y() < other.grid_addr.y() ||
+                         (grid_addr.y() == other.grid_addr.y() && grid_addr.x() < other.grid_addr.x())));
+            }
+        };
+
+        BestCandidate best = tbb::parallel_reduce(
             tbb::blocked_range2d<coord_t>(region.min.y(), region.max.y(), region.min.x(), region.max.x()),
-            [&current_dist, current_dist_copy = current_dist, &current_dist_mutex, &sub_tree, &current_dist_grid_addr,
-             &exclude_tree = std::as_const(exclude_tree), &outline_locator = std::as_const(outline_locator),
+            BestCandidate{current_dist,
+                          nullptr,
+                          {std::numeric_limits<coord_t>::lowest(), std::numeric_limits<coord_t>::lowest()}},
+            [&exclude_tree = std::as_const(exclude_tree), &outline_locator = std::as_const(outline_locator),
              &supporting_radius = std::as_const(supporting_radius),
              &tree_node_locator = std::as_const(tree_node_locator),
-             &unsupported_location = std::as_const(unsupported_location)](
-                const tbb::blocked_range2d<coord_t> &range) -> void
+             &unsupported_location = std::as_const(unsupported_location)](const tbb::blocked_range2d<coord_t> &range,
+                                                                          BestCandidate best_so_far) -> BestCandidate
             {
                 for (coord_t grid_addr_y = range.rows().begin(); grid_addr_y < range.rows().end(); ++grid_addr_y)
                     for (coord_t grid_addr_x = range.cols().begin(); grid_addr_x < range.cols().end(); ++grid_addr_x)
                     {
                         const Point local_grid_addr{grid_addr_x, grid_addr_y};
-                        NodeSPtr local_sub_tree{nullptr};
-                        coord_t local_current_dist = current_dist_copy;
                         const auto it_range = tree_node_locator.equal_range(local_grid_addr);
                         for (auto it = it_range.first; it != it_range.second; ++it)
                         {
@@ -198,35 +211,21 @@ GroundingLocation Layer::getBestGroundingLocation(const Point &unsupported_locat
                                 !polygonCollidesWithLineSegment(unsupported_location, candidate_sub_tree->getLocation(),
                                                                 outline_locator))
                             {
-                                if (const coord_t candidate_dist = candidate_sub_tree->getWeightedDistance(
-                                        unsupported_location, supporting_radius);
-                                    candidate_dist < local_current_dist)
-                                {
-                                    local_current_dist = candidate_dist;
-                                    local_sub_tree = candidate_sub_tree;
-                                }
-                            }
-                        }
-                        // To always get the same result in a parallel version as in a non-parallel version,
-                        // we need to preserve that for the same current_dist, we select the same sub_tree
-                        // as in the non-parallel version. For this purpose, inside the variable
-                        // current_dist_grid_addr is stored from with 2D grid position assigned sub_tree comes.
-                        // And when there are two sub_tree with the same current_dist, one which will be found
-                        // the first in the non-parallel version is selected.
-                        {
-                            std::lock_guard<std::mutex> lock(current_dist_mutex);
-                            if (local_current_dist < current_dist ||
-                                (local_current_dist == current_dist && (grid_addr_y < current_dist_grid_addr.y() ||
-                                                                        (grid_addr_y == current_dist_grid_addr.y() &&
-                                                                         grid_addr_x < current_dist_grid_addr.x()))))
-                            {
-                                current_dist = local_current_dist;
-                                sub_tree = local_sub_tree;
-                                current_dist_grid_addr = local_grid_addr;
+                                const coord_t candidate_dist =
+                                    candidate_sub_tree->getWeightedDistance(unsupported_location, supporting_radius);
+                                BestCandidate candidate{candidate_dist, candidate_sub_tree, local_grid_addr};
+                                if (candidate.is_better_than(best_so_far))
+                                    best_so_far = candidate;
                             }
                         }
                     }
-            }); // end of parallel_for
+                return best_so_far;
+            },
+            [](BestCandidate a, const BestCandidate &b) -> BestCandidate
+            { return b.is_better_than(a) ? b : a; }); // end of parallel_reduce
+
+        current_dist = best.dist;
+        sub_tree = best.tree;
     }
 
     return !sub_tree ? GroundingLocation{nullptr, node_location} : GroundingLocation{sub_tree, std::optional<Point>()};

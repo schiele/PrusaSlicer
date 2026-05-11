@@ -1247,13 +1247,101 @@ void WallToolPaths::separateOutInnerContour()
             }
             else
             {
-                // Mixed line: widths are malformed (a marker was fused with a real bead)
-                // but the junction positions still trace a valid skeleton centerline.
-                // Drop it from actual_toolpaths (so the bead portions aren't emitted as
-                // extrusion across empty space) yet contribute its closed polygon to
-                // inner_contour so the infill zone is preserved.
+                // Mixed line: marker junctions (w==0) stitched with real beads (w>0).
                 if (!line.is_odd && line.is_closed)
                     inner_contour.emplace_back(line.toPolygon());
+
+                // With perimeters=1, the non-zero segments are gap-fill perimeters
+                // where the wall is wide enough for a second bead. Extract them so
+                // the "(minimum)" contract is honored. For multi-perimeter cases,
+                // mixed lines at inner insets may be stitcher artifacts - drop them.
+                if (inset_count == 1)
+                {
+                    const auto &junctions = line.junctions;
+                    const size_t n = junctions.size();
+
+                    if (line.is_closed)
+                    {
+                        // For closed lines, rotate to start at a zero-width junction
+                        // so the modulo wrap doesn't split a non-zero segment.
+                        size_t zero_start = 0;
+                        for (size_t i = 0; i < n; ++i)
+                        {
+                            if (junctions[i].w == 0)
+                            {
+                                zero_start = i;
+                                break;
+                            }
+                        }
+
+                        ExtrusionLine segment(line.inset_idx, line.is_odd, false);
+                        for (size_t i = 0; i < n; ++i)
+                        {
+                            const ExtrusionJunction &j = junctions[(zero_start + i) % n];
+                            if (j.w > 0)
+                            {
+                                segment.junctions.emplace_back(j);
+                            }
+                            else
+                            {
+                                if (segment.junctions.size() >= 2)
+                                    kept_lines.emplace_back(std::move(segment));
+                                segment = ExtrusionLine(line.inset_idx, line.is_odd, false);
+                            }
+                        }
+                        if (segment.junctions.size() >= 2)
+                            kept_lines.emplace_back(std::move(segment));
+                    }
+                    else
+                    {
+                        // For open lines, iterate linearly - no modulo wrap.
+                        ExtrusionLine segment(line.inset_idx, line.is_odd, false);
+                        for (size_t i = 0; i < n; ++i)
+                        {
+                            const ExtrusionJunction &j = junctions[i];
+                            if (j.w > 0)
+                            {
+                                segment.junctions.emplace_back(j);
+                            }
+                            else
+                            {
+                                if (segment.junctions.size() >= 2)
+                                    kept_lines.emplace_back(std::move(segment));
+                                segment = ExtrusionLine(line.inset_idx, line.is_odd, false);
+                            }
+                        }
+                        if (segment.junctions.size() >= 2)
+                            kept_lines.emplace_back(std::move(segment));
+                    }
+
+                    // Filter segments too small to print (same as removeSmallLines filter #2).
+                    // These are created after removeSmallLines runs, so filter inline.
+                    for (size_t li = 0; li < kept_lines.size();)
+                    {
+                        ExtrusionLine &seg = kept_lines[li];
+                        if (!seg.is_closed && seg.inset_idx == line.inset_idx && !seg.junctions.empty())
+                        {
+                            coord_t min_w = std::numeric_limits<coord_t>::max();
+                            Point pmin = seg.junctions.front().p, pmax = pmin;
+                            for (const ExtrusionJunction &j : seg.junctions)
+                            {
+                                min_w = std::min(min_w, j.w);
+                                pmin.x() = std::min(pmin.x(), j.p.x());
+                                pmin.y() = std::min(pmin.y(), j.p.y());
+                                pmax.x() = std::max(pmax.x(), j.p.x());
+                                pmax.y() = std::max(pmax.y(), j.p.y());
+                            }
+                            if (std::max(pmax.x() - pmin.x(), pmax.y() - pmin.y()) < min_w)
+                            {
+                                seg = std::move(kept_lines.back());
+                                kept_lines.pop_back();
+                                continue;
+                            }
+                        }
+                        ++li;
+                    }
+                }
+
                 ++stripped_mixed_lines;
             }
         }

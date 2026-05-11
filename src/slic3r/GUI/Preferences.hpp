@@ -72,6 +72,16 @@ enum CanvasMsaaMode
     CanvasMsaaCount,
 };
 
+enum PreviewDetailLevel
+{
+    PreviewDetail1M,
+    PreviewDetail5M,
+    PreviewDetail10M,
+    PreviewDetail20M,
+    PreviewDetailFull,
+    PreviewDetailCount,
+};
+
 namespace GUI
 {
 

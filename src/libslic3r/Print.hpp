@@ -718,6 +718,9 @@ public:
     std::string export_gcode(const std::string &path_template, GCodeProcessorResult *result,
                              ThumbnailsGeneratorCallback thumbnail_cb = nullptr);
 
+    void set_preview_detail_threshold(size_t t) { m_preview_detail_threshold = t; }
+    size_t preview_detail_threshold() const { return m_preview_detail_threshold; }
+
     // methods for handling state
     bool is_step_done(PrintStep step) const { return Inherited::is_step_done(step); }
     // Returns true if an object step is done on all objects and there's at least one object.
@@ -883,6 +886,7 @@ private:
 #endif
 
     ConflictResultOpt m_conflict_result;
+    size_t m_preview_detail_threshold{10'000'000};
     std::optional<std::pair<std::string, std::string>>
         m_sequential_collision_detected; // names of objects (hit first when printing second)
 };

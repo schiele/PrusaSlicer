@@ -940,10 +940,23 @@ void ModernTabBar::AddSliceButton(std::function<void()> slice_callback, std::fun
                                  wxMenu menu;
                                  const int ID_SAVE_LOCALLY = wxID_HIGHEST + 1;
                                  const int ID_SEND_TO_PRINTER = wxID_HIGHEST + 2;
+                                 const int ID_EXPORT_TO_SCRIPT = wxID_HIGHEST + 3;
                                  wxMenuItem *save_item = menu.Append(ID_SAVE_LOCALLY, _L("Save locally"));
                                  set_menu_item_bitmap(save_item, "save");
-                                 wxMenuItem *send_item = menu.Append(ID_SEND_TO_PRINTER, _L("Send to Printer"));
-                                 set_menu_item_bitmap(send_item, "export_gcode");
+
+                                 bool printer_online = IsPrinterConnected() &&
+                                                       m_connection_state == PrinterConnectionChecker::State::Online;
+                                 if (printer_online)
+                                 {
+                                     wxMenuItem *send_item = menu.Append(ID_SEND_TO_PRINTER, _L("Send to Printer"));
+                                     set_menu_item_bitmap(send_item, "export_gcode");
+                                 }
+
+                                 if (m_show_export_script)
+                                 {
+                                     wxMenuItem *script_item = menu.Append(ID_EXPORT_TO_SCRIPT, _L("Export to Script"));
+                                     set_menu_item_bitmap(script_item, "cog");
+                                 }
 
                                  // Show menu at button position using CustomMenu for theming
                                  wxPoint menu_pos = m_slice_button->GetPosition();
@@ -951,21 +964,30 @@ void ModernTabBar::AddSliceButton(std::function<void()> slice_callback, std::fun
                                  auto customMenu = CustomMenu::FromWxMenu(&menu, this);
                                  if (customMenu)
                                  {
-                                     // Override FromWxMenu callbacks with direct lambdas so
-                                     // we don't route through the stack-local wxMenu (which
-                                     // is destroyed once ShowAt returns asynchronously).
                                      customMenu->SetCallback(ID_SAVE_LOCALLY,
                                                              [this]()
                                                              {
                                                                  if (m_export_callback)
                                                                      m_export_callback();
                                                              });
-                                     customMenu->SetCallback(ID_SEND_TO_PRINTER,
-                                                             [this]()
-                                                             {
-                                                                 if (m_send_to_printer_callback)
-                                                                     m_send_to_printer_callback();
-                                                             });
+                                     if (printer_online)
+                                     {
+                                         customMenu->SetCallback(ID_SEND_TO_PRINTER,
+                                                                 [this]()
+                                                                 {
+                                                                     if (m_send_to_printer_callback)
+                                                                         m_send_to_printer_callback();
+                                                                 });
+                                     }
+                                     if (m_show_export_script)
+                                     {
+                                         customMenu->SetCallback(ID_EXPORT_TO_SCRIPT,
+                                                                 [this]()
+                                                                 {
+                                                                     if (m_export_to_script_callback)
+                                                                         m_export_to_script_callback();
+                                                                 });
+                                     }
                                      customMenu->KeepAliveUntilDismissed(customMenu);
                                      if (!customMenu->GetParent())
                                          customMenu->Create(this);
@@ -975,7 +997,8 @@ void ModernTabBar::AddSliceButton(std::function<void()> slice_callback, std::fun
                                  else
                                  {
                                      menu.Bind(wxEVT_MENU,
-                                               [this, ID_SAVE_LOCALLY, ID_SEND_TO_PRINTER](wxCommandEvent &evt)
+                                               [this, ID_SAVE_LOCALLY, ID_SEND_TO_PRINTER,
+                                                ID_EXPORT_TO_SCRIPT](wxCommandEvent &evt)
                                                {
                                                    if (evt.GetId() == ID_SAVE_LOCALLY)
                                                    {
@@ -986,6 +1009,11 @@ void ModernTabBar::AddSliceButton(std::function<void()> slice_callback, std::fun
                                                    {
                                                        if (m_send_to_printer_callback)
                                                            m_send_to_printer_callback();
+                                                   }
+                                                   else if (evt.GetId() == ID_EXPORT_TO_SCRIPT)
+                                                   {
+                                                       if (m_export_to_script_callback)
+                                                           m_export_to_script_callback();
                                                    }
                                                });
                                      PopupMenu(&menu, menu_pos);
@@ -1064,9 +1092,10 @@ void ModernTabBar::UpdateSliceButtonState(bool has_sliced_object)
 
     m_has_sliced_object = has_sliced_object;
 
-    // Update dropdown visibility: only show in Export mode when printer is online
-    m_show_dropdown = has_sliced_object && IsPrinterConnected() &&
-                      m_connection_state == PrinterConnectionChecker::State::Online;
+    // Update dropdown visibility: show when extra export options are available
+    m_show_dropdown = has_sliced_object &&
+                      ((IsPrinterConnected() && m_connection_state == PrinterConnectionChecker::State::Online) ||
+                       m_show_export_script);
 
     // Update button visibility based on current tab
     UpdateSliceButtonVisibility();
@@ -1126,15 +1155,47 @@ void ModernTabBar::SetSendToPrinterCallback(std::function<void()> callback)
     m_send_to_printer_callback = callback;
 }
 
+void ModernTabBar::SetExportToScriptCallback(std::function<void()> callback)
+{
+    m_export_to_script_callback = callback;
+}
+
+void ModernTabBar::RefreshExportScriptState()
+{
+    if (!m_slice_button)
+        return;
+
+    bool was_showing = m_show_export_script;
+    m_show_export_script = false;
+
+    const auto &config = wxGetApp().preset_bundle->prints.get_edited_preset().config;
+    if (config.has("export_script_enabled") && config.opt_bool("export_script_enabled"))
+    {
+        auto *script_opt = config.option<ConfigOptionString>("export_script");
+        if (script_opt && !script_opt->value.empty())
+            m_show_export_script = true;
+    }
+
+    // Recalculate dropdown visibility
+    bool old_dropdown = m_show_dropdown;
+    m_show_dropdown = m_has_sliced_object &&
+                      ((IsPrinterConnected() && m_connection_state == PrinterConnectionChecker::State::Online) ||
+                       m_show_export_script);
+
+    if (old_dropdown != m_show_dropdown || was_showing != m_show_export_script)
+        m_slice_button->Refresh();
+}
+
 void ModernTabBar::RefreshPrinterConnectionState()
 {
     if (!m_slice_button)
         return;
 
-    // Re-evaluate dropdown visibility based on current printer connection (must be online)
+    // Re-evaluate dropdown visibility based on current printer connection and export script
     bool was_showing_dropdown = m_show_dropdown;
-    m_show_dropdown = m_has_sliced_object && IsPrinterConnected() &&
-                      m_connection_state == PrinterConnectionChecker::State::Online;
+    m_show_dropdown = m_has_sliced_object &&
+                      ((IsPrinterConnected() && m_connection_state == PrinterConnectionChecker::State::Online) ||
+                       m_show_export_script);
 
     // Only refresh if state changed
     if (was_showing_dropdown != m_show_dropdown)
@@ -1368,8 +1429,9 @@ void ModernTabBar::UpdatePrinterConnectionState(PrinterConnectionChecker::State 
     if (m_slice_button)
     {
         bool was_showing_dropdown = m_show_dropdown;
-        m_show_dropdown = m_has_sliced_object && IsPrinterConnected() &&
-                          m_connection_state == PrinterConnectionChecker::State::Online;
+        m_show_dropdown = m_has_sliced_object &&
+                          ((IsPrinterConnected() && m_connection_state == PrinterConnectionChecker::State::Online) ||
+                           m_show_export_script);
         if (was_showing_dropdown != m_show_dropdown)
         {
             m_slice_button->Refresh();

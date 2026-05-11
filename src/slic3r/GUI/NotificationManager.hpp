@@ -136,6 +136,8 @@ enum class NotificationType
     BedTemperaturesDiffer,
     // Notification that shrinkage compensations for the used filaments differ.
     ShrinkageCompensationsDiffer,
+    // Notification that pressure advance is enabled for some filaments but not all.
+    PressureAdvanceMismatch,
     // Notification about using wipe tower with different nozzle diameters.
     WipeTowerNozzleDiameterDiffer,
     // Notification about using supports with different nozzle diameters.

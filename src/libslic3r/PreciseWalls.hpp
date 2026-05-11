@@ -78,7 +78,7 @@ public:
 
     // Enforce exact extrusion widths - snaps floating-point drift to nominal values
     static void enforce_exact_widths(std::vector<Athena::VariableWidthLines> &perimeters, coord_t ext_width,
-                                     coord_t int_width);
+                                     coord_t int_width, coord_t snap_precision = 10000);
 
     // Returns the user's overlap setting if it applies, or the default 10.73% if not.
     // - external_perimeter_overlap only applies with 2+ perimeters
