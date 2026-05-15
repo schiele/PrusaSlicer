@@ -2288,16 +2288,31 @@ void PrintConfigDef::init_fff_params()
     def = this->add("perimeter_compression", coEnum);
     def->label = L("Perimeter compression");
     def->category = L("Layers and Perimeters");
-    def->tooltip = L("Controls how aggressively perimeters compress in tight areas where loops converge. "
+    def->tooltip = L("Controls the minimum width of gap-fill beads that Athena generates between "
+                     "perimeters in tight areas. This does not affect perimeter widths - only the thin "
+                     "gap-fill beads placed where full-width perimeters cannot fit. "
                      "This setting only applies to the Athena perimeter generator.\n\n"
-                     "• Disabled: No compression (100% of bead width minimum)\n"
-                     "• Moderate: 66% of bead width minimum\n"
-                     "• Aggressive: 33% of bead width minimum\n\n"
+                     "• Disabled: Gap-fill beads use full perimeter width (no compression)\n"
+                     "• Moderate: Gap-fill beads can compress to 66% of perimeter width\n"
+                     "• Aggressive: Gap-fill beads can compress to 33% of perimeter width\n\n"
                      "The floor is always 33% of nozzle diameter to ensure printability.");
     def->set_enum<PerimeterCompression>(std::initializer_list<std::pair<std::string_view, std::string_view>>{
         {"off", L("Disabled")}, {"moderate", L("Moderate")}, {"aggressive", L("Aggressive")}});
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<PerimeterCompression>(pcOff));
+
+    def = this->add("max_perimeter_width", coPercent);
+    def->label = L("Maximum perimeter width");
+    def->category = L("Layers and Perimeters");
+    def->tooltip = L("The maximum width Athena will generate for any perimeter bead, expressed as a "
+                     "percentage of nozzle diameter. Beads expand to fill thin wall gaps but never "
+                     "exceed this limit. This setting only applies to the Athena perimeter generator.\n\n"
+                     "Configured extrusion widths are always preserved as the minimum - "
+                     "this setting only limits how much beads can grow beyond that.");
+    def->sidetext = L("%");
+    def->min = 100;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionPercent(150));
 
     def = this->add("thin_wall_precision", coEnum);
     def->label = L("Thin wall width precision");
@@ -4259,7 +4274,9 @@ void PrintConfigDef::init_fff_params()
     def = this->add("support_material_buildplate_only", coBool);
     def->label = L("Support on build plate only");
     def->category = L("Support material");
-    def->tooltip = L("Only create support if it lies on a build plate. Don't create support on a print.");
+    def->tooltip = L("Only create auto-detected support if it lies on a build plate. "
+                     "Don't create support on a print. This setting only applies when auto-generated "
+                     "supports are enabled; painted supports are always placed exactly where painted.");
     def->mode = comSimple;
     def->set_default_value(new ConfigOptionBool(false));
 
@@ -5066,7 +5083,7 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionFloatOrPercent(100, true));
 
     def = this->add("wall_transition_filter_deviation", coFloatOrPercent);
-    def->label = L("Perimeter transitioning filter margin");
+    def->label = L("Perimeter transition filter margin");
     def->category = L("Advanced");
     def->tooltip = L(
         "Prevent transitioning back and forth between one extra perimeter and one less. This "
@@ -5082,7 +5099,7 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionFloatOrPercent(25, true));
 
     def = this->add("wall_transition_angle", coFloat);
-    def->label = L("Perimeter transitioning threshold angle");
+    def->label = L("Perimeter transition angle");
     def->category = L("Advanced");
     def->tooltip = L("When to create transitions between even and odd numbers of perimeters. A wedge shape with"
                      " an angle greater than this setting will not have transitions and no perimeters will be "

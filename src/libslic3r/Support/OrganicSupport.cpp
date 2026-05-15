@@ -36,6 +36,7 @@
 #include "libslic3r/Support/TreeSupportCommon.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/libslic3r.h"
+#include "libslic3r/PerfTiming.hpp"
 
 #define TREE_SUPPORT_ORGANIC_NUDGE_NEW 1
 
@@ -1180,6 +1181,9 @@ void organic_draw_branches(PrintObject &print_object, TreeModelVolumes &volumes,
                            // Areas to exclude from organic support (e.g., snug/grid support regions)
                            const std::vector<Polygons> &excluded_areas)
 {
+    PerfStageTimer pf_organic;
+    pf_organic.reset();
+
     // All SupportElements are put into a layer independent storage to improve parallelization.
     std::vector<std::pair<SupportElement *, int>> elements_with_link_down;
     std::vector<size_t> linear_data_layers;
@@ -1231,9 +1235,11 @@ void organic_draw_branches(PrintObject &print_object, TreeModelVolumes &volumes,
     }
 
     throw_on_cancel();
+    pf_organic.stage("    organic: linearize elements");
 
     organic_smooth_branches_avoid_collisions(print_object, volumes, config, move_bounds, elements_with_link_down,
                                              linear_data_layers, throw_on_cancel);
+    pf_organic.stage("    organic: smooth_branches_avoid_collisions");
 
     // Reduce memory footprint. After this point only finalize_interface_and_support_areas() will use volumes and from that only collisions with zero radius will be used.
     volumes.clear_all_but_object_collision();
@@ -1377,6 +1383,8 @@ void organic_draw_branches(PrintObject &print_object, TreeModelVolumes &volumes,
             //            ++ ielement;
         }
     }
+
+    pf_organic.stage("    organic: collect trees + branches");
 
     const SlicingParameters &slicing_params = print_object.slicing_parameters();
     MeshSlicingParams mesh_slicing_params;
@@ -1629,6 +1637,7 @@ void organic_draw_branches(PrintObject &print_object, TreeModelVolumes &volumes,
             }
         },
         tbb::simple_partitioner());
+    pf_organic.stage("    organic: extrude + slice branches");
 
     tbb::parallel_for(
         tbb::blocked_range<size_t>(0, trees.size(), 1),
@@ -1650,6 +1659,7 @@ void organic_draw_branches(PrintObject &print_object, TreeModelVolumes &volumes,
             }
         },
         tbb::simple_partitioner());
+    pf_organic.stage("    organic: union per-tree slices");
 
     size_t num_layers = 0;
     for (Tree &tree : trees)
@@ -1781,6 +1791,7 @@ void organic_draw_branches(PrintObject &print_object, TreeModelVolumes &volumes,
             }
         },
         tbb::simple_partitioner());
+    pf_organic.stage("    organic: finalize layers (union/smooth/clip)");
 }
 
 } // namespace FFFTreeSupport

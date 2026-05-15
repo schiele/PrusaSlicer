@@ -653,6 +653,16 @@ Print::ApplyStatus BackgroundSlicingProcess::apply(const Model &model, const Dyn
         auto *app_config = GUI::wxGetApp().app_config;
         m_fff_print->set_preprocessing_consent(app_config->get_bool("preprocessing_consent_accepted"));
         m_fff_print->set_preprocessing_category_order(app_config->get("preprocessing_category_order"));
+
+        // Pass the project directory so preprocessing can resolve relative script paths
+        wxString proj = GUI::wxGetApp().plater()->get_project_filename();
+        if (!proj.empty())
+        {
+            boost::filesystem::path proj_path(GUI::into_u8(proj));
+            m_fff_print->set_project_dir(proj_path.parent_path().string());
+        }
+        else
+            m_fff_print->set_project_dir(std::string());
     }
 #endif
     Print::ApplyStatus invalidated = m_print->apply(model, config, warnings);

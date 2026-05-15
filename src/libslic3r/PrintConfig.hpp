@@ -1021,9 +1021,10 @@ PRINT_CONFIG_CLASS_DEFINE(
         (ConfigOptionBool, fuzzy_skin_on_top))((ConfigOptionEnum<FuzzySkinVisibilityDetection>,
                                                 fuzzy_skin_visibility_detection))((ConfigOptionBool, gap_fill_enabled))(
         (ConfigOptionFloat, gap_fill_speed))((ConfigOptionEnum<PerimeterCompression>, perimeter_compression))(
-        (ConfigOptionEnum<ThinWallPrecision>, thin_wall_precision))((ConfigOptionFloatOrPercent, infill_anchor))(
-        (ConfigOptionFloatOrPercent, infill_anchor_max))((ConfigOptionInt, infill_extruder))(
-        (ConfigOptionFloatOrPercent, infill_extrusion_width))((ConfigOptionInt, infill_every_layers))(
+        (ConfigOptionPercent, max_perimeter_width))((ConfigOptionEnum<ThinWallPrecision>, thin_wall_precision))(
+        (ConfigOptionFloatOrPercent, infill_anchor))((ConfigOptionFloatOrPercent, infill_anchor_max))(
+        (ConfigOptionInt, infill_extruder))((ConfigOptionFloatOrPercent,
+                                             infill_extrusion_width))((ConfigOptionInt, infill_every_layers))(
         (ConfigOptionFloatOrPercent, infill_overlap))((ConfigOptionFloatOrPercent, external_perimeter_overlap))(
         (ConfigOptionFloatOrPercent, perimeter_perimeter_overlap))((ConfigOptionFloatOrPercent, bridge_infill_overlap))(
         (ConfigOptionFloatOrPercent, bridge_infill_perimeter_overlap))((ConfigOptionFloat, infill_speed))(

@@ -819,6 +819,17 @@ public:
         std::lock_guard<std::mutex> lock(m_preprocessing_mutex);
         return m_preprocessing_category_order;
     }
+    // Directory of the loaded project file; used to resolve relative script paths
+    void set_project_dir(const std::string &v)
+    {
+        std::lock_guard<std::mutex> lock(m_preprocessing_mutex);
+        m_project_dir = v;
+    }
+    std::string project_dir() const
+    {
+        std::lock_guard<std::mutex> lock(m_preprocessing_mutex);
+        return m_project_dir;
+    }
 #endif
 
 protected:
@@ -883,6 +894,7 @@ private:
     std::atomic<bool> m_preprocessing_consent{false};
     mutable std::mutex m_preprocessing_mutex;
     std::string m_preprocessing_category_order{"print,filament,printer"};
+    std::string m_project_dir;
 #endif
 
     ConflictResultOpt m_conflict_result;

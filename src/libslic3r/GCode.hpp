@@ -44,6 +44,7 @@
 #include "EdgeGrid.hpp"
 #include "tcbspan/span.hpp"
 
+#include <atomic>
 #include <memory>
 #include <map>
 #include <string>
@@ -248,6 +249,10 @@ private:
         GCodeFindReplace *m_find_replace_backup{nullptr};
         GCodeProcessor &m_processor;
         GCodeObject *m_gcode_object = nullptr;
+
+    public:
+        std::atomic<int64_t> m_process_buffer_us{0};
+        double process_buffer_ms() const { return m_process_buffer_us.load(std::memory_order_relaxed) / 1000.0; }
     };
     void _do_export(Print &print, GCodeOutputStream &file, ThumbnailsGeneratorCallback thumbnail_cb);
 

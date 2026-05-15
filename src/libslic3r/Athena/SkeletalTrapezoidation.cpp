@@ -377,12 +377,20 @@ Points SkeletalTrapezoidation::discretize(const VD::edge_type &vd_edge, const st
 SkeletalTrapezoidation::SkeletalTrapezoidation(const Polygons &polys, const BeadingStrategy &beading_strategy,
                                                double transitioning_angle, coord_t discretization_step_size,
                                                coord_t transition_filter_dist, coord_t allowed_filter_deviation,
-                                               coord_t beading_propagation_transition_dist)
+                                               coord_t beading_propagation_transition_dist,
+                                               coord_t max_bead_width_external, coord_t max_bead_width_internal,
+                                               coord_t ext_perimeter_width, coord_t ext_perimeter_spacing,
+                                               coord_t ext_split_spacing)
     : transitioning_angle(transitioning_angle)
     , discretization_step_size(discretization_step_size)
     , transition_filter_dist(transition_filter_dist)
     , allowed_filter_deviation(allowed_filter_deviation)
     , beading_propagation_transition_dist(beading_propagation_transition_dist)
+    , max_bead_width_external(max_bead_width_external)
+    , max_bead_width_internal(max_bead_width_internal)
+    , ext_perimeter_width(ext_perimeter_width)
+    , ext_perimeter_spacing(ext_perimeter_spacing)
+    , ext_split_spacing(ext_split_spacing)
     , beading_strategy(beading_strategy)
 {
     constructFromPolygons(polys);
@@ -1673,6 +1681,78 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
         size_t center_idx = beading.bead_widths.size() / 2;
         coord_t current_center_width = beading.bead_widths[center_idx];
 
+        // LimitedBeadingStrategy inserts a 0-width marker at the center when bead_count
+        // equals max_bead_count (e.g. perimeters=1 producing 2 beads). This marker denotes
+        // the infill boundary but makes the array odd-sized. The flanking beads are the
+        // real innermost pair - apply EVEN-case expansion to them instead.
+        if (current_center_width == 0 && beading.bead_widths.size() >= 3 && beading.left_over != 0)
+        {
+            size_t left_idx = center_idx - 1;
+            size_t right_idx = center_idx + 1;
+            coord_t current_width = beading.bead_widths[left_idx];
+
+            if (current_width == 0 || beading.bead_widths[right_idx] == 0)
+            {
+                beading.left_over = 0;
+                return;
+            }
+
+            double overlap_pct = (double) (nominal_width - nominal_spacing) / (double) nominal_width;
+            double adjustment_factor = 1.0 / (1.0 - overlap_pct);
+
+            coord_t new_width;
+            coord_t centerline_adjustment;
+            bool is_expand;
+
+            if (beading.left_over > 0)
+            {
+                is_expand = true;
+                coord_t gap_per_bead = beading.left_over / 2;
+                coord_t additional_width = (coord_t) ((double) gap_per_bead * adjustment_factor);
+                new_width = current_width + additional_width;
+
+                coord_t target_spacing = (coord_t) ((double) new_width * (1.0 - overlap_pct));
+                coord_t overlap_distance = new_width - target_spacing;
+                coord_t gap_to_close_per_bead = gap_per_bead - (overlap_distance / 2);
+                centerline_adjustment = gap_to_close_per_bead / 2;
+            }
+            else
+            {
+                is_expand = false;
+                coord_t reduction_per_bead = -beading.left_over / 2;
+                coord_t width_reduction = (coord_t) ((double) reduction_per_bead * adjustment_factor);
+                new_width = current_width - width_reduction;
+                centerline_adjustment = reduction_per_bead / 2;
+            }
+
+            coord_t min_safe_width = nominal_width / 3;
+            if (new_width < min_safe_width)
+            {
+                beading.left_over = 0;
+                return;
+            }
+
+            if (new_width > 0)
+            {
+                beading.bead_widths[left_idx] = new_width;
+                beading.bead_widths[right_idx] = new_width;
+
+                if (is_expand)
+                {
+                    beading.toolpath_locations[left_idx] += centerline_adjustment;
+                    beading.toolpath_locations[right_idx] -= centerline_adjustment;
+                }
+                else
+                {
+                    beading.toolpath_locations[left_idx] -= centerline_adjustment;
+                    beading.toolpath_locations[right_idx] += centerline_adjustment;
+                }
+
+                beading.left_over = 0;
+            }
+            return;
+        }
+
         // For Stage 2, left_over represents the total thickness error
         // The center bead absorbs this error by expanding (positive) or contracting (negative)
 
@@ -1709,14 +1789,30 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
 
         // Split when the center bead is wider than nominal - let the deviation
         // comparison decide whether one fat bead or two normal beads is closer
-        // to the target width
-        if (beading.left_over > 0 && new_center_width > nominal_width)
+        // to the target width. For single-bead walls, use ext_perimeter_width as
+        // the threshold since the bead is external. Using internal nominal_width
+        // lets single beads grow far past the configured external width before
+        // splitting, causing overlap at zigzag U-turns where the thin wall meets
+        // thicker geometry.
+        coord_t split_threshold = nominal_width;
+        if (beading.bead_widths.size() <= 1 && ext_perimeter_width > 0 && ext_perimeter_width < nominal_width)
+            split_threshold = ext_perimeter_width;
+        if (beading.left_over > 0 && new_center_width > split_threshold)
         {
-            // For a loop with overlap: width × (2 - overlap%) = expanded_width
-            // Therefore: width = expanded_width / (2 - overlap%)
-            // This ensures the loop beads overlap at their center seam AND with neighboring perimeters
-            double loop_width_factor = 2.0 - overlap_pct;
-            coord_t split_width = (coord_t) ((double) new_center_width / loop_width_factor);
+            // For single-bead walls, use ext/perimeter overlap for the split since both
+            // beads are external. For multi-bead walls, use the strategy's internal overlap.
+            double split_overlap = overlap_pct;
+            coord_t split_sp = (ext_split_spacing > 0) ? ext_split_spacing : ext_perimeter_spacing;
+            if (beading.bead_widths.size() <= 1 && ext_perimeter_width > 0 && split_sp > 0)
+                split_overlap = (double) (ext_perimeter_width - split_sp) / (double) ext_perimeter_width;
+
+            // For single-bead walls, size the split beads to fill the actual model wall,
+            // not the expanded bead width. For multi-bead walls, use the expanded width.
+            double loop_width_factor = 2.0 - split_overlap;
+            coord_t split_source = new_center_width;
+            if (beading.bead_widths.size() <= 1 && ext_perimeter_width > 0 && ext_perimeter_spacing > 0)
+                split_source = beading.total_thickness + (ext_perimeter_width - ext_perimeter_spacing);
+            coord_t split_width = (coord_t) ((double) split_source / loop_width_factor);
 
             // With perimeter overlap, block the split when each resulting bead would
             // be too narrow to form continuous perimeters. Narrow split beads create
@@ -1726,37 +1822,60 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
             // at high perimeter counts. 90% matches the default overlap spacing ratio
             // (~89%), providing margin against boundary-straddling splits.
             // Without overlap (nominal_spacing >= nominal_width), no guard needed.
-            coord_t min_split_width = std::max(nominal_spacing, nominal_width * 9 / 10);
+            // For multi-bead walls, require split beads >= 90% nominal to avoid diamond
+            // artifacts at transition zones. For single-bead walls (n==1), there are no
+            // adjacent beads to conflict with - any printable width works.
+            coord_t min_split_width = (beading.bead_widths.size() <= 1)
+                                          ? coord_t(1) // single bead: always split if printable
+                                          : std::max(nominal_spacing, nominal_width * 9 / 10);
             bool split_viable = (nominal_spacing >= nominal_width) || (split_width >= min_split_width);
 
-            // Compare which is closer to nominal width: one fat bead or two split beads.
+            // Compare which is closer to target width: one fat bead or two split beads.
             // Bias toward splitting - an over-wide bead prints worse than a slightly
             // under-wide pair, so two beads win unless one bead is clearly better.
-            coord_t one_bead_deviation = new_center_width - nominal_width;
-            coord_t per_bead_deviation = (split_width > nominal_width) ? (split_width - nominal_width)
-                                                                       : (nominal_width - split_width);
+            coord_t one_bead_deviation = new_center_width - split_threshold;
+            coord_t per_bead_deviation = (split_width > split_threshold) ? (split_width - split_threshold)
+                                                                         : (split_threshold - split_width);
             coord_t two_bead_deviation = per_bead_deviation * 2;
 
             // Split bias: two beads win unless one bead deviates less than HALF
             // as much as two beads (i.e., one bead must be dramatically better)
-            if (split_viable && two_bead_deviation < one_bead_deviation * 2)
+            // For single-bead walls: if the wall exceeds max_bead_width, one bead can't
+            // fill it (it gets capped, leaving a gap). Split into two beads instead.
+            // Only reject if split beads would be below minimum printable width.
+            bool force_split = false;
+            if (beading.bead_widths.size() <= 1 && max_bead_width_external > 0 && ext_perimeter_width > 0 &&
+                ext_perimeter_spacing > 0)
+            {
+                coord_t actual_wall = beading.total_thickness + (ext_perimeter_width - ext_perimeter_spacing);
+                // Small tolerance prevents rounding-induced splits when wall ≈ max
+                force_split = (actual_wall > max_bead_width_external + scaled<coord_t>(0.001));
+            }
+
+            if (split_viable && (force_split || two_bead_deviation < one_bead_deviation * 2))
             {
                 split_center_into_loop = true;
 
-                // Split the expanded width into TWO beads forming a closed loop with proper overlap
-                // Spacing between bead centers: spacing = width × (1 - overlap%)
-                // This creates overlap at the center seam for structural strength
-                coord_t split_spacing = (coord_t) ((double) split_width * (1.0 - overlap_pct));
+                coord_t new_left_pos, new_right_pos;
 
-                // Current center position
-                coord_t current_center_pos = beading.toolpath_locations[center_idx];
-
-                // New positions: offset from center, then move INWARD to close the gap
-                // Inward adjustment: left_over / 2 (each bead moves inward by half the gap)
-                coord_t inward_adjustment = beading.left_over / 2;
-                coord_t offset = split_spacing / 2;
-                coord_t new_left_pos = current_center_pos - offset + inward_adjustment;  // Move RIGHT (inward)
-                coord_t new_right_pos = current_center_pos + offset - inward_adjustment; // Move LEFT (inward)
+                if (beading.bead_widths.size() <= 1)
+                {
+                    // Single-bead wall: position using ext/perimeter overlap spacing
+                    coord_t split_center_spacing = (coord_t) ((double) split_width * (1.0 - split_overlap));
+                    coord_t center = beading.total_thickness / 2;
+                    new_left_pos = center - split_center_spacing / 2;
+                    new_right_pos = center + split_center_spacing / 2;
+                }
+                else
+                {
+                    // Multi-bead: position relative to center with overlap adjustment
+                    coord_t split_spacing = (coord_t) ((double) split_width * (1.0 - overlap_pct));
+                    coord_t current_center_pos = beading.toolpath_locations[center_idx];
+                    coord_t inward_adjustment = beading.left_over / 2;
+                    coord_t offset = split_spacing / 2;
+                    new_left_pos = current_center_pos - offset + inward_adjustment;
+                    new_right_pos = current_center_pos + offset - inward_adjustment;
+                }
 
                 // Modify arrays: Replace center bead with two beads
                 beading.bead_widths[center_idx] = split_width;
@@ -1773,6 +1892,15 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
         if (!split_center_into_loop)
         {
             // Normal ODD case processing (no split needed)
+
+            // Single-bead walls: clamp to actual model wall thickness. Use the external
+            // perimeter overlap (which matches the pre-inset) to recover model thickness.
+            if (beading.bead_widths.size() == 1 && ext_perimeter_width > 0 && ext_perimeter_spacing > 0)
+            {
+                coord_t actual_wall = beading.total_thickness + (ext_perimeter_width - ext_perimeter_spacing);
+                if (new_center_width > actual_wall)
+                    new_center_width = actual_wall;
+            }
 
             coord_t min_safe_width = nominal_width / 3;
 
@@ -1795,6 +1923,26 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
                 beading.left_over = 0;
             }
         } // End of if (!split_center_into_loop)
+    }
+
+    // Hard cap: clamp bead widths per type. External beads (outermost pair)
+    // cap at max_bead_width_external, internal beads cap at max_bead_width_internal.
+    if (max_bead_width_external > 0 || max_bead_width_internal > 0)
+    {
+        const size_t n = beading.bead_widths.size();
+        for (size_t i = 0; i < n; ++i)
+        {
+            // Multi-bead walls: a bead can never be wider than the wall. Single thin-wall
+            // beads are exempt - WideningBeadingStrategy intentionally produces beads wider
+            // than total_thickness to compensate for the pre-inset polygon shrinkage.
+            if (n > 1 && beading.total_thickness > 0 && beading.bead_widths[i] > beading.total_thickness)
+                beading.bead_widths[i] = beading.total_thickness;
+
+            bool is_external = (i == 0 || i == n - 1);
+            coord_t cap = is_external ? max_bead_width_external : max_bead_width_internal;
+            if (cap > 0 && beading.bead_widths[i] > cap)
+                beading.bead_widths[i] = cap;
+        }
     }
 }
 
@@ -1906,6 +2054,31 @@ void SkeletalTrapezoidation::generateSegments()
     export_graph_to_svg(debug_out_path("ST-generateSegments-downward-propagation-%d.svg", iRun), this->graph,
                         this->outline);
 #endif
+
+    // Finalize bead widths: enforce max caps on all node beadings after propagation
+    // and interpolation are complete. This is the single enforcement point - the
+    // strategy produces correct widths for 2-external thin walls, and this pass
+    // catches any remaining over-wide beads from interpolation or other sources.
+    {
+        for (auto &node : graph.nodes)
+        {
+            if (!node.data.hasBeading())
+                continue;
+            Beading &beading = node.data.getBeading()->beading;
+            const size_t n = beading.bead_widths.size();
+            for (size_t i = 0; i < n; ++i)
+            {
+                // Multi-bead walls: a bead can never be wider than the wall
+                if (n > 1 && beading.total_thickness > 0 && beading.bead_widths[i] > beading.total_thickness)
+                    beading.bead_widths[i] = beading.total_thickness;
+
+                bool is_external = (i == 0 || i == n - 1);
+                coord_t cap = is_external ? max_bead_width_external : max_bead_width_internal;
+                if (cap > 0 && beading.bead_widths[i] > cap)
+                    beading.bead_widths[i] = cap;
+            }
+        }
+    }
 
     ptr_vector_t<LineJunctions> edge_junctions; // junctions ordered high R to low R
     generateJunctions(node_beadings, edge_junctions);
@@ -2119,6 +2292,7 @@ SkeletalTrapezoidation::Beading SkeletalTrapezoidation::interpolate(const Beadin
         {
             ret.bead_widths[inset_idx] = ratio_left_to_whole * left.bead_widths[inset_idx] +
                                          ratio_right_to_whole * right.bead_widths[inset_idx];
+            // Finalization pass in generateSegments() handles capping
         }
         ret.toolpath_locations[inset_idx] = ratio_left_to_whole * left.toolpath_locations[inset_idx] +
                                             ratio_right_to_whole * right.toolpath_locations[inset_idx];

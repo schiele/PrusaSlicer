@@ -387,6 +387,7 @@ class Settings:
     manual_fan_speed_top_solid_infill: str  # semicolon-separated ints
     max_fan_speed: str  # semicolon-separated ints
     max_layer_height: str  # semicolon-separated floats
+    max_perimeter_width: str  # percentage
     max_print_height: str  # float
     max_print_speed: str  # float
     max_volumetric_extrusion_rate_slope_negative: str  # float

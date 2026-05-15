@@ -37,7 +37,7 @@ namespace Slic3r::Athena
 WallToolPaths::WallToolPaths(const Polygons &outline, const coord_t bead_width_0, const coord_t bead_width_x,
                              const size_t inset_count, const coord_t wall_0_inset, const coordf_t layer_height,
                              const PrintObjectConfig &print_object_config, const PrintConfig &print_config,
-                             int layer_id, double min_bead_width_factor)
+                             int layer_id, double min_bead_width_factor, coord_t max_perimeter_width)
     : outline(outline)
     , bead_width_0(bead_width_0)
     , bead_width_x(bead_width_x)
@@ -48,6 +48,8 @@ WallToolPaths::WallToolPaths(const Polygons &outline, const coord_t bead_width_0
     , min_feature_size(scaled<coord_t>(print_object_config.min_feature_size.value))
     // Athena uses perimeter compression based on actual perimeter widths, not the Arachne min_bead_width setting
     , min_bead_width(std::min(bead_width_0, bead_width_x)) // Use smaller of external/internal as base
+    , max_bead_width_external(0)                           // Initialized below from actual extrusion widths
+    , max_bead_width_internal(0)
     , small_area_length(static_cast<double>(bead_width_0) / 2.)
     , wall_transition_filter_deviation(scaled<coord_t>(print_object_config.wall_transition_filter_deviation.value))
     , wall_transition_length(scaled<coord_t>(print_object_config.wall_transition_length.value))
@@ -81,18 +83,23 @@ WallToolPaths::WallToolPaths(const Polygons &outline, const coord_t bead_width_0
 
         if (min_bead_width_factor < 1.0 && min_bead_width_factor > 0.0)
         {
-            // Compression enabled: apply factor to perimeter width
+            // Compression enabled: apply factor to gap-fill bead width only
             coord_t target_min_bead = coord_t(double(base_width) * min_bead_width_factor);
             this->min_bead_width = std::max(target_min_bead, floor);
-            // Also reduce min_feature_size proportionally so skeleton extends into tighter areas
-            coord_t target_min_feature = coord_t(double(this->min_feature_size) * min_bead_width_factor);
-            this->min_feature_size = std::max(target_min_feature, floor);
         }
         else
         {
             // Compression disabled: use full perimeter width as minimum
             this->min_bead_width = base_width;
         }
+    }
+
+    // Configured width is the floor, max_perimeter_width is the ceiling
+    {
+        coord_t cap = (max_perimeter_width > 0) ? max_perimeter_width
+                                                : scaled<coord_t>(this->min_nozzle_diameter * 1.5);
+        this->max_bead_width_external = std::max(bead_width_0, cap);
+        this->max_bead_width_internal = std::max(bead_width_x, cap);
     }
 
     if (const auto &wall_transition_filter_deviation_opt = print_object_config.wall_transition_filter_deviation;
@@ -111,7 +118,7 @@ WallToolPaths::WallToolPaths(const Polygons &outline, const coord_t bead_width_0
                              const PrintObjectConfig &print_object_config, const PrintConfig &print_config,
                              coord_t fixed_width_0, coord_t fixed_width_x, coord_t spacing_0, coord_t spacing_x,
                              coord_t spacing_innermost, int layer_id, double min_bead_width_factor,
-                             coord_t thin_wall_snap_precision)
+                             coord_t thin_wall_snap_precision, coord_t max_perimeter_width)
     : outline(outline)
     , bead_width_0(bead_width_0)
     , bead_width_x(bead_width_x)
@@ -122,6 +129,8 @@ WallToolPaths::WallToolPaths(const Polygons &outline, const coord_t bead_width_0
     , min_feature_size(scaled<coord_t>(print_object_config.min_feature_size.value))
     // Athena uses perimeter compression based on actual perimeter widths, not the Arachne min_bead_width setting
     , min_bead_width(std::min(bead_width_0, bead_width_x)) // Use smaller of external/internal as base
+    , max_bead_width_external(0)                           // Initialized below from actual extrusion widths
+    , max_bead_width_internal(0)
     , small_area_length(static_cast<double>(bead_width_0) / 2.)
     , wall_transition_filter_deviation(scaled<coord_t>(print_object_config.wall_transition_filter_deviation.value))
     , wall_transition_length(scaled<coord_t>(print_object_config.wall_transition_length.value))
@@ -155,18 +164,25 @@ WallToolPaths::WallToolPaths(const Polygons &outline, const coord_t bead_width_0
 
         if (min_bead_width_factor < 1.0 && min_bead_width_factor > 0.0)
         {
-            // Compression enabled: apply factor to perimeter width
+            // Compression enabled: apply factor to gap-fill bead width only
             coord_t target_min_bead = coord_t(double(base_width) * min_bead_width_factor);
             this->min_bead_width = std::max(target_min_bead, floor);
-            // Also reduce min_feature_size proportionally so skeleton extends into tighter areas
-            coord_t target_min_feature = coord_t(double(this->min_feature_size) * min_bead_width_factor);
-            this->min_feature_size = std::max(target_min_feature, floor);
         }
         else
         {
             // Compression disabled: use full perimeter width as minimum
             this->min_bead_width = base_width;
         }
+    }
+
+    // Configured width is the floor, max_perimeter_width is the ceiling
+    {
+        coord_t cap = (max_perimeter_width > 0) ? max_perimeter_width
+                                                : scaled<coord_t>(this->min_nozzle_diameter * 1.5);
+        coord_t w0 = (fixed_width_0 > 0) ? fixed_width_0 : bead_width_0;
+        coord_t wx = (fixed_width_x > 0) ? fixed_width_x : bead_width_x;
+        this->max_bead_width_external = std::max(w0, cap);
+        this->max_bead_width_internal = std::max(wx, cap);
     }
 
     if (const auto &wall_transition_filter_deviation_opt = print_object_config.wall_transition_filter_deviation;
@@ -818,11 +834,52 @@ const std::vector<VariableWidthLines> &WallToolPaths::generate()
         const float perimeter_extrusion_width = Flow::rounded_rectangle_extrusion_width_from_spacing(
             unscale<float>(bead_width_x), float(this->layer_height));
 
-        const double wall_split_middle_threshold = std::clamp(
-            2. * unscaled<double>(this->min_bead_width) / external_perimeter_extrusion_width - 1., 0.01, 0.99);
-        const double wall_add_middle_threshold = std::clamp(unscaled<double>(this->min_bead_width) /
-                                                                perimeter_extrusion_width,
-                                                            0.01, 0.99);
+        // Minimum viable threshold: don't add a bead unless there's room for at least
+        // a min_bead_width bead. Scales naturally with nozzle size (min_bead_width floor = nozzle/3).
+        const double min_viable_threshold = (bead_width_x > 0) ? std::clamp(unscaled<double>(this->min_bead_width) /
+                                                                                unscaled<double>(bead_width_x),
+                                                                            0.01, 0.99)
+                                                               : 0.01;
+
+        double wall_split_middle_threshold =
+            std::clamp(2. * unscaled<double>(this->min_bead_width) / external_perimeter_extrusion_width - 1.,
+                       min_viable_threshold, 0.99);
+        double wall_add_middle_threshold = std::clamp(unscaled<double>(this->min_bead_width) /
+                                                          perimeter_extrusion_width,
+                                                      min_viable_threshold, 0.99);
+
+        // When max_bead_width caps expansion, lower wall_add_middle_threshold so the
+        // skeleton adds center beads sooner (preventing them from expanding beyond the
+        // cap). wall_split_middle_threshold is NOT lowered - it controls the 1->2 bead
+        // transition via RedistributeBeadingStrategy, and we never want expansion to
+        // consolidate two beads into one wider bead.
+        if (this->max_bead_width_internal > 0)
+        {
+            const coord_t nominal_spacing = bead_width_x;
+            const coord_t nominal_width = (fixed_width_internal > 0) ? fixed_width_internal : bead_width_x;
+            const double max_expansion = unscaled<double>(this->max_bead_width_internal) -
+                                         unscaled<double>(nominal_width);
+
+            if (max_expansion <= 0)
+            {
+                // 100% cap: no expansion, add center beads as early as printable
+                wall_add_middle_threshold = min_viable_threshold;
+            }
+            else
+            {
+                // Partial cap: derive add threshold from max allowable leftover
+                const double adjustment_factor = (nominal_spacing > 0)
+                                                     ? (double(nominal_width) / double(nominal_spacing))
+                                                     : 1.0;
+                const double max_leftover_even = 2.0 * max_expansion / adjustment_factor;
+                const double max_threshold_even = (nominal_spacing > 0)
+                                                      ? (max_leftover_even / unscaled<double>(nominal_spacing))
+                                                      : 0.99;
+
+                wall_add_middle_threshold = std::clamp(std::min(wall_add_middle_threshold, max_threshold_even),
+                                                       min_viable_threshold, 0.99);
+            }
+        }
 
         const int wall_distribution_count = 1;
         (void) this->print_object_config.wall_distribution_count;
@@ -837,9 +894,14 @@ const std::vector<VariableWidthLines> &WallToolPaths::generate()
         const coord_t transition_filter_dist = scaled<coord_t>(100.f);
         const coord_t allowed_filter_deviation = wall_transition_filter_deviation;
 
+        coord_t ext_w = (fixed_width_external > 0) ? fixed_width_external : bead_width_0;
+        coord_t ext_s = bead_width_0; // Must match pre-inset
+        coord_t split_s = (spacing_override_external > 0) ? spacing_override_external : bead_width_0;
+
         SkeletalTrapezoidation wall_maker(prepared_outline, *beading_strat, beading_strat->getTransitioningAngle(),
                                           discretization_step_size, transition_filter_dist, allowed_filter_deviation,
-                                          wall_transition_length);
+                                          wall_transition_length, this->max_bead_width_external,
+                                          this->max_bead_width_internal, ext_w, ext_s, split_s);
 
         wall_maker.generateToolpaths(toolpaths);
     }

@@ -13,6 +13,7 @@
 ///|/
 #include <boost/log/trivial.hpp>
 #include <oneapi/tbb/blocked_range.h>
+#include <oneapi/tbb/concurrent_vector.h>
 #include <oneapi/tbb/parallel_for.h>
 #include <oneapi/tbb/task_group.h>
 #include <cmath>
@@ -51,6 +52,7 @@
 #include "libslic3r/Support/SupportParameters.hpp"
 #include "libslic3r/Surface.hpp"
 #include "libslic3r/TriangleSelector.hpp"
+#include "libslic3r/PerfTiming.hpp"
 #include "tcbspan/span.hpp"
 
 #define SUPPORT_USE_AGG_RASTERIZER
@@ -296,6 +298,8 @@ PrintObjectSupportMaterial::PrintObjectSupportMaterial(const PrintObject *object
 void PrintObjectSupportMaterial::generate(PrintObject &object)
 {
     BOOST_LOG_TRIVIAL(info) << "Support generator - Start";
+    PerfStageTimer pf_support;
+    pf_support.reset();
 
     coordf_t max_object_layer_height = 0.;
     for (size_t i = 0; i < object.layer_count(); ++i)
@@ -309,6 +313,7 @@ void PrintObjectSupportMaterial::generate(PrintObject &object)
 
     // Per object layer projection of the object below the layer into print bed.
     std::vector<Polygons> buildplate_covered = this->buildplate_covered(object);
+    pf_support.stage("  snug: buildplate_covered");
 
     // Determine the top contact surfaces of the support, defined as:
     // contact = overhangs - clearance + margin
@@ -317,6 +322,7 @@ void PrintObjectSupportMaterial::generate(PrintObject &object)
     // that it will be effective, regardless of how it's built below.
     // If raft is to be generated, the 1st top_contact layer will contain the 1st object layer silhouette without holes.
     SupportGeneratorLayersPtr top_contacts = this->top_contact_layers(object, buildplate_covered, layer_storage);
+    pf_support.stage("  snug: top_contact_layers");
     if (top_contacts.empty())
         // Nothing is supported, no supports are generated.
         return;
@@ -336,8 +342,13 @@ void PrintObjectSupportMaterial::generate(PrintObject &object)
     // layer_support_areas contains the per object layer support areas. These per object layer support areas
     // may get merged and trimmed by this->generate_base_layers() if the support layers are not synchronized with object layers.
     std::vector<Polygons> layer_support_areas;
-    SupportGeneratorLayersPtr bottom_contacts = this->bottom_contact_layers_and_layer_support_areas(
-        object, top_contacts, buildplate_covered, layer_storage, layer_support_areas);
+    const bool painted_only = !m_object_config->support_material_auto.value;
+    SupportGeneratorLayersPtr bottom_contacts =
+        painted_only
+            ? this->bottom_contact_layers_painted_fast(object, top_contacts, layer_storage, layer_support_areas)
+            : this->bottom_contact_layers_and_layer_support_areas(object, top_contacts, buildplate_covered,
+                                                                  layer_storage, layer_support_areas);
+    pf_support.stage("  snug: bottom_contact_layers");
 
 #ifdef SLIC3R_DEBUG
     for (size_t layer_id = 0; layer_id < object.layers().size(); ++layer_id)
@@ -356,9 +367,11 @@ void PrintObjectSupportMaterial::generate(PrintObject &object)
     SupportGeneratorLayersPtr intermediate_layers = this->raft_and_intermediate_support_layers(object, bottom_contacts,
                                                                                                top_contacts,
                                                                                                layer_storage);
+    pf_support.stage("  snug: raft_and_intermediate_layers");
 
     this->trim_support_layers_by_object(object, top_contacts, m_slicing_params.gap_support_object,
                                         m_slicing_params.gap_object_support, m_support_params.gap_xy);
+    pf_support.stage("  snug: trim_by_object (top contacts)");
 
 #ifdef SLIC3R_DEBUG
     for (const SupportGeneratorLayer *layer : top_contacts)
@@ -371,6 +384,7 @@ void PrintObjectSupportMaterial::generate(PrintObject &object)
 
     // Fill in intermediate layers between the top / bottom support contact layers, trim them by the object.
     this->generate_base_layers(object, bottom_contacts, top_contacts, intermediate_layers, layer_support_areas);
+    pf_support.stage("  snug: generate_base_layers");
 
 #ifdef SLIC3R_DEBUG
     for (SupportGeneratorLayersPtr::const_iterator it = intermediate_layers.begin(); it != intermediate_layers.end();
@@ -386,6 +400,7 @@ void PrintObjectSupportMaterial::generate(PrintObject &object)
     // Rather trim the top contacts by their overlapping bottom contacts to leave a gap instead of over extruding
     // top contacts over the bottom contacts.
     this->trim_top_contacts_by_bottom_contacts(object, bottom_contacts, top_contacts);
+    pf_support.stage("  snug: trim_top_by_bottom");
 
     BOOST_LOG_TRIVIAL(info) << "Support generator - Creating interfaces";
 
@@ -395,6 +410,7 @@ void PrintObjectSupportMaterial::generate(PrintObject &object)
     auto [interface_layers, base_interface_layers] =
         FFFSupport::generate_interface_layers(*m_object_config, m_support_params, bottom_contacts, top_contacts,
                                               empty_layers, empty_layers, intermediate_layers, layer_storage);
+    pf_support.stage("  snug: generate_interface_layers");
 
     // The hole closing in generate_interface_layers may remove clearance holes around small object features.
     // Re-trim interface layers against object geometry to restore proper XY gap clearance.
@@ -403,6 +419,7 @@ void PrintObjectSupportMaterial::generate(PrintObject &object)
     if (!base_interface_layers.empty())
         this->trim_support_layers_by_object(object, base_interface_layers, m_slicing_params.gap_support_object,
                                             m_slicing_params.gap_object_support, m_support_params.gap_xy);
+    pf_support.stage("  snug: trim_by_object (interfaces)");
 
     BOOST_LOG_TRIVIAL(info) << "Support generator - Creating raft";
 
@@ -413,6 +430,7 @@ void PrintObjectSupportMaterial::generate(PrintObject &object)
                                                                            top_contacts, interface_layers,
                                                                            base_interface_layers, intermediate_layers,
                                                                            layer_storage);
+    pf_support.stage("  snug: generate_raft_base");
 
 #ifdef SLIC3R_DEBUG
     for (const SupportGeneratorLayer *l : interface_layers)
@@ -445,6 +463,7 @@ void PrintObjectSupportMaterial::generate(PrintObject &object)
 #endif // SLIC3R_DEBUG
         generate_support_layers(object, raft_layers, bottom_contacts, top_contacts, intermediate_layers,
                                 interface_layers, base_interface_layers);
+    pf_support.stage("  snug: generate_support_layers");
 
     BOOST_LOG_TRIVIAL(info) << "Support generator - Generating tool paths";
 
@@ -479,6 +498,7 @@ void PrintObjectSupportMaterial::generate(PrintObject &object)
     generate_support_toolpaths(object.support_layers(), *m_object_config, m_support_params, m_slicing_params,
                                raft_layers, bottom_contacts, top_contacts, intermediate_layers, interface_layers,
                                base_interface_layers);
+    pf_support.stage("  snug: generate_support_toolpaths");
 
 #ifdef SLIC3R_DEBUG
     {
@@ -2173,6 +2193,9 @@ static inline std::pair<Polygons, Polygons> project_support_to_grid(const Layer 
 #endif /* SLIC3R_DEBUG */
 )
 {
+    std::chrono::steady_clock::time_point pf_grid_t0, pf_grid_t1, pf_grid_t2;
+    if constexpr (PERF_TIMING)
+        pf_grid_t0 = std::chrono::steady_clock::now();
     // Remove the areas that touched from the projection that will continue on next, lower, top surfaces.
     //            Polygons trimming = union_(to_polygons(layer.slices), touching, true);
     Polygons trimming = layer_buildplate_covered ? std::move(*layer_buildplate_covered)
@@ -2188,6 +2211,8 @@ static inline std::pair<Polygons, Polygons> project_support_to_grid(const Layer 
 
     remove_sticks(overhangs_projection);
     remove_degenerate(overhangs_projection);
+    if constexpr (PERF_TIMING)
+        pf_grid_t1 = std::chrono::steady_clock::now();
 
 #ifdef SLIC3R_DEBUG
     SVG::export_expolygons(debug_out_path("support-support-areas-%s-raw-cleaned-%d-%lf.svg", debug_name, iRun,
@@ -2198,6 +2223,8 @@ static inline std::pair<Polygons, Polygons> project_support_to_grid(const Layer 
 #endif /* SLIC3R_DEBUG */
 
     SupportGridPattern support_grid_pattern(&overhangs_projection, &trimming, grid_params);
+    if constexpr (PERF_TIMING)
+        pf_grid_t2 = std::chrono::steady_clock::now();
     tbb::task_group task_group_inner;
 
     std::pair<Polygons, Polygons> out;
@@ -2269,6 +2296,17 @@ static inline std::pair<Polygons, Polygons> project_support_to_grid(const Layer 
         });
 
     task_group_inner.wait();
+    if constexpr (PERF_TIMING)
+    {
+        auto pf_grid_t3 = std::chrono::steady_clock::now();
+        auto diff_ms = std::chrono::duration<double, std::milli>(pf_grid_t1 - pf_grid_t0).count();
+        auto ctor_ms = std::chrono::duration<double, std::milli>(pf_grid_t2 - pf_grid_t1).count();
+        auto extract_ms = std::chrono::duration<double, std::milli>(pf_grid_t3 - pf_grid_t2).count();
+        auto total_ms = diff_ms + ctor_ms + extract_ms;
+        if (total_ms > 100.0)
+            fprintf(stderr, "[TIMING]     project_grid layer %.2f: diff=%.1f ctor=%.1f extract=%.1f total=%.1fms\n",
+                    layer.print_z, diff_ms, ctor_ms, extract_ms, total_ms);
+    }
     return out;
 }
 
@@ -2303,6 +2341,11 @@ SupportGeneratorLayersPtr PrintObjectSupportMaterial::bottom_contact_layers_and_
     // we'll use them to clip our support and detect where does it stick
     SupportGeneratorLayersPtr bottom_contacts;
 
+    // Sub-stage accumulators for bottom_contact_layers profiling (only active when PERF_TIMING)
+    double pf_bc_collect_us = 0, pf_bc_union_us = 0, pf_bc_grid_us = 0, pf_bc_wait_merge_us = 0;
+    size_t pf_bc_iters = 0, pf_bc_active_iters = 0, pf_bc_max_overhang_pts = 0;
+    std::chrono::steady_clock::time_point pf_t0, pf_t1, pf_t2;
+
     // There is some support to be built, if there are non-empty top surfaces detected.
     // Sum of unsupported contact areas above the current layer.print_z.
     Polygons overhangs_projection;
@@ -2316,6 +2359,11 @@ SupportGeneratorLayersPtr PrintObjectSupportMaterial::bottom_contact_layers_and_
     for (int layer_id = int(object.total_layer_count()) - 2; layer_id >= 0; --layer_id)
     {
         BOOST_LOG_TRIVIAL(trace) << "Support generator - bottom_contact_layers - layer " << layer_id;
+        if constexpr (PERF_TIMING)
+        {
+            ++pf_bc_iters;
+            pf_t0 = std::chrono::steady_clock::now();
+        }
         const Layer &layer = *object.get_layer(layer_id);
         // Collect projections of all contact areas above or at the same level as this top surface.
 #ifdef SLIC3R_DEBUG
@@ -2357,11 +2405,27 @@ SupportGeneratorLayersPtr PrintObjectSupportMaterial::bottom_contact_layers_and_
             grid_enforcers_projection.empty())
             continue;
 
+        if constexpr (PERF_TIMING)
+        {
+            ++pf_bc_active_iters;
+            pf_t1 = std::chrono::steady_clock::now();
+            pf_bc_collect_us += std::chrono::duration_cast<std::chrono::microseconds>(pf_t1 - pf_t0).count();
+        }
+
         // Overhangs_projection will be filled in asynchronously, move it away.
         Polygons overhangs_projection_raw = union_(std::move(overhangs_projection));
         Polygons enforcers_projection_raw = union_(std::move(enforcers_projection));
         Polygons snug_enforcers_projection_raw = union_(std::move(snug_enforcers_projection));
         Polygons grid_enforcers_projection_raw = union_(std::move(grid_enforcers_projection));
+        if constexpr (PERF_TIMING)
+        {
+            pf_t2 = std::chrono::steady_clock::now();
+            pf_bc_union_us += std::chrono::duration_cast<std::chrono::microseconds>(pf_t2 - pf_t1).count();
+            size_t pts = 0;
+            for (const Polygon &p : overhangs_projection_raw)
+                pts += p.points.size();
+            pf_bc_max_overhang_pts = std::max(pf_bc_max_overhang_pts, pts);
+        }
 
         tbb::task_group task_group;
         const Polygons &overhangs_for_bottom_contacts = buildplate_only ? enforcers_projection_raw
@@ -2482,6 +2546,10 @@ SupportGeneratorLayersPtr PrintObjectSupportMaterial::bottom_contact_layers_and_
                     );
                 });
 
+        std::chrono::steady_clock::time_point pf_t3;
+        if constexpr (PERF_TIMING)
+            pf_t3 = std::chrono::steady_clock::now();
+
         task_group.wait();
 
         if (!layer_support_area_enforcers.empty())
@@ -2505,11 +2573,207 @@ SupportGeneratorLayersPtr PrintObjectSupportMaterial::bottom_contact_layers_and_
             else
                 layer_support_area = union_(layer_support_area, layer_support_area_grid_enforcers);
         }
+        if constexpr (PERF_TIMING)
+        {
+            auto pf_t4 = std::chrono::steady_clock::now();
+            pf_bc_grid_us += std::chrono::duration_cast<std::chrono::microseconds>(pf_t3 - pf_t2).count();
+            pf_bc_wait_merge_us += std::chrono::duration_cast<std::chrono::microseconds>(pf_t4 - pf_t3).count();
+        }
     } // over all layers downwards
+
+    if constexpr (PERF_TIMING)
+    {
+        fprintf(stderr,
+                "[TIMING]   bottom_contacts breakdown (%zu layers, %zu active):\n"
+                "[TIMING]     collect:      %7.1fms\n"
+                "[TIMING]     union:        %7.1fms\n"
+                "[TIMING]     grid_launch:  %7.1fms\n"
+                "[TIMING]     wait+merge:   %7.1fms\n"
+                "[TIMING]     max_ovh_pts:  %zu\n",
+                pf_bc_iters, pf_bc_active_iters, pf_bc_collect_us / 1000.0, pf_bc_union_us / 1000.0,
+                pf_bc_grid_us / 1000.0, pf_bc_wait_merge_us / 1000.0, pf_bc_max_overhang_pts);
+    }
 
     std::reverse(bottom_contacts.begin(), bottom_contacts.end());
     trim_support_layers_by_object(object, bottom_contacts, m_slicing_params.gap_support_object,
                                   m_slicing_params.gap_object_support, m_support_params.gap_xy);
+    return bottom_contacts;
+}
+
+// Painted-only fast path: precompute the downward projection, then process layers in parallel.
+// Replaces the serial bottom_contact_layers_and_layer_support_areas when auto-detection is disabled.
+SupportGeneratorLayersPtr PrintObjectSupportMaterial::bottom_contact_layers_painted_fast(
+    const PrintObject &object, const SupportGeneratorLayersPtr &top_contacts,
+    SupportGeneratorLayerStorage &layer_storage, std::vector<Polygons> &layer_support_areas) const
+{
+    if (top_contacts.empty())
+        return {};
+
+    PerfStageTimer pf_painted;
+    pf_painted.reset();
+
+    const size_t num_layers = object.total_layer_count();
+    layer_support_areas.assign(num_layers, Polygons());
+
+    // Phase 1 (serial): Build sparse change-point table of the downward projection.
+    // The projection only changes when new contacts are added. Between change points,
+    // all layers share the same projection - no copies needed.
+    struct ChangePoint
+    {
+        int layer_id;
+        Polygons projection;
+    };
+    std::vector<ChangePoint> change_points;
+    {
+        Polygons running;
+        int contact_idx = int(top_contacts.size()) - 1;
+        for (int layer_id = int(num_layers) - 2; layer_id >= 0; --layer_id)
+        {
+            const Layer &layer = *object.get_layer(layer_id);
+            bool added = false;
+            for (; contact_idx >= 0 && top_contacts[contact_idx]->print_z > layer.print_z - EPSILON; --contact_idx)
+            {
+                SupportGeneratorLayer &tc = *top_contacts[contact_idx];
+                if (tc.contact_polygons)
+                    polygons_append(running, std::move(*tc.contact_polygons));
+                if (tc.overhang_polygons)
+                    polygons_append(running, expand(*tc.overhang_polygons, float(SCALED_EPSILON)));
+                added = true;
+            }
+            if (running.empty())
+                continue;
+            if (added)
+            {
+                running = union_(running);
+                change_points.push_back({layer_id, running});
+            }
+        }
+    }
+    if (change_points.empty())
+        return {};
+
+    // Build a lookup: for each layer_id, find which change point's projection applies.
+    // change_points are sorted descending by layer_id (top-to-bottom iteration order).
+    // For a given layer_id, the applicable projection is the first change point with layer_id >= query.
+    // Store index into change_points per layer (-1 = no projection).
+    std::vector<int> layer_to_cp(num_layers, -1);
+    {
+        int cp_idx = 0;
+        for (int layer_id = change_points.front().layer_id; layer_id >= 0; --layer_id)
+        {
+            if (cp_idx + 1 < int(change_points.size()) && change_points[cp_idx + 1].layer_id >= layer_id)
+                ++cp_idx;
+            layer_to_cp[layer_id] = cp_idx;
+        }
+    }
+    pf_painted.stage("  painted_fast: accumulate projection");
+
+    // Phase 2 (parallel): For each layer, trim against object geometry, detect bottom contacts.
+    struct BottomContactInfo
+    {
+        size_t layer_id;
+        Polygons touching;
+    };
+    tbb::concurrent_vector<BottomContactInfo> bc_infos;
+
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, num_layers),
+                      [&](const tbb::blocked_range<size_t> &range)
+                      {
+                          for (size_t layer_id = range.begin(); layer_id < range.end(); ++layer_id)
+                          {
+                              int cp_idx = layer_to_cp[layer_id];
+                              if (cp_idx < 0)
+                                  continue;
+                              const Polygons &projection = change_points[cp_idx].projection;
+
+                              const Layer &layer = *object.get_layer(layer_id);
+
+                              Polygons trimming = offset(layer.lslices, float(SCALED_EPSILON));
+                              Polygons trimmed = diff(projection, trimming);
+                              remove_sticks(trimmed);
+                              remove_degenerate(trimmed);
+
+                              if (trimmed.empty())
+                                  continue;
+
+                              layer_support_areas[layer_id] = std::move(trimmed);
+
+                              Polygons top = collect_region_slices_by_type(layer, stTop);
+                              if (!top.empty())
+                              {
+                                  Polygons touching = intersection(top, projection);
+                                  if (!touching.empty())
+                                      bc_infos.push_back({layer_id, std::move(touching)});
+                              }
+                          }
+                      });
+    pf_painted.stage("  painted_fast: parallel trim + detect");
+
+    // Phase 3 (serial): Create bottom contact layers from collected info.
+    SupportGeneratorLayersPtr bottom_contacts;
+    bottom_contacts.reserve(bc_infos.size());
+    for (const BottomContactInfo &info : bc_infos)
+    {
+        const Layer &layer = *object.get_layer(info.layer_id);
+
+        if (layer.id() < m_slicing_params.raft_layers())
+            continue;
+        if (!layer.upper_layer)
+            continue;
+
+        size_t raft_layer_id = layer.id() - m_slicing_params.raft_layers();
+
+        SupportGeneratorLayer &layer_new = layer_storage.allocate_unguarded(SupporLayerType::BottomContact);
+        layer_new.height = m_slicing_params.soluble_interface
+                               ? layer.upper_layer->height
+                               : m_support_params.support_material_bottom_interface_flow.height();
+        layer_new.print_z = m_slicing_params.soluble_interface
+                                ? layer.upper_layer->print_z
+                                : layer.print_z + layer_new.height + m_slicing_params.gap_object_support;
+        layer_new.bottom_z = layer.print_z;
+        layer_new.idx_object_layer_below = raft_layer_id;
+        layer_new.bridging = !m_slicing_params.soluble_interface && object.config().thick_bridges;
+        layer_new.polygons = expand(info.touching, float(m_support_params.support_material_flow.scaled_width()),
+                                    SUPPORT_SURFACES_OFFSET_PARAMETERS);
+
+        // Snap print_z to nearby top contact layers to avoid thin support layers
+        if (!m_slicing_params.soluble_interface)
+        {
+            for (const SupportGeneratorLayer *tc : top_contacts)
+            {
+                if (tc->print_z > layer_new.print_z + m_support_params.support_layer_height_min + EPSILON)
+                    break;
+                if (tc->print_z > layer_new.print_z - m_support_params.support_layer_height_min - EPSILON)
+                {
+                    coordf_t d = layer_new.print_z - tc->print_z;
+                    layer_new.print_z = tc->print_z;
+                    layer_new.height -= d;
+                    break;
+                }
+            }
+        }
+
+        // Trim layer_support_areas above this bottom contact to prevent overlap
+        Polygons touching_expanded = expand(info.touching, float(SCALED_EPSILON));
+        for (size_t lid = info.layer_id + 1; lid < num_layers; ++lid)
+        {
+            const Layer &layer_above = *object.layers()[lid];
+            if (layer_above.print_z > layer_new.print_z - EPSILON)
+                break;
+            if (Polygons &above = layer_support_areas[lid]; !above.empty())
+                above = diff(above, touching_expanded);
+        }
+
+        bottom_contacts.push_back(&layer_new);
+    }
+
+    std::sort(bottom_contacts.begin(), bottom_contacts.end(),
+              [](const SupportGeneratorLayer *a, const SupportGeneratorLayer *b) { return a->print_z < b->print_z; });
+
+    trim_support_layers_by_object(object, bottom_contacts, m_slicing_params.gap_support_object,
+                                  m_slicing_params.gap_object_support, m_support_params.gap_xy);
+    pf_painted.stage("  painted_fast: create contacts + trim");
+
     return bottom_contacts;
 }
 

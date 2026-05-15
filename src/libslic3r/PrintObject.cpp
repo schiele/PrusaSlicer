@@ -4251,6 +4251,8 @@ void PrintObject::merge_duplicate_support_layers()
 
 void PrintObject::_generate_support_material()
 {
+    PF_TIMER_RESET();
+
     // Painted regions are the MASTER - they determine support style, not the UI setting
     bool has_snug_paint = this->has_snug_enforcers();
     bool has_grid_paint = this->has_grid_enforcers();
@@ -4287,12 +4289,15 @@ void PrintObject::_generate_support_material()
     // Calculate global_organic AFTER style override so painted regions take precedence
     bool global_organic = (m_config.support_material_style == smsTree || m_config.support_material_style == smsOrganic);
 
+    PF_TIMER_STAGE("support: style detection + override");
+
     // Case 1: Both Snug/Grid and Organic painted - run Snug/Grid first, then Organic with collision
     if ((has_snug_paint || has_grid_paint) && has_organic_paint)
     {
         // Step 1: Generate Snug/Grid supports
         PrintObjectSupportMaterial support_material(this, m_slicing_params);
         support_material.generate(*this);
+        PF_TIMER_STAGE("support: mixed snug/grid generate");
 
         // Step 2: Extract support polygons for clipping organic support
         // Use support_islands directly - these are the polygon boundaries of snug support
@@ -4317,6 +4322,7 @@ void PrintObject::_generate_support_material()
                 }
             }
         }
+        PF_TIMER_STAGE("support: mixed extract snug polygons");
 
         // PrintObjectSupportMaterial::generate() is done, snug/grid layers have their fills.
         // Restore organic style so TreeSupport generates proper solid tree paths (not sparse infill).
@@ -4326,10 +4332,12 @@ void PrintObject::_generate_support_material()
         // Note: This will ADD to existing support layers, not replace them
         fff_tree_support_generate(*this, std::function<void()>([this]() { this->throw_if_canceled(); }),
                                   snug_support_polygons);
+        PF_TIMER_STAGE("support: mixed organic generate");
 
         // Step 4: Merge support layers at same print_z to avoid duplicate Z heights
         // Note: First layer base merging is handled in TreeSupport.cpp (MULTI-TYPE-SUPPORT-BASE-CLIP)
         this->merge_duplicate_support_layers();
+        PF_TIMER_STAGE("support: mixed merge layers");
     }
     // Case 2: Only organic paint OR global style is Organic with no snug/grid paint
     // Note: has_grid_paint check is technically redundant since global_organic is calculated
@@ -4339,6 +4347,7 @@ void PrintObject::_generate_support_material()
         if (this->has_support())
         {
             fff_tree_support_generate(*this, std::function<void()>([this]() { this->throw_if_canceled(); }));
+            PF_TIMER_STAGE("support: organic generate (total)");
         }
     }
     // Case 3: Only snug paint OR global style is Snug/Grid
@@ -4348,6 +4357,7 @@ void PrintObject::_generate_support_material()
         // build snug raft instead.
         PrintObjectSupportMaterial support_material(this, m_slicing_params);
         support_material.generate(*this);
+        PF_TIMER_STAGE("support: snug/grid generate (total)");
     }
 
     // Restore the original style setting in case it was modified for mixed mode processing

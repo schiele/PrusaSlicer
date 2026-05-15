@@ -137,6 +137,30 @@ BeadingStrategy::Beading RedistributeBeadingStrategy::compute(coord_t thickness,
 
     if (ext_to_first_internal_spacing > 0 && bead_count >= 2)
     {
+        // 2-external case: both beads face outward in a thin wall.
+        // Compute contracted widths directly to maintain the configured overlap ratio.
+        if (bead_count == 2)
+        {
+            const coord_t half_thickness = thickness / 2;
+            coord_t bead_w = ext_perimeter_width;
+            if (half_thickness < ext_perimeter_spacing)
+            {
+                // Thin wall: scale width to maintain overlap ratio
+                bead_w = coord_t(double(half_thickness) * double(ext_perimeter_width) / double(ext_perimeter_spacing));
+            }
+            bead_w = std::min(bead_w, ext_perimeter_width);
+
+            ret.bead_widths.push_back(bead_w);
+            ret.toolpath_locations.push_back(half_thickness / 2);
+            ret.bead_widths.push_back(bead_w);
+            ret.toolpath_locations.push_back(thickness - half_thickness / 2);
+            // Thin walls: contracted beads fill exactly (left_over=0).
+            // Wide walls: positive left_over allows expansion via applyBeadWidthAdjustments.
+            ret.left_over = (half_thickness >= ext_perimeter_spacing) ? (thickness - 2 * ext_perimeter_spacing) : 0;
+            ret.total_thickness = thickness;
+            return ret;
+        }
+
         // preFlight precise walls mode: Use custom spacing for first internal bead
         const coord_t custom_spacing = ext_to_first_internal_spacing;
 
@@ -206,7 +230,29 @@ BeadingStrategy::Beading RedistributeBeadingStrategy::compute(coord_t thickness,
     }
     else
     {
-        // Standard behavior: symmetric outer walls
+        // 2-external case in standard branch: both beads face outward in a thin wall.
+        if (bead_count == 2)
+        {
+            const coord_t half_thickness = thickness / 2;
+            coord_t bead_w = ext_perimeter_width;
+            if (half_thickness < ext_perimeter_spacing)
+            {
+                // Thin wall: scale width to maintain overlap ratio
+                bead_w = coord_t(double(half_thickness) * double(ext_perimeter_width) / double(ext_perimeter_spacing));
+            }
+            bead_w = std::min(bead_w, ext_perimeter_width);
+
+            ret.bead_widths.push_back(bead_w);
+            ret.toolpath_locations.push_back(half_thickness / 2);
+            ret.bead_widths.push_back(bead_w);
+            ret.toolpath_locations.push_back(thickness - half_thickness / 2);
+            // When beads fit at full width, leave positive left_over for expansion/gap-fill
+            ret.left_over = (half_thickness >= ext_perimeter_spacing) ? (thickness - 2 * ext_perimeter_spacing) : 0;
+            ret.total_thickness = thickness;
+            return ret;
+        }
+
+        // Standard behavior: symmetric outer walls (bead_count >= 3)
         const coord_t inner_bead_count = bead_count - 2;
         const coord_t inner_thickness = thickness - 2 * ext_perimeter_spacing;
         if (inner_bead_count > 0 && inner_thickness > 0)
@@ -214,13 +260,7 @@ BeadingStrategy::Beading RedistributeBeadingStrategy::compute(coord_t thickness,
             ret = parent->compute(inner_thickness, inner_bead_count);
             for (auto &toolpath_location : ret.toolpath_locations)
                 toolpath_location += ext_perimeter_spacing;
-            // Parent calculated left_over using spacing, and it's valid for full thickness (math below)
-            // Total spacing = 2*ext_spacing + (inner_thickness - parent_left_over)
-            // left_over = thickness - total_spacing
-            //           = thickness - 2*ext_spacing - inner_thickness + parent_left_over
-            //           = thickness - 2*ext_spacing - (thickness - 2*ext_spacing) + parent_left_over
-            //           = parent_left_over
-            // So parent's left_over is already correct - don't modify it
+            // Parent's left_over is already correct (see derivation below)
         }
         else
         {
@@ -228,8 +268,9 @@ BeadingStrategy::Beading RedistributeBeadingStrategy::compute(coord_t thickness,
             ret.left_over = thickness - (bead_count * ext_perimeter_spacing);
         }
 
-        const coord_t actual_outer_spacing = bead_count > 2 ? std::min(thickness / 2, ext_perimeter_spacing)
-                                                            : thickness / bead_count;
+        // bead_count==1: single bead centered in wall. bead_count>=3: cap at ext_perimeter_spacing.
+        const coord_t actual_outer_spacing = (bead_count <= 1) ? thickness
+                                                               : std::min(thickness / 2, ext_perimeter_spacing);
 
         // Original code used insert() at begin(), causing O(n) shift of all elements.
         // This fix builds new vectors with correct order to avoid shifting overhead.

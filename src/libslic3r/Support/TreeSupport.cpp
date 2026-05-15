@@ -60,6 +60,7 @@
 #include "libslic3r/Surface.hpp"
 #include "libslic3r/TriangleSelector.hpp"
 #include "libslic3r/Utils.hpp"
+#include "libslic3r/PerfTiming.hpp"
 
 // #define TREESUPPORT_DEBUG_SVG
 
@@ -4066,6 +4067,8 @@ static void generate_support_areas(Print &print, const BuildVolume &build_volume
                                 << grouped_meshes.size() << " containing " << grouped_meshes[counter].second.size()
                                 << " meshes.";
         auto t_start = std::chrono::high_resolution_clock::now();
+        PerfStageTimer pf_tree;
+        pf_tree.reset();
 #if 0
         std::vector<Polygons> exclude(num_support_layers);
         // get all already existing support areas and exclude them
@@ -4097,15 +4100,18 @@ static void generate_support_areas(Print &print, const BuildVolume &build_volume
                                  m_progress_offset,
 #endif // SLIC3R_TREESUPPORTS_PROGRESS
                                  additional_excluded_areas};
+        pf_tree.stage("  tree: TreeModelVolumes init");
 
         //FIXME generating overhangs just for the furst mesh of the group.
         assert(processing.second.size() == 1);
         std::vector<Polygons> overhangs = generate_overhangs(config, *print.get_object(processing.second.front()),
                                                              throw_on_cancel);
+        pf_tree.stage("  tree: generate_overhangs");
 
         // ### Precalculate avoidances, collision etc.
         size_t num_support_layers = precalculate(print, overhangs, processing.first, processing.second, volumes,
                                                  throw_on_cancel);
+        pf_tree.stage("  tree: precalculate (avoidance/collision)");
         bool has_support = num_support_layers > 0;
         bool has_raft = config.raft_layers.size() > 0;
         num_support_layers = std::max(num_support_layers, config.raft_layers.size());
@@ -4165,6 +4171,7 @@ static void generate_support_areas(Print &print, const BuildVolume &build_volume
                 generate_initial_areas(*print.get_object(mesh_idx), volumes, config, overhangs, move_bounds,
                                        interface_placer, throw_on_cancel);
             auto t_gen = std::chrono::high_resolution_clock::now();
+            pf_tree.stage("  tree: generate_initial_areas");
 
 #ifdef TREESUPPORT_DEBUG_SVG
             for (size_t layer_idx = 0; layer_idx < move_bounds.size(); ++layer_idx)
@@ -4185,10 +4192,12 @@ static void generate_support_areas(Print &print, const BuildVolume &build_volume
             // ### Propagate the influence areas downwards. This is an inherently serial operation.
             create_layer_pathing(volumes, config, move_bounds, throw_on_cancel);
             auto t_path = std::chrono::high_resolution_clock::now();
+            pf_tree.stage("  tree: create_layer_pathing");
 
             // ### Set a point in each influence area
             create_nodes_from_area(volumes, config, move_bounds, throw_on_cancel);
             auto t_place = std::chrono::high_resolution_clock::now();
+            pf_tree.stage("  tree: create_nodes_from_area");
 
             // ### draw these points as circles
             // In mixed mode (Snug/Grid + Organic paint), the primary style may be Snug but we're
@@ -4198,6 +4207,7 @@ static void generate_support_areas(Print &print, const BuildVolume &build_volume
             {
                 draw_areas(*print.get_object(processing.second.front()), volumes, config, overhangs, move_bounds,
                            bottom_contacts, top_contacts, intermediate_layers, layer_storage, throw_on_cancel);
+                pf_tree.stage("  tree: draw_areas (tree style)");
             }
             else
             {
@@ -4205,12 +4215,14 @@ static void generate_support_areas(Print &print, const BuildVolume &build_volume
                 organic_draw_branches(*print.get_object(processing.second.front()), volumes, config, move_bounds,
                                       bottom_contacts, top_contacts, interface_placer, intermediate_layers,
                                       layer_storage, throw_on_cancel, additional_excluded_areas);
+                pf_tree.stage("  tree: organic_draw_branches");
             }
 
             remove_undefined_layers();
             std::tie(interface_layers, base_interface_layers) =
                 generate_interface_layers(print_object.config(), support_params, bottom_contacts, top_contacts,
                                           interface_layers, base_interface_layers, intermediate_layers, layer_storage);
+            pf_tree.stage("  tree: generate_interface_layers");
 
             // Morphological closing affects outer boundary. Instead, remove holes by area - this closes
             // small holes without changing the outer contour.
@@ -4283,6 +4295,7 @@ static void generate_support_areas(Print &print, const BuildVolume &build_volume
                 trim_layers_by_object(interface_layers);
                 trim_layers_by_object(base_interface_layers);
             }
+            pf_tree.stage("  tree: hole closing + trim_by_object");
 
             auto t_draw = std::chrono::high_resolution_clock::now();
             auto dur_pre_gen = 0.001 *
@@ -4328,6 +4341,7 @@ static void generate_support_areas(Print &print, const BuildVolume &build_volume
                                                                    print_object.slicing_parameters(), top_contacts,
                                                                    interface_layers, base_interface_layers,
                                                                    intermediate_layers, layer_storage);
+        pf_tree.stage("  tree: generate_raft_base");
 
         // If Snug/Grid support already generated (support_layers not empty), clip our first layer polygon
         // by Snug's footprint BEFORE generating toolpaths. This ensures the infill is generated correctly
@@ -4400,11 +4414,13 @@ static void generate_support_areas(Print &print, const BuildVolume &build_volume
 #endif // SLIC3R_DEBUG
             generate_support_layers(print_object, raft_layers, bottom_contacts, top_contacts, intermediate_layers,
                                     interface_layers, base_interface_layers);
+        pf_tree.stage("  tree: generate_support_layers");
 
         // Don't fill in the tree supports, make them hollow with just a single sheath line.
         generate_support_toolpaths(print_object.support_layers(), print_object.config(), support_params,
                                    print_object.slicing_parameters(), raft_layers, bottom_contacts, top_contacts,
                                    intermediate_layers, interface_layers, base_interface_layers);
+        pf_tree.stage("  tree: generate_support_toolpaths");
 
 #if 0
 //#ifdef SLIC3R_DEBUG

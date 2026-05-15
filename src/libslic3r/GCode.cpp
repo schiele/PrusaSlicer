@@ -728,6 +728,7 @@ void GCodeGenerator::do_export(Print *print, const char *path, GCodeProcessorRes
 #ifdef SLIC3R_PYTHON_PREPROCESSOR
     m_processor.set_preprocessing_consent(print->preprocessing_consent());
     m_processor.set_preprocessing_category_order(print->preprocessing_category_order());
+    m_processor.set_project_dir(print->project_dir());
 #endif
     m_processor.get_binary_data() = bgcode::binarize::BinaryData();
 
@@ -826,6 +827,7 @@ void GCodeGenerator::do_export(Print *print, const char *path, GCodeProcessorRes
 
         fclose(output_file);
     }
+    gx_timer.stage("gcode: file write");
 
     BOOST_LOG_TRIVIAL(info) << "Exporting G-code finished" << log_memory_info();
     print->set_done(psGCodeExport);
@@ -1115,6 +1117,9 @@ static inline std::optional<std::string> find_M84(const std::string &gcode)
 
 void GCodeGenerator::_do_export(Print &print, GCodeOutputStream &file, ThumbnailsGeneratorCallback thumbnail_cb)
 {
+    PerfStageTimer pf_export;
+    pf_export.reset();
+
     const bool export_to_binary_gcode = print.full_print_config().option<ConfigOptionBool>("binary_gcode")->value;
 
     std::string prepared_by_info;
@@ -1182,6 +1187,8 @@ void GCodeGenerator::_do_export(Print &print, GCodeOutputStream &file, Thumbnail
                 binary_data.printer_metadata.raw_data.emplace_back(*it);
         }
     }
+
+    pf_export.stage("  export: binary/thumbnail setup");
 
     // modifies m_silent_time_estimator_enabled
     DoExport::init_gcode_processor(print.config(), m_processor, m_silent_time_estimator_enabled,
@@ -1541,7 +1548,10 @@ void GCodeGenerator::_do_export(Print &print, GCodeOutputStream &file, Thumbnail
     };
 
     const Seams::Params params{Seams::Placer::get_params(print.full_print_config())};
+    pf_export.stage("  export: init (config/tool ordering)");
+
     m_seam_placer.init(print.objects(), params, throw_if_canceled_func);
+    pf_export.stage("  export: seam_placer.init");
 
     if (!(has_wipe_tower && print.config().single_extruder_multi_material_priming))
     {
@@ -1551,6 +1561,7 @@ void GCodeGenerator::_do_export(Print &print, GCodeOutputStream &file, Thumbnail
     }
 
     GCode::SmoothPathCache smooth_path_cache_global = smooth_path_interpolate_global(print);
+    pf_export.stage("  export: smooth_path_global + preamble");
 
     // Do all objects for each layer.
     if (print.config().complete_objects.value)
@@ -1630,6 +1641,7 @@ void GCodeGenerator::_do_export(Print &print, GCodeOutputStream &file, Thumbnail
         // Sort layers by Z.
         // All extrusion moves with the same top layer height are extruded uninterrupted.
         std::vector<std::pair<coordf_t, ObjectsLayerToPrint>> layers_to_print = collect_layers_to_print(print);
+        pf_export.stage("  export: collect_layers_to_print");
         // Multi-Material wipe tower.
         if (has_wipe_tower && !layers_to_print.empty())
         {
@@ -1709,6 +1721,7 @@ void GCodeGenerator::_do_export(Print &print, GCodeOutputStream &file, Thumbnail
             // Purge the extruder, pull out the active filament.
             file.write(m_wipe_tower->finalize(*this));
     }
+    pf_export.stage("  export: process_layers (pipeline)");
 
     // Write end commands to file.
     file.write(this->retract_and_wipe());
@@ -1823,6 +1836,7 @@ void GCodeGenerator::_do_export(Print &print, GCodeOutputStream &file, Thumbnail
             file.writeln(*line_M84);
         }
     }
+    pf_export.stage("  export: end gcode + config + stats");
     print.throw_if_canceled();
 }
 
@@ -1853,16 +1867,25 @@ void GCodeGenerator::process_layers(const Print &print, const ToolOrdering &tool
                                     const GCode::SmoothPathCache &smooth_path_cache_global,
                                     GCodeOutputStream &output_stream)
 {
-    // Per-stage timing accumulators (pipeline is serial, no atomics needed)
     PerfAccumTimer t_smooth, t_generator, t_cooling, t_output;
+    PerfAccumTimer t_set_status;
+    std::chrono::steady_clock::time_point pipeline_t0;
+    if constexpr (PERF_TIMING)
+        pipeline_t0 = std::chrono::steady_clock::now();
+    auto elapsed = [&pipeline_t0]() -> double
+    {
+        if constexpr (PERF_TIMING)
+            return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - pipeline_t0).count();
+        return 0.0;
+    };
 
     size_t layer_to_print_idx = 0;
     const GCode::SmoothPathCache::InterpolationParameters interpolation_params = interpolation_parameters(
         print.config());
     const auto smooth_path_interpolator = tbb::make_filter<void, std::pair<size_t, GCode::SmoothPathCache>>(
         slic3r_tbb_filtermode::serial_in_order,
-        [this, &print, &layers_to_print, &layer_to_print_idx, &interpolation_params,
-         &t_smooth](tbb::flow_control &fc) -> std::pair<size_t, GCode::SmoothPathCache>
+        [this, &print, &layers_to_print, &layer_to_print_idx, &interpolation_params, &t_smooth, &t_set_status,
+         &elapsed](tbb::flow_control &fc) -> std::pair<size_t, GCode::SmoothPathCache>
         {
             if (layer_to_print_idx >= layers_to_print.size())
             {
@@ -1873,8 +1896,6 @@ void GCodeGenerator::process_layers(const Print &print, const ToolOrdering &tool
                 }
                 else
                 {
-                    // Pressure equalizer need insert empty input. Because it returns one layer back.
-                    // Insert NOP (no operation) layer;
                     return {layer_to_print_idx++, {}};
                 }
             }
@@ -1882,25 +1903,38 @@ void GCodeGenerator::process_layers(const Print &print, const ToolOrdering &tool
             {
                 print.throw_if_canceled();
                 size_t idx = layer_to_print_idx++;
+                if constexpr (PERF_TIMING)
+                    if (idx < 5 || idx % 20 == 0 || idx == layers_to_print.size() - 1)
+                        fprintf(stderr, "[TIMELINE] L%03zu smooth   ENTER  @ %7.1fms\n", idx, elapsed());
                 if (layers_to_print.size() > 0)
                 {
-                    // Progress from 33% to 50% (layer-by-layer GCode generation) = 17% range
-                    // Use (idx+1) to ensure last layer reaches 50%
                     int progress = 33 + static_cast<int>(((idx + 1) * 17.0) / layers_to_print.size());
-                    const_cast<Print &>(print).set_status(progress, _u8L("Generating G-code layers"));
+                    if constexpr (PERF_TIMING)
+                    {
+                        auto tss0 = std::chrono::steady_clock::now();
+                        const_cast<Print &>(print).set_status(progress, _u8L("Generating G-code layers"));
+                        t_set_status.add(tss0, std::chrono::steady_clock::now());
+                    }
+                    else
+                    {
+                        const_cast<Print &>(print).set_status(progress, _u8L("Generating G-code layers"));
+                    }
                 }
                 auto ts0 = std::chrono::steady_clock::now();
                 GCode::SmoothPathCache smooth_path_cache;
                 for (const ObjectLayerToPrint &l : layers_to_print[idx].second)
                     GCodeGenerator::smooth_path_interpolate(l, interpolation_params, smooth_path_cache);
                 t_smooth.add(ts0, std::chrono::steady_clock::now());
+                if constexpr (PERF_TIMING)
+                    if (idx < 5 || idx % 20 == 0 || idx == layers_to_print.size() - 1)
+                        fprintf(stderr, "[TIMELINE] L%03zu smooth   EXIT   @ %7.1fms\n", idx, elapsed());
                 return {idx, std::move(smooth_path_cache)};
             }
         });
     const auto generator = tbb::make_filter<std::pair<size_t, GCode::SmoothPathCache>, LayerResult>(
         slic3r_tbb_filtermode::serial_in_order,
         [this, &print, &tool_ordering, &print_object_instances_ordering, &layers_to_print, &smooth_path_cache_global,
-         &t_generator](std::pair<size_t, GCode::SmoothPathCache> in) -> LayerResult
+         &t_generator, &elapsed](std::pair<size_t, GCode::SmoothPathCache> in) -> LayerResult
         {
             size_t layer_to_print_idx = in.first;
             if (layer_to_print_idx == layers_to_print.size())
@@ -1909,6 +1943,10 @@ void GCodeGenerator::process_layers(const Print &print, const ToolOrdering &tool
             }
             else
             {
+                if constexpr (PERF_TIMING)
+                    if (layer_to_print_idx < 5 || layer_to_print_idx % 20 == 0 ||
+                        layer_to_print_idx == layers_to_print.size() - 1)
+                        fprintf(stderr, "[TIMELINE] L%03zu generate ENTER  @ %7.1fms\n", layer_to_print_idx, elapsed());
                 auto tg0 = std::chrono::steady_clock::now();
                 const std::pair<coordf_t, ObjectsLayerToPrint> &layer = layers_to_print[layer_to_print_idx];
                 const LayerTools &layer_tools = tool_ordering.tools_for_layer(layer.first);
@@ -1920,10 +1958,13 @@ void GCodeGenerator::process_layers(const Print &print, const ToolOrdering &tool
                                                   &layer == &layers_to_print.back(), &print_object_instances_ordering,
                                                   size_t(-1));
                 t_generator.add(tg0, std::chrono::steady_clock::now());
+                if constexpr (PERF_TIMING)
+                    if (layer_to_print_idx < 5 || layer_to_print_idx % 20 == 0 ||
+                        layer_to_print_idx == layers_to_print.size() - 1)
+                        fprintf(stderr, "[TIMELINE] L%03zu generate EXIT   @ %7.1fms\n", layer_to_print_idx, elapsed());
                 return result;
             }
         });
-    // The pipeline is variable: The vase mode filter is optional.
     const auto spiral_vase = tbb::make_filter<LayerResult, LayerResult>(
         slic3r_tbb_filtermode::serial_in_order,
         [spiral_vase = this->m_spiral_vase.get(), &layers_to_print](LayerResult in) -> LayerResult
@@ -1944,31 +1985,48 @@ void GCodeGenerator::process_layers(const Print &print, const ToolOrdering &tool
                                                                         {
                                                                             if (in.nop_layer_result)
                                                                                 return in;
-
                                                                             return in;
                                                                         });
+    size_t cooling_layer_idx = 0;
     const auto cooling = tbb::make_filter<LayerResult, std::string>(
         slic3r_tbb_filtermode::serial_in_order,
-        [cooling_buffer = this->m_cooling_buffer.get(), &t_cooling](LayerResult in) -> std::string
+        [cooling_buffer = this->m_cooling_buffer.get(), &t_cooling, &elapsed, &cooling_layer_idx,
+         &layers_to_print](LayerResult in) -> std::string
         {
             if (in.nop_layer_result)
                 return in.gcode;
+            size_t idx = cooling_layer_idx++;
+            if constexpr (PERF_TIMING)
+                if (idx < 5 || idx % 20 == 0 || idx == layers_to_print.size() - 1)
+                    fprintf(stderr, "[TIMELINE] L%03zu cooling  ENTER  @ %7.1fms\n", idx, elapsed());
             auto tc0 = std::chrono::steady_clock::now();
             auto result = cooling_buffer->process_layer(std::move(in.gcode), in.layer_id, in.cooling_buffer_flush);
             t_cooling.add(tc0, std::chrono::steady_clock::now());
+            if constexpr (PERF_TIMING)
+                if (idx < 5 || idx % 20 == 0 || idx == layers_to_print.size() - 1)
+                    fprintf(stderr, "[TIMELINE] L%03zu cooling  EXIT   @ %7.1fms\n", idx, elapsed());
             return result;
         });
     const auto find_replace = tbb::make_filter<std::string, std::string>(
         slic3r_tbb_filtermode::serial_in_order,
         [find_replace = this->m_find_replace.get()](std::string s) -> std::string
         { return find_replace->process_layer(std::move(s)); });
-    const auto output = tbb::make_filter<std::string, void>(slic3r_tbb_filtermode::serial_in_order,
-                                                            [&output_stream, &t_output](std::string s)
-                                                            {
-                                                                auto to0 = std::chrono::steady_clock::now();
-                                                                output_stream.write(s);
-                                                                t_output.add(to0, std::chrono::steady_clock::now());
-                                                            });
+    size_t output_layer_idx = 0;
+    const auto output = tbb::make_filter<std::string, void>(
+        slic3r_tbb_filtermode::serial_in_order,
+        [&output_stream, &t_output, &elapsed, &output_layer_idx, &layers_to_print](std::string s)
+        {
+            size_t idx = output_layer_idx++;
+            if constexpr (PERF_TIMING)
+                if (idx < 5 || idx % 20 == 0 || idx == layers_to_print.size() - 1)
+                    fprintf(stderr, "[TIMELINE] L%03zu output   ENTER  @ %7.1fms\n", idx, elapsed());
+            auto to0 = std::chrono::steady_clock::now();
+            output_stream.write(s);
+            t_output.add(to0, std::chrono::steady_clock::now());
+            if constexpr (PERF_TIMING)
+                if (idx < 5 || idx % 20 == 0 || idx == layers_to_print.size() - 1)
+                    fprintf(stderr, "[TIMELINE] L%03zu output   EXIT   @ %7.1fms\n", idx, elapsed());
+        });
 
     tbb::filter<void, LayerResult> pipeline_to_layerresult = smooth_path_interpolator & generator;
     if (m_spiral_vase)
@@ -1981,20 +2039,20 @@ void GCodeGenerator::process_layers(const Print &print, const ToolOrdering &tool
     if (m_find_replace)
         pipeline_to_string = pipeline_to_string & find_replace;
 
-    // It registers a handler that sets locales to "C" before any TBB thread starts participating in tbb::parallel_pipeline.
-    // Handler is unregistered when the destructor is called.
     TBBLocalesSetter locales_setter;
-    // The pipeline elements are joined using const references, thus no copying is performed.
     output_stream.find_replace_supress();
     tbb::parallel_pipeline(12, pipeline_to_layerresult & pipeline_to_string & output);
     output_stream.find_replace_enable();
 
     perf_print("[TIMING]   gcode pipeline breakdown (%zu layers):\n"
+               "[TIMING]     set_status:     %7.1fms\n"
                "[TIMING]     smooth_path:    %7.1fms\n"
                "[TIMING]     process_layer:  %7.1fms\n"
                "[TIMING]     cooling:        %7.1fms\n"
-               "[TIMING]     output/write:   %7.1fms\n",
-               layers_to_print.size(), t_smooth.ms(), t_generator.ms(), t_cooling.ms(), t_output.ms());
+               "[TIMING]     output/write:   %7.1fms\n"
+               "[TIMING]     process_buffer: %7.1fms (inside output_stream.write)\n",
+               layers_to_print.size(), t_set_status.ms(), t_smooth.ms(), t_generator.ms(), t_cooling.ms(),
+               t_output.ms(), output_stream.process_buffer_ms());
 }
 
 // Process all layers of a single object instance (sequential mode) with a parallel pipeline:
@@ -4941,7 +4999,19 @@ void GCodeGenerator::GCodeOutputStream::write(const char *what)
             if (m_gcode_object)
                 m_gcode_object->append_text(gcode.c_str());
 
-            m_processor.process_buffer(gcode);
+            if constexpr (PERF_TIMING)
+            {
+                auto pb0 = std::chrono::steady_clock::now();
+                m_processor.process_buffer(gcode);
+                m_process_buffer_us.fetch_add(std::chrono::duration_cast<std::chrono::microseconds>(
+                                                  std::chrono::steady_clock::now() - pb0)
+                                                  .count(),
+                                              std::memory_order_relaxed);
+            }
+            else
+            {
+                m_processor.process_buffer(gcode);
+            }
         }
         catch (const std::exception &)
         {

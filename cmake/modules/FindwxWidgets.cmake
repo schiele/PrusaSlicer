@@ -1,5 +1,9 @@
-# PrusaSlicer: this is a direct copy of the FindwxWidgets.cmake module
-# within the original CMake 3.27 distribution
+# Copyright (c) preFlight 2025+ oozeBot, LLC
+# Copyright (c) Prusa Research 2023 (bundled from CMake 3.27)
+#
+# preFlight is based on PrusaSlicer and released under AGPLv3 or higher
+#
+# Originally from the CMake 3.27 distribution (BSD 3-Clause, see below)
 
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
 # file Copyright.txt or https://cmake.org/licensing for details.

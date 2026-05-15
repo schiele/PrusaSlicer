@@ -620,6 +620,7 @@ static std::vector<std::string> s_Preset_print_options{
     "gap_fill_speed",
     "gap_fill_enabled",
     "perimeter_compression",
+    "max_perimeter_width",
     "thin_wall_precision",
     "travel_speed",
     "travel_speed_z",

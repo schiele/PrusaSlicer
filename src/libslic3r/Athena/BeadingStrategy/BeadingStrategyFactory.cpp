@@ -73,8 +73,12 @@ BeadingStrategyPtr BeadingStrategyFactory::makeStrategy(
     {
         BOOST_LOG_TRIVIAL(trace) << "Applying Widening Beading meta-strategy: min_input=" << min_feature_size
                                  << ", min_output=" << min_bead_width;
+        // Pass ext perimeter width and the spacing used by the pre-inset in PerimeterGenerator
+        // (ext_perimeter_spacing, the 1st factory param) so the overlap offset correction
+        // exactly reverses the pre-inset shrinkage.
         ret = std::make_unique<WideningBeadingStrategy>(std::move(ret), min_feature_size, min_bead_width,
-                                                        thin_wall_snap_precision);
+                                                        thin_wall_snap_precision, ext_perimeter_width,
+                                                        ext_perimeter_spacing);
     }
 
     if (outer_wall_offset > 0)

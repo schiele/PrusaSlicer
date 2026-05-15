@@ -76,6 +76,11 @@ class SkeletalTrapezoidation
     coord_t allowed_filter_deviation; //!< The allowed line width deviation induced by filtering
     coord_t
         beading_propagation_transition_dist; //!< When there are different beadings propagated from below and from above, use this transitioning distance
+    coord_t max_bead_width_external; //!< Cap on external bead expansion (0 = no cap)
+    coord_t max_bead_width_internal; //!< Cap on internal bead expansion (0 = no cap)
+    coord_t ext_perimeter_width;     //!< External perimeter width
+    coord_t ext_perimeter_spacing;   //!< External perimeter spacing matching the pre-inset
+    coord_t ext_split_spacing;       //!< External perimeter spacing for split overlap (ext/perimeter overlap setting)
     static constexpr coord_t central_filter_dist = scaled<coord_t>(
         0.02); //!< Filter areas marked as 'central' smaller than this
     static constexpr coord_t snap_dist = scaled<coord_t>(
@@ -114,7 +119,10 @@ public:
      */
     SkeletalTrapezoidation(const Polygons &polys, const BeadingStrategy &beading_strategy, double transitioning_angle,
                            coord_t discretization_step_size, coord_t transition_filter_dist,
-                           coord_t allowed_filter_deviation, coord_t beading_propagation_transition_dist);
+                           coord_t allowed_filter_deviation, coord_t beading_propagation_transition_dist,
+                           coord_t max_bead_width_external = 0, coord_t max_bead_width_internal = 0,
+                           coord_t ext_perimeter_width = 0, coord_t ext_perimeter_spacing = 0,
+                           coord_t ext_split_spacing = 0);
 
     /*!
      * A skeletal graph through the polygons that we need to fill with beads.

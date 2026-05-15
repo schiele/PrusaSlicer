@@ -52,7 +52,8 @@ public:
     //   Floor is always nozzle_diameter/3 (33%) for printability
     WallToolPaths(const Polygons &outline, coord_t bead_width_0, coord_t bead_width_x, size_t inset_count,
                   coord_t wall_0_inset, coordf_t layer_height, const PrintObjectConfig &print_object_config,
-                  const PrintConfig &print_config, int layer_id = -1, double min_bead_width_factor = 1.0);
+                  const PrintConfig &print_config, int layer_id = -1, double min_bead_width_factor = 1.0,
+                  coord_t max_perimeter_width = 0);
 
     /*!
      * Extended constructor for precise wall control (preFlight feature)
@@ -68,7 +69,8 @@ public:
                   coord_t wall_0_inset, coordf_t layer_height, const PrintObjectConfig &print_object_config,
                   const PrintConfig &print_config, coord_t fixed_width_0, coord_t fixed_width_x, coord_t spacing_0,
                   coord_t spacing_x, coord_t spacing_innermost = 0, int layer_id = -1,
-                  double min_bead_width_factor = 1.0, coord_t thin_wall_snap_precision = 10000);
+                  double min_bead_width_factor = 1.0, coord_t thin_wall_snap_precision = 10000,
+                  coord_t max_perimeter_width = 0);
 
     /*!
      * Generates the Toolpaths
@@ -152,6 +154,8 @@ private:
         min_feature_size; //<! The minimum size of the features that can be widened by the widening beading meta-strategy. Features thinner than that will not be printed
     coord_t
         min_bead_width; //<! The minimum bead size to use when widening thin model features with the widening beading meta-strategy
+    coord_t max_bead_width_external; //<! Cap on external bead expansion
+    coord_t max_bead_width_internal; //<! Cap on internal bead expansion
     double
         small_area_length; //<! The length of the small features which are to be filtered out, this is squared into a surface
     coord_t wall_transition_filter_deviation; //!< The allowed line width deviation induced by filtering

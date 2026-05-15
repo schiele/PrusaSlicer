@@ -2118,14 +2118,50 @@ void GCodeProcessor::post_process_gcode_object()
                     {
                         if (s.empty())
                             continue;
-                        if (boost::filesystem::exists(s))
-                            all_scripts.push_back(s);
-                        else
+
+                        boost::filesystem::path sp(s);
+                        auto warn_not_found = [&]()
                         {
-                            std::string name = boost::filesystem::path(s).filename().string();
+                            std::string name = sp.filename().string();
                             std::string warning = "Preprocessing script not found: " + name;
                             BOOST_LOG_TRIVIAL(warning) << warning;
                             pp_result.warnings.push_back(warning);
+                        };
+
+                        if (sp.is_absolute())
+                        {
+                            if (boost::filesystem::exists(sp))
+                                all_scripts.push_back(s);
+                            else
+                                warn_not_found();
+                        }
+                        else
+                        {
+                            // Reject directory traversal in relative paths
+                            bool has_traversal = false;
+                            for (const auto &component : sp)
+                                if (component == "..")
+                                {
+                                    has_traversal = true;
+                                    break;
+                                }
+                            if (has_traversal)
+                            {
+                                std::string warning = "Preprocessing script path rejected (directory traversal): " + s;
+                                BOOST_LOG_TRIVIAL(warning) << warning;
+                                pp_result.warnings.push_back(warning);
+                                continue;
+                            }
+
+                            // Relative paths: try resources directory first, then project directory
+                            auto res_path = boost::filesystem::path(resources_dir()) / sp;
+                            if (boost::filesystem::exists(res_path))
+                                all_scripts.push_back(res_path.string());
+                            else if (!m_project_dir.empty() &&
+                                     boost::filesystem::exists(boost::filesystem::path(m_project_dir) / sp))
+                                all_scripts.push_back((boost::filesystem::path(m_project_dir) / sp).string());
+                            else
+                                warn_not_found();
                         }
                     }
                 }

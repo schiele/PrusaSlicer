@@ -2121,15 +2121,17 @@ wxPanel *PrintSettingsPanel::BuildAdvancedContent()
     // Athena / Arachne perimeter generator group
     {
         auto *arachne_group = CreateFlatStaticBoxSizer(content, _L("Athena / Arachne perimeter generator"));
+        CreateSettingRow(content, arachne_group, "perimeter_generator", _L("Perimeter generator"));
         CreateSettingRow(content, arachne_group, "perimeter_compression", _L("Perimeter compression"));
         CreateSettingRow(content, arachne_group, "thin_wall_precision", _L("Thin wall width precision"));
+        CreateSettingRow(content, arachne_group, "max_perimeter_width", _L("Maximum perimeter width"));
+        CreateSettingRow(content, arachne_group, "min_feature_size", _L("Min feature size"));
         CreateSettingRow(content, arachne_group, "wall_transition_angle", _L("Wall transition angle"));
         CreateSettingRow(content, arachne_group, "wall_transition_filter_deviation",
                          _L("Wall transition filter deviation"));
         CreateSettingRow(content, arachne_group, "wall_transition_length", _L("Wall transition length"));
         CreateSettingRow(content, arachne_group, "wall_distribution_count", _L("Wall distribution count"));
         CreateSettingRow(content, arachne_group, "min_bead_width", _L("Min bead width"));
-        CreateSettingRow(content, arachne_group, "min_feature_size", _L("Min feature size"));
         sizer->Add(arachne_group, 0, wxEXPAND | wxALL, em / 4);
     }
 
@@ -3003,14 +3005,15 @@ void PrintSettingsPanel::ApplyToggleLogic()
     bool have_athena = config.opt_enum<PerimeterGeneratorType>("perimeter_generator") == PerimeterGeneratorType::Athena;
     bool have_advanced_perimeters = have_arachne || have_athena;
 
-    ToggleOption("wall_transition_length", have_advanced_perimeters);
-    ToggleOption("wall_transition_filter_deviation", have_advanced_perimeters);
-    ToggleOption("wall_transition_angle", have_advanced_perimeters);
-    ToggleOption("wall_distribution_count", have_arachne);
-    ToggleOption("min_feature_size", have_advanced_perimeters);
-    ToggleOption("min_bead_width", have_arachne);
     ToggleOption("perimeter_compression", have_athena);
     ToggleOption("thin_wall_precision", have_athena);
+    ToggleOption("max_perimeter_width", have_athena);
+    ToggleOption("min_feature_size", have_advanced_perimeters);
+    ToggleOption("wall_transition_angle", have_advanced_perimeters);
+    ToggleOption("wall_transition_filter_deviation", have_advanced_perimeters);
+    ToggleOption("wall_transition_length", have_advanced_perimeters);
+    ToggleOption("wall_distribution_count", have_arachne);
+    ToggleOption("min_bead_width", have_arachne);
 
     // Scarf seam dependencies
     ToggleOption("scarf_seam_placement", !has_spiral_vase);

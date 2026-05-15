@@ -1,12 +1,31 @@
 # preFlight Changelog
 
+## Promotion to v1.0.0!
+
+It's a red letter day! A small release of fixes with big implications. Yes, there are still bugs, our roadmap is a mile long, and we're just getting started, but at some point you have to rip off band-aid and ship it - this is that moment. Welcome to preFlight v1.0.0!
+
+### Athena Perimeter Generation
+- Added Max Perimeter Width setting (% of nozzle, default 150%) to control how much beads can expand to fill gaps - thin walls exceeding this limit split into a two-bead loop sized using the external/perimeter overlap setting
+- Fixed bead width mismatch between perimeters=1 and perimeters=2 for identical geometry - the 0-width infill boundary marker was incorrectly handled during odd-case bead adjustment
+- Fixed single-bead wall overlap at thin-wall-to-body junctions where beads grew past external width before splitting, causing heavy overlap at U-turns
+- Fixed two-external thin wall contraction so both beads use external perimeter width and contract proportionally to maintain the configured overlap ratio
+
+### Performance
+- Painted snug/grid supports generation time significantly reduced via parallel processing that precomputes downward projection through sparse change points
+
+### G-code Preview
+- Fixed segments disappearing at viewport center when camera view direction was exactly perpendicular to a segment's axis
+
+### Bug Fixes
+- Fixed crash when navigating away from Output options page due to dangling pointer after page hierarchy destruction
+
 ## v0.9.15
 
 ### Performance
 - Slicing has been optimized resulting in 2.5x faster processing
   - Replaced Voronoi medial axis with offset-based erosion for narrow surface detection
   - Parallelized 5 serialized loops in bridge_over_infill
-  - Simplified Athena's Voronoi skeleton inner contours to reduce downstream Clipper2 cost
+  - Simplified Voronoi skeleton inner contours to reduce downstream Clipper2 cost
 - Implemented GCodeObject - a unified data model carrying G-code and structured move data through the entire pipeline
 - Enabled streaming move processing during G-code generation, eliminating a redundant full re-parse of all G-code
 - Added Preview Detail setting in Preferences > Performance to control preview fidelity vs. slicing speed (1M/5M/10M/20M segments or Full)

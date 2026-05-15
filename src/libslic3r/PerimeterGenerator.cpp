@@ -3044,6 +3044,15 @@ void PerimeterGenerator::process_athena(
         break;
     }
 
+    // Resolve maximum perimeter width (always % of nozzle diameter)
+    coord_t max_perimeter_width = 0;
+    {
+        double nozzle_diam = params.print_config.nozzle_diameter.get_at(params.config.perimeter_extruder.value - 1);
+        double mpw_pct = params.config.max_perimeter_width.value;
+        if (mpw_pct > 0)
+            max_perimeter_width = scaled<coord_t>(nozzle_diam * mpw_pct * 0.01);
+    }
+
     // preFlight: Convert thin wall precision enum to nanometer snap grid value
     coord_t tw_snap = 10000; // default 0.01mm
     switch (params.config.thin_wall_precision.value)
@@ -3068,7 +3077,8 @@ void PerimeterGenerator::process_athena(
     Athena::WallToolPaths wall_tool_paths(last_p, ext_perimeter_spacing, perimeter_spacing, coord_t(loop_number + 1), 0,
                                           params.layer_height, params.object_config, params.print_config,
                                           ext_perimeter_width, perimeter_width, ext_perimeter_spacing2,
-                                          perimeter_spacing, 0, params.layer_id, min_bead_width_factor, tw_snap);
+                                          perimeter_spacing, 0, params.layer_id, min_bead_width_factor, tw_snap,
+                                          max_perimeter_width);
     wall_tool_paths.set_debug_print_z((params.layer != nullptr) ? params.layer->print_z : 0.0);
     Athena::Perimeters perimeters = wall_tool_paths.getToolPaths();
     // Arachne treats widths as "suggestions" and recalculates them. We enforce exact user values.
@@ -3135,7 +3145,7 @@ void PerimeterGenerator::process_athena(
                                                         coord_t(inner_loop_number + 1), 0, params.layer_height,
                                                         params.object_config, params.print_config, perimeter_width,
                                                         perimeter_width, 0, perimeter_spacing, 0, params.layer_id,
-                                                        min_bead_width_factor, tw_snap);
+                                                        min_bead_width_factor, tw_snap, max_perimeter_width);
             Athena::Perimeters inner_perimeters = inner_wall_tool_paths.getToolPaths();
             preFlight::PreciseWalls::enforce_exact_widths(inner_perimeters, ext_perimeter_width, perimeter_width,
                                                           tw_snap);
@@ -3166,7 +3176,8 @@ void PerimeterGenerator::process_athena(
                                                                  params.object_config, params.print_config,
                                                                  ext_perimeter_width, perimeter_width,
                                                                  ext_perimeter_spacing2, perimeter_spacing, 0,
-                                                                 params.layer_id, min_bead_width_factor, tw_snap);
+                                                                 params.layer_id, min_bead_width_factor, tw_snap,
+                                                                 max_perimeter_width);
             perimeters = no_single_perimeter_tool_paths.getToolPaths();
             preFlight::PreciseWalls::enforce_exact_widths(perimeters, ext_perimeter_width, perimeter_width, tw_snap);
             infill_contour = union_ex(no_single_perimeter_tool_paths.getInnerContour());
@@ -3282,6 +3293,30 @@ void PerimeterGenerator::process_athena(
                 }
             }
 
+            // Bridge fill anchoring: where overhang exists, trim il_regions to exclude the
+            // area directly adjacent to the overhang so bridge fill can anchor to perimeters
+            // below. Only the INNER edge of lower perimeters is affected - the outer edges
+            // remain available for interlocking. The anchor zone is saved separately and
+            // added to non_il_opened later, bypassing the opening filter that would remove
+            // narrow strips at the top/bottom of the bridge.
+            ExPolygons bridge_anchor_zone;
+            if (lower_slices != nullptr && !il_regions.empty())
+            {
+                ExPolygons overhang = diff_ex(infill_contour, *lower_slices);
+                if (!overhang.empty())
+                {
+                    // Depth accounts for perimeter count plus half ext_perimeter for spacing
+                    coord_t anchor_depth = (il_regular_override > 0 ? coord_t(il_regular_override) * perimeter_width
+                                                                    : coord_t(loop_number + 1) * perimeter_width) +
+                                           ext_perimeter_width / 2;
+                    ExPolygons overhang_grown = offset_ex(overhang, anchor_depth);
+                    ExPolygons lower_in_infill = intersection_ex(infill_contour, *lower_slices);
+                    bridge_anchor_zone = intersection_ex(overhang_grown, lower_in_infill);
+                    if (!bridge_anchor_zone.empty())
+                        il_regions = diff_ex(il_regions, bridge_anchor_zone);
+                }
+            }
+
             dbg_il_regions(dbg_z, "VISIBILITY", infill_contour, "infill_contour");
             dbg_il_regions(dbg_z, "VISIBILITY", il_regions, "il_regions");
             dbg_il_regions(dbg_z, "VISIBILITY", non_il_regions, "non_il_regions");
@@ -3375,6 +3410,13 @@ void PerimeterGenerator::process_athena(
                         non_il_opened = intersection_ex(offset_ex(offset_ex(non_il_regions, -float(perimeter_width)),
                                                                   float(perimeter_width)),
                                                         non_il_regions);
+                    // Add bridge anchor zone after opening filter so narrow anchor
+                    // strips at top/bottom of bridges aren't removed
+                    if (!bridge_anchor_zone.empty())
+                    {
+                        append(non_il_opened, bridge_anchor_zone);
+                        non_il_opened = union_ex(non_il_opened);
+                    }
                     const bool need_visibility_clip = !non_il_opened.empty();
 
                     // Helper to create an interlocking ExtrusionLoop from a Polygon

@@ -868,6 +868,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config)
         toggle_field(el, have_support_material);
     toggle_field("support_material_style", have_support_material_auto);
     toggle_field("support_material_threshold", have_support_material_auto);
+    toggle_field("support_material_buildplate_only", have_support_material_auto);
     // Original logic disabled bottom contact distance when top was set to "NoGap" (assuming soluble supports).
     // But user may want no top gap with a bottom gap - these should be independent settings.
     toggle_field("support_material_bottom_contact_distance", have_support_material);
@@ -946,6 +947,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config)
     // toggle_field("thin_walls", !have_advanced_perimeters);
 
     toggle_field("perimeter_compression", have_athena);
+    toggle_field("max_perimeter_width", have_athena);
     toggle_field("thin_wall_precision", have_athena);
 
     toggle_field("scarf_seam_placement", !has_spiral_vase);

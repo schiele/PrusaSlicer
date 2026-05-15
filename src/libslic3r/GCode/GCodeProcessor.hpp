@@ -674,6 +674,7 @@ private:
 #ifdef SLIC3R_PYTHON_PREPROCESSOR
     bool m_preprocessing_consent{false};
     std::string m_preprocessing_category_order{"print,filament,printer"};
+    std::string m_project_dir;
 #endif
 
     GCodeProcessorResult m_result;
@@ -697,6 +698,7 @@ public:
 #ifdef SLIC3R_PYTHON_PREPROCESSOR
     void set_preprocessing_consent(bool consent) { m_preprocessing_consent = consent; }
     void set_preprocessing_category_order(const std::string &order) { m_preprocessing_category_order = order; }
+    void set_project_dir(const std::string &dir) { m_project_dir = dir; }
 #endif
     bgcode::binarize::BinaryData &get_binary_data() { return m_binarizer.get_binary_data(); }
     const bgcode::binarize::BinaryData &get_binary_data() const { return m_binarizer.get_binary_data(); }

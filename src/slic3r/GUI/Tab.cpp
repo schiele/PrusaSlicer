@@ -2301,12 +2301,13 @@ void TabPrint::build()
     optgroup = page->new_optgroup_for_sidebar(L("Athena / Arachne perimeter generator"));
     optgroup->append_single_option_line("perimeter_compression");
     optgroup->append_single_option_line("thin_wall_precision");
+    optgroup->append_single_option_line("max_perimeter_width");
+    optgroup->append_single_option_line("min_feature_size");
     optgroup->append_single_option_line("wall_transition_angle");
     optgroup->append_single_option_line("wall_transition_filter_deviation");
     optgroup->append_single_option_line("wall_transition_length");
     optgroup->append_single_option_line("wall_distribution_count");
     optgroup->append_single_option_line("min_bead_width");
-    optgroup->append_single_option_line("min_feature_size");
 
     optgroup = page->new_optgroup(L("Custom parameters"), 0);
     auto option = optgroup->get_option("custom_parameters_print");
@@ -5747,13 +5748,14 @@ void Tab::clear_pages()
     // invalidated highlighter, if any exists
     m_highlighter.invalidate();
     m_page_sizer->Clear(true);
-    // Preprocessing widgets are owned by the page hierarchy and were just destroyed
+    // Preprocessing/export script widgets are owned by the page hierarchy and were just destroyed
     m_preprocessing_panel = nullptr;
     m_preprocessing_listbox = nullptr;
     m_preprocessing_update_buttons = nullptr;
     m_preprocessing_mark_missing = nullptr;
     m_preprocessing_enable_key.clear();
     m_preprocessing_scripts_key.clear();
+    m_export_script_panel = nullptr;
     // clear pages from the controlls
     for (auto p : m_pages)
         p->clear();
@@ -6409,14 +6411,34 @@ wxSizer *Tab::create_preprocessing_scripts_widget(wxWindow *parent, const std::s
 
     wxColour missing_colour(255, 80, 80);
 
-    // Highlight missing scripts in red
+    // Highlight missing scripts in red (relative paths resolve against resources or project dir)
     auto file_exists_safe = [](const std::string &path) -> bool
     {
         if (path.empty())
             return false;
         try
         {
-            return boost::filesystem::exists(path);
+            boost::filesystem::path p(path);
+            if (p.is_absolute())
+                return boost::filesystem::exists(p);
+            // Reject directory traversal in relative paths
+            for (const auto &component : p)
+                if (component == "..")
+                    return false;
+            if (boost::filesystem::exists(boost::filesystem::path(resources_dir()) / p))
+                return true;
+            auto *plater = wxGetApp().plater();
+            if (plater)
+            {
+                wxString proj = plater->get_project_filename();
+                if (!proj.empty())
+                {
+                    auto proj_dir = boost::filesystem::path(into_u8(proj)).parent_path();
+                    if (boost::filesystem::exists(proj_dir / p))
+                        return true;
+                }
+            }
+            return false;
         }
         catch (...)
         {

@@ -31,7 +31,8 @@ public:
      * Takes responsibility for deleting \param parent
      */
     WideningBeadingStrategy(BeadingStrategyPtr parent, coord_t min_input_width, coord_t min_output_width,
-                            coord_t thin_wall_snap_precision = 10000);
+                            coord_t thin_wall_snap_precision = 10000, coord_t ext_perimeter_width = 0,
+                            coord_t ext_perimeter_spacing = 0);
 
     ~WideningBeadingStrategy() override = default;
 
@@ -49,6 +50,8 @@ protected:
     const coord_t min_input_width;
     const coord_t min_output_width;
     const coord_t thin_wall_snap_precision;
+    const coord_t m_ext_perimeter_width;   //!< External perimeter width for overlap correction
+    const coord_t m_ext_perimeter_spacing; //!< External perimeter spacing matching the pre-inset
 };
 
 } // namespace Slic3r::Athena

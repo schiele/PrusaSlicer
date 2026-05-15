@@ -73,6 +73,13 @@ private:
         std::vector<Polygons> &buildplate_covered, SupportGeneratorLayerStorage &layer_storage,
         std::vector<Polygons> &layer_support_areas) const;
 
+    // Fast path for painted-only supports (no auto-detection).
+    // Precomputes the downward projection and processes layers in parallel.
+    SupportGeneratorLayersPtr bottom_contact_layers_painted_fast(const PrintObject &object,
+                                                                 const SupportGeneratorLayersPtr &top_contacts,
+                                                                 SupportGeneratorLayerStorage &layer_storage,
+                                                                 std::vector<Polygons> &layer_support_areas) const;
+
     // Trim the top_contacts layers with the bottom_contacts layers if they overlap, so there would not be enough vertical space for both of them.
     void trim_top_contacts_by_bottom_contacts(const PrintObject &object,
                                               const SupportGeneratorLayersPtr &bottom_contacts,
