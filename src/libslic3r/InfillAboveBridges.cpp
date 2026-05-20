@@ -12,14 +12,15 @@ void mark_as_infill_above_bridge(const ExPolygons &marker, const SurfaceRefsByRe
 {
     for (const SurfaceCollectionRef &region : layer)
     {
-        const ExPolygons intersection{
-            intersection_ex(region.get().filter_by_type(stInternalSolid), marker, ApplySafetyOffset::No)};
+        const SurfacesPtr solid_surfaces = region.get().filter_by_types({stInternalSolid, stBridgeAnchor});
+        const ExPolygons intersection{intersection_ex(solid_surfaces, marker, ApplySafetyOffset::No)};
         if (intersection.empty())
         {
             continue;
         }
-        const ExPolygons clipped{diff_ex(region.get().filter_by_type(stInternalSolid), marker, ApplySafetyOffset::Yes)};
+        const ExPolygons clipped{diff_ex(solid_surfaces, marker, ApplySafetyOffset::Yes)};
         region.get().remove_type(stInternalSolid);
+        region.get().remove_type(stBridgeAnchor);
         region.get().append(clipped, stInternalSolid);
         region.get().append(intersection, stSolidOverBridge);
     }

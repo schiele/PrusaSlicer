@@ -314,6 +314,8 @@ set(SLIC3R_SOURCES
     PresetBundle.hpp
     OrcaConfigImporter.cpp
     OrcaConfigImporter.hpp
+    OrcaGCodeAliases.cpp
+    OrcaGCodeAliases.hpp
     OrcaKeyMapping.cpp
     OrcaKeyMapping.hpp
     PrincipalComponents2D.hpp
@@ -598,10 +600,16 @@ target_compile_definitions(libslic3r PRIVATE SLIC3R_ENGINE_ONLY)
 target_include_directories(libslic3r PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/.. ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(libslic3r PUBLIC ${EXPAT_INCLUDE_DIRS})
 
-# libjpeg-turbo static builds produce jpeg-static.lib which FindJPEG can't locate
-find_package(libjpeg-turbo CONFIG REQUIRED)
-if(NOT TARGET JPEG::JPEG)
-    add_library(JPEG::JPEG ALIAS libjpeg-turbo::jpeg-static)
+# libjpeg-turbo static builds produce jpeg-static.lib which FindJPEG can't locate.
+# When building against system libjpeg (distro packaging), the config package may
+# not exist - fall back to FindJPEG and create the expected target.
+find_package(libjpeg-turbo CONFIG QUIET)
+if(TARGET libjpeg-turbo::jpeg-static)
+    if(NOT TARGET JPEG::JPEG)
+        add_library(JPEG::JPEG ALIAS libjpeg-turbo::jpeg-static)
+    endif()
+else()
+    find_package(JPEG REQUIRED)
 endif()
 find_package(nlohmann_json REQUIRED)
 
@@ -643,8 +651,7 @@ target_link_libraries(libslic3r PUBLIC
     libseqarrange
 )
 
-if (APPLE)
-    # TODO: we need to fix notarization with the separate shared library
+if (NOT WIN32)
     target_link_libraries(libslic3r PUBLIC OCCTWrapper)
 endif ()
 

@@ -672,7 +672,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
     // Expand the top / bottom / bridge surfaces into the shell thickness solid infills.
     double layer_thickness;
     ExPolygons shells = union_ex(
-        fill_surfaces_extract_expolygons(m_fill_surfaces.surfaces, {stInternalSolid}, layer_thickness));
+        fill_surfaces_extract_expolygons(m_fill_surfaces.surfaces, {stInternalSolid, stBridgeAnchor}, layer_thickness));
     ExPolygons sparse = union_ex(
         fill_surfaces_extract_expolygons(m_fill_surfaces.surfaces, {stInternal}, layer_thickness));
     ExPolygons top_expolygons = union_ex(
@@ -831,7 +831,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
     if (!bridges.surfaces.empty())
     {
         // Get ALL solid surfaces (stInternalSolid AND stBottom) from m_fill_surfaces
-        SurfacesPtr internal_solids = m_fill_surfaces.filter_by_type(stInternalSolid);
+        SurfacesPtr internal_solids = m_fill_surfaces.filter_by_types({stInternalSolid, stBridgeAnchor});
 
         // Also check bottoms - they're about to be appended and may be adjacent
         ExPolygons bottom_expolys;
@@ -921,8 +921,9 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
                     non_adj_bottom = intersection_ex(non_adjacent_solids, bottom_expolys);
                 }
 
-                // Remove old stInternalSolid and add back non-adjacent ones
+                // Remove old stInternalSolid/stBridgeAnchor and add back non-adjacent ones
                 m_fill_surfaces.remove_type(stInternalSolid);
+                m_fill_surfaces.remove_type(stBridgeAnchor);
                 if (!non_adj_internal.empty())
                 {
                     Surface solid_templ(stInternalSolid, {});

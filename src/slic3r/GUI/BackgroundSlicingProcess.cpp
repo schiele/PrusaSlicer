@@ -749,89 +749,115 @@ void BackgroundSlicingProcess::direct_export_gcode(const std::string &path, bool
     // Perform the final post-processing of the export path by applying the print statistics over the file name.
     std::string export_path = m_fff_print->print_statistics().finalize_output_path(path);
 
-    const std::string *export_buffer = (m_gcode_result && m_gcode_result->gcode_object)
-                                           ? &m_gcode_result->gcode_object->text_buffer()
-                                           : nullptr;
-
-    if (!export_buffer)
-    {
+    if (!m_gcode_result || !m_gcode_result->gcode_object)
         throw Slic3r::ExportError("No G-code available for export");
-    }
 
-    // Write G-code buffer directly to export path
+    // Track temp file for cleanup on failure
+    std::string text_path;
+
     try
     {
-        FILE *file = boost::nowide::fopen(export_path.c_str(), "wb");
-        if (!file)
-        {
-            throw Slic3r::ExportError(GUI::format(_L("Failed to open G-code file for writing: %1%"), export_path));
-        }
+        // Write text gcode to disk first (for both binary and text modes).
+        // Post-processing scripts need text to work on before binarization.
+        const std::string &buf = m_gcode_result->gcode_object->text_buffer();
+        text_path = export_path;
+        if (m_gcode_result->is_binary_file && m_gcode_result->binary_data.has_value())
+            text_path = export_path + ".tmp";
 
-        size_t written = fwrite(export_buffer->c_str(), 1, export_buffer->size(), file);
+        FILE *file = boost::nowide::fopen(text_path.c_str(), "wb");
+        if (!file)
+            throw Slic3r::ExportError(GUI::format(_L("Failed to open G-code file for writing: %1%"), text_path));
+
+        size_t written = fwrite(buf.c_str(), 1, buf.size(), file);
         fclose(file);
 
-        if (written != export_buffer->size())
+        if (written != buf.size())
         {
-            boost::filesystem::remove(export_path);
-            throw Slic3r::ExportError(GUI::format(_L("Failed to write complete G-code to file: %1%"), export_path));
+            boost::filesystem::remove(text_path);
+            throw Slic3r::ExportError(GUI::format(_L("Failed to write complete G-code to file: %1%"), text_path));
         }
 
-        // Run post-processing scripts on the exported file (in-place, no temp copy
-        // needed since preview reads from the in-memory virtual file, not this file)
-        run_post_process_scripts(export_path, m_fff_print->full_print_config());
+        // Run post-processing scripts on the text file
+        run_post_process_scripts(text_path, m_fff_print->full_print_config());
+
+        // For binary mode: binarize the (possibly script-modified) text file
+        if (m_gcode_result->is_binary_file && m_gcode_result->binary_data.has_value())
+        {
+            GCodeProcessor::write_binary_gcode_from_file(export_path, text_path, *m_gcode_result->binary_data);
+            boost::filesystem::remove(text_path);
+        }
     }
-    catch (const std::exception &e)
+    catch (...)
     {
-        throw Slic3r::ExportError(GUI::format(_L("Error exporting G-code: %1%"), e.what()));
+        if (text_path != export_path && !text_path.empty())
+            boost::filesystem::remove(text_path);
+        throw Slic3r::ExportError(GUI::format(_L("Error exporting G-code: %1%"), export_path));
     }
 
     m_print->set_status(100, GUI::format(_L("G-code file exported to %1%"), export_path));
 }
 
-// preFlight: Prepare upload directly from in-memory G-code — no re-slicing needed.
+// preFlight: Prepare upload directly from in-memory G-code - no re-slicing needed.
 // Writes the virtual G-code buffer to a temp file, runs post-processing scripts,
 // and sets the source path on the upload job so it's ready for enqueue().
 void BackgroundSlicingProcess::direct_prepare_upload(Slic3r::PrintHostJob &upload_job)
 {
-    const std::string *export_buffer = (m_gcode_result && m_gcode_result->gcode_object)
-                                           ? &m_gcode_result->gcode_object->text_buffer()
-                                           : nullptr;
-
-    if (!export_buffer)
-    {
+    if (!m_gcode_result || !m_gcode_result->gcode_object)
         throw Slic3r::ExportError("No G-code available for upload. Please slice the model first.");
-    }
 
     // Generate a unique temp path for the upload source file
     boost::filesystem::path source_path = boost::filesystem::temp_directory_path() /
                                           boost::filesystem::unique_path("." SLIC3R_APP_KEY
                                                                          ".upload.%%%%-%%%%-%%%%-%%%%");
 
-    FILE *file = boost::nowide::fopen(source_path.string().c_str(), "wb");
-    if (!file)
+    std::string text_path;
+
+    try
     {
-        throw Slic3r::ExportError("Failed to open temporary file for upload");
+        // Write text gcode to a temp file first so post-processing scripts can run on it
+        const std::string &buf = m_gcode_result->gcode_object->text_buffer();
+        text_path = source_path.string();
+        if (m_gcode_result->is_binary_file && m_gcode_result->binary_data.has_value())
+            text_path = source_path.string() + ".tmp";
+
+        FILE *file = boost::nowide::fopen(text_path.c_str(), "wb");
+        if (!file)
+            throw Slic3r::ExportError("Failed to open temporary file for upload");
+
+        size_t written = fwrite(buf.c_str(), 1, buf.size(), file);
+        fclose(file);
+
+        if (written != buf.size())
+        {
+            boost::filesystem::remove(text_path);
+            throw Slic3r::ExportError("Failed to write G-code to temporary file for upload");
+        }
+
+        // Finalize the upload filename with print statistics
+        upload_job.upload_data.upload_path = m_fff_print->print_statistics().finalize_output_path(
+            upload_job.upload_data.upload_path.string());
+
+        // Run post-processing scripts on the text file
+        std::string source_path_str = text_path;
+        std::string output_name_str = upload_job.upload_data.upload_path.string();
+        if (run_post_process_scripts(source_path_str, false, upload_job.printhost->get_name(), output_name_str,
+                                     m_fff_print->full_print_config()))
+            upload_job.upload_data.upload_path = output_name_str;
+
+        // For binary mode: binarize the (possibly script-modified) text file
+        if (m_gcode_result->is_binary_file && m_gcode_result->binary_data.has_value())
+        {
+            GCodeProcessor::write_binary_gcode_from_file(source_path.string(), text_path, *m_gcode_result->binary_data);
+            boost::filesystem::remove(text_path);
+        }
     }
-
-    size_t written = fwrite(export_buffer->c_str(), 1, export_buffer->size(), file);
-    fclose(file);
-
-    if (written != export_buffer->size())
+    catch (...)
     {
+        if (text_path != source_path.string() && !text_path.empty())
+            boost::filesystem::remove(text_path);
         boost::filesystem::remove(source_path);
-        throw Slic3r::ExportError("Failed to write G-code to temporary file for upload");
+        throw;
     }
-
-    // Finalize the upload filename with print statistics
-    upload_job.upload_data.upload_path = m_fff_print->print_statistics().finalize_output_path(
-        upload_job.upload_data.upload_path.string());
-
-    // Run post-processing scripts if configured
-    std::string source_path_str = source_path.string();
-    std::string output_name_str = upload_job.upload_data.upload_path.string();
-    if (run_post_process_scripts(source_path_str, false, upload_job.printhost->get_name(), output_name_str,
-                                 m_fff_print->full_print_config()))
-        upload_job.upload_data.upload_path = output_name_str;
 
     upload_job.upload_data.source_path = std::move(source_path);
 }
@@ -855,103 +881,54 @@ void BackgroundSlicingProcess::direct_export_to_script(const std::string &script
     m_print->set_status(100, _u8L("G-code exported via script"));
 }
 
-// G-code is generated in m_temp_output_path.
-// Optionally run a post-processing script on a copy of m_temp_output_path.
-// Copy the final G-code to target location (possibly a SD card, if it is a removable media, then verify that the file was written without an error).
+// Write the final G-code to target location (possibly a SD card).
 void BackgroundSlicingProcess::finalize_gcode(const std::string &path, const bool path_on_removable_media)
 {
     m_print->set_status(95, _u8L("Running post-processing scripts"));
 
     // Perform the final post-processing of the export path by applying the print statistics over the file name.
     std::string export_path = m_fff_print->print_statistics().finalize_output_path(path);
-    const std::string *export_buffer = (m_gcode_result && m_gcode_result->gcode_object)
-                                           ? &m_gcode_result->gcode_object->text_buffer()
-                                           : nullptr;
 
-    if (export_buffer)
+    if (!m_gcode_result || !m_gcode_result->gcode_object)
+        throw Slic3r::ExportError("No G-code available for export");
+
+    std::string text_path;
+
+    try
     {
-        try
+        // Write text gcode to disk first (scripts need text to work on before binarization)
+        const std::string &buf = m_gcode_result->gcode_object->text_buffer();
+        text_path = export_path;
+        if (m_gcode_result->is_binary_file && m_gcode_result->binary_data.has_value())
+            text_path = export_path + ".tmp";
+
+        FILE *file = boost::nowide::fopen(text_path.c_str(), "wb");
+        if (!file)
+            throw Slic3r::ExportError(GUI::format(_L("Failed to open G-code file for writing: %1%"), text_path));
+
+        size_t written = fwrite(buf.c_str(), 1, buf.size(), file);
+        fclose(file);
+
+        if (written != buf.size())
         {
-            FILE *file = boost::nowide::fopen(export_path.c_str(), "wb");
-            if (!file)
-            {
-                throw Slic3r::ExportError(GUI::format(_L("Failed to open G-code file for writing: %1%"), export_path));
-            }
-
-            size_t written = fwrite(export_buffer->c_str(), 1, export_buffer->size(), file);
-            fclose(file);
-
-            if (written != export_buffer->size())
-            {
-                boost::filesystem::remove(export_path);
-                throw Slic3r::ExportError(GUI::format(_L("Failed to write G-code to file: %1%"), export_path));
-            }
-
-            run_post_process_scripts(export_path, m_fff_print->full_print_config());
+            boost::filesystem::remove(text_path);
+            throw Slic3r::ExportError(GUI::format(_L("Failed to write G-code to file: %1%"), text_path));
         }
-        catch (const std::exception &e)
+
+        run_post_process_scripts(text_path, m_fff_print->full_print_config());
+
+        // For binary mode: binarize the (possibly script-modified) text file
+        if (m_gcode_result->is_binary_file && m_gcode_result->binary_data.has_value())
         {
-            throw Slic3r::ExportError(GUI::format(_L("Error exporting G-code: %1%"), e.what()));
+            GCodeProcessor::write_binary_gcode_from_file(export_path, text_path, *m_gcode_result->binary_data);
+            boost::filesystem::remove(text_path);
         }
     }
-    else
+    catch (...)
     {
-        // This fallback should never be reached with memory-based processing
-        throw Slic3r::ExportError("Memory-based G-code export failed: No G-code array available");
-        /*
-		// Fallback to file-based export (shouldn't happen in normal flow)
-		std::string output_path = m_temp_output_path;
-		// Both output_path and export_path ar in-out parameters.
-		// If post processed, output_path will differ from m_temp_output_path as run_post_process_scripts() will make a copy of the G-code to not
-		// collide with the G-code viewer memory mapping of the unprocessed G-code. G-code viewer maps unprocessed G-code, because m_gcode_result
-		// is calculated for the unprocessed G-code and it references lines in the memory mapped G-code file by line numbers.
-		// export_path may be changed by the post-processing script as well if the post processing script decides so, see GH #6042.
-		bool post_processed = run_post_process_scripts(output_path, true, "File", export_path, m_fff_print->full_print_config());
-		auto remove_post_processed_temp_file = [post_processed, &output_path]() {
-			if (post_processed)
-				try {
-					boost::filesystem::remove(output_path);
-				} catch (const std::exception &ex) {
-					BOOST_LOG_TRIVIAL(error) << "Failed to remove temp file " << output_path << ": " << ex.what();
-				}
-		};
-
-		//FIXME localize the messages
-		std::string error_message;
-		int copy_ret_val = CopyFileResult::SUCCESS;
-		try
-		{
-			copy_ret_val = copy_file(output_path, export_path, error_message, path_on_removable_media);
-			remove_post_processed_temp_file();
-		}
-		catch (...)
-		{
-			remove_post_processed_temp_file();
-			throw Slic3r::ExportError(_u8L("Unknown error occured during exporting G-code."));
-		}
-		switch (copy_ret_val) {
-		case CopyFileResult::SUCCESS: break; // no error
-		case CopyFileResult::FAIL_COPY_FILE:
-			throw Slic3r::ExportError(GUI::format(_L("Copying of the temporary G-code to the output G-code failed. Maybe the SD card is write locked?\nError message: %1%"), error_message));
-			break;
-		case CopyFileResult::FAIL_FILES_DIFFERENT:
-			throw Slic3r::ExportError(GUI::format(_L("Copying of the temporary G-code to the output G-code failed. There might be problem with target device, please try exporting again or using different device. The corrupted output G-code is at %1%.tmp."), export_path));
-			break;
-		case CopyFileResult::FAIL_RENAMING:
-			throw Slic3r::ExportError(GUI::format(_L("Renaming of the G-code after copying to the selected destination folder has failed. Current path is %1%.tmp. Please try exporting again."), export_path));
-			break;
-		case CopyFileResult::FAIL_CHECK_ORIGIN_NOT_OPENED:
-			throw Slic3r::ExportError(GUI::format(_L("Copying of the temporary G-code has finished but the original code at %1% couldn't be opened during copy check. The output G-code is at %2%.tmp."), output_path, export_path));
-			break;
-		case CopyFileResult::FAIL_CHECK_TARGET_NOT_OPENED:
-			throw Slic3r::ExportError(GUI::format(_L("Copying of the temporary G-code has finished but the exported code couldn't be opened during copy check. The output G-code is at %1%.tmp."), export_path));
-			break;
-		default:
-			throw Slic3r::ExportError(_u8L("Unknown error occured during exporting G-code."));
-			BOOST_LOG_TRIVIAL(error) << "Unexpected fail code(" << (int)copy_ret_val << ") durring copy_file() to " << export_path << ".";
-			break;
-		}
-		*/
+        if (text_path != export_path && !text_path.empty())
+            boost::filesystem::remove(text_path);
+        throw Slic3r::ExportError(GUI::format(_L("Error exporting G-code: %1%"), export_path));
     }
 
     m_print->set_status(100, GUI::format(_L("G-code file exported to %1%"), export_path));

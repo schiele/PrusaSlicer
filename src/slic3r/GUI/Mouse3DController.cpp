@@ -25,7 +25,7 @@
 //unofficial linux lib
 //#include <spnav.h>
 
-// WARN: If updating these lists, please also update resources/udev/90-3dconnexion.rules
+// WARN: If updating these lists, please also update resources/udev/90-preflight-3dconnexion.rules
 
 static const std::vector<int> _3DCONNEXION_VENDORS = {
     0x046d, // LOGITECH = 1133 // Logitech (3Dconnexion is made by Logitech)

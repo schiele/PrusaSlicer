@@ -3,6 +3,7 @@
 ///|/ Released under AGPLv3 or higher
 ///|/
 #include "OrcaConfigImporter.hpp"
+#include "OrcaGCodeAliases.hpp"
 #include "OrcaKeyMapping.hpp"
 #include "PresetBundle.hpp"
 #include "Utils.hpp"
@@ -12,7 +13,6 @@
 #include <set>
 
 #include <boost/algorithm/string/join.hpp>
-#include <boost/algorithm/string/replace.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/nowide/fstream.hpp>
@@ -90,74 +90,17 @@ std::string OrcaConfigImporter::translate_gcode(const std::string &orca_gcode, c
 {
     std::string result = orca_gcode;
 
-    // Step 1: Direct placeholder mappings (specific Orca -> preFlight)
-    static const std::vector<std::pair<std::string, std::string>> direct_mappings = {
-        {"[nozzle_temperature_initial_layer]", "{first_layer_temperature[0]}"},
-        {"[nozzle_temperature]", "{temperature[0]}"},
-        {"[bed_temperature_initial_layer_single]", "{first_layer_bed_temperature[0]}"},
-        {"[bed_temperature_initial_layer]", "{first_layer_bed_temperature}"},
-        {"[bed_temperature]", "{bed_temperature}"},
-        {"[chamber_temperature]", "{chamber_temperature}"},
-        {"[overall_chamber_temperature]", "{chamber_temperature}"},
-        {"[layer_z]", "{layer_z}"},
-        {"[layer_num]", "{layer_num}"},
-        {"[max_layer_z]", "{max_layer_z}"},
-        {"[total_layer_count]", "{total_layer_count}"},
-        {"[previous_extruder]", "{previous_extruder}"},
-        {"[next_extruder]", "{next_extruder}"},
-        {"[current_extruder]", "{current_extruder}"},
-        {"[initial_extruder]", "{initial_extruder}"},
-        {"[toolchange_z]", "{toolchange_z}"},
-        {"[print_time]", "{print_time}"},
-        {"[total_weight]", "{total_weight}"},
-        {"[total_cost]", "{total_cost}"},
-        {"[input_filename_base]", "{input_filename_base}"},
-        {"[filament_type]", "{filament_type[0]}"},
-    };
+    // preFlight's PlaceholderParser natively supports both [bracket] (legacy Slic3r) and
+    // {brace} (PrusaSlicer) syntax, and resolves Orca key names via the alias map in
+    // OrcaGCodeAliases. So we do NOT convert [brackets] to {braces} here.
+    //
+    // The one case that still needs fixup: {brace} syntax with a vector variable but no
+    // index. The brace-syntax parser requires an explicit index for vectors (unlike the
+    // bracket-syntax parser which defaults to current_extruder_id). Some Orca profiles
+    // use PrusaSlicer-style {braces} directly, so we append [0] where needed.
 
-    for (const auto &[orca, pf] : direct_mappings)
-        boost::replace_all(result, orca, pf);
+    const auto &aliases = orca_gcode_aliases();
 
-    // Step 2: Handle array access patterns: [key[index]] -> {key[index]}
-    try
-    {
-        std::regex array_pattern(R"(\[([a-z_]+)\[([^\]]+)\]\])");
-        result = std::regex_replace(result, array_pattern, "{$1[$2]}");
-    }
-    catch (...)
-    {
-    }
-
-    // Step 3: Convert remaining simple [placeholder] -> {placeholder}
-    // Auto-append [0] for vector variables (e.g. first_layer_temperature)
-    try
-    {
-        std::regex simple_pattern(R"(\[([a-z_][a-z_0-9]*)\])");
-        std::string out;
-        auto it = std::sregex_iterator(result.begin(), result.end(), simple_pattern);
-        auto end = std::sregex_iterator();
-        size_t last_pos = 0;
-        for (; it != end; ++it)
-        {
-            const std::smatch &m = *it;
-            out.append(result, last_pos, m.position() - last_pos);
-            std::string key = m[1].str();
-            const auto *optdef = print_config_def.get(key);
-            if (optdef && !optdef->is_scalar())
-                out += "{" + key + "[0]}";
-            else
-                out += "{" + key + "}";
-            last_pos = m.position() + m.length();
-        }
-        out.append(result, last_pos);
-        result = std::move(out);
-    }
-    catch (...)
-    {
-    }
-
-    // Step 3b: Fix {placeholder} already in brace syntax but missing [0] for vector variables.
-    // Some Orca profiles use PrusaSlicer-style {braces} directly, bypassing bracket-to-brace conversion.
     try
     {
         std::regex brace_pattern(R"(\{([a-z_][a-z_0-9]*)\})");
@@ -170,7 +113,16 @@ std::string OrcaConfigImporter::translate_gcode(const std::string &orca_gcode, c
             const std::smatch &m = *it;
             out.append(result, last_pos, m.position() - last_pos);
             std::string key = m[1].str();
+
+            // Look up the config definition, resolving Orca aliases if needed
             const auto *optdef = print_config_def.get(key);
+            if (optdef == nullptr)
+            {
+                auto alias_it = aliases.find(key);
+                if (alias_it != aliases.end())
+                    optdef = print_config_def.get(alias_it->second);
+            }
+
             if (optdef && !optdef->is_scalar())
                 out += "{" + key + "[0]}";
             else
@@ -184,7 +136,8 @@ std::string OrcaConfigImporter::translate_gcode(const std::string &orca_gcode, c
     {
     }
 
-    // Step 4: Warn about Orca-specific placeholders that have no preFlight equivalent
+    // Warn about Orca-specific placeholders that have no preFlight equivalent.
+    // Check both [bracket] and {brace} syntax since either may be present.
     static const std::set<std::string> orca_specific = {"flush_length",
                                                         "timelapse_pos_x",
                                                         "timelapse_pos_y",
@@ -198,10 +151,11 @@ std::string OrcaConfigImporter::translate_gcode(const std::string &orca_gcode, c
 
     for (const auto &ph : orca_specific)
     {
-        std::string search = "{" + ph + "}";
-        if (result.find(search) != std::string::npos)
+        std::string brace_search = "{" + ph + "}";
+        std::string bracket_search = "[" + ph + "]";
+        if (result.find(brace_search) != std::string::npos || result.find(bracket_search) != std::string::npos)
         {
-            warnings.push_back(profile_name + ": Orca-only placeholder {" + ph + "} in " + field_name +
+            warnings.push_back(profile_name + ": Orca-only placeholder '" + ph + "' in " + field_name +
                                " has no preFlight equivalent");
         }
     }

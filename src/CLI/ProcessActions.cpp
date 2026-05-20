@@ -25,6 +25,7 @@
 #include "libslic3r/Config.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/GCode/PostProcessor.hpp"
+#include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Preset.hpp"
 #include <arrange-wrapper/ModelArrange.hpp>
@@ -429,13 +430,15 @@ bool process_actions(Data &cli, const DynamicPrintConfig &print_config, std::vec
                 {
                     std::string outfile_final;
                     print->process();
+                    GCodeProcessorResult gcode_result;
                     if (printer_technology == ptFFF)
                     {
                         // The outfile is processed by a PlaceholderParser.
                         const std::string input_file = fff_print.model().objects.empty()
                                                            ? ""
                                                            : fff_print.model().objects.front()->input_file;
-                        outfile = fff_print.export_gcode(outfile, nullptr, get_thumbnail_generator_cli(input_file));
+                        outfile = fff_print.export_gcode(outfile, &gcode_result,
+                                                         get_thumbnail_generator_cli(input_file));
                         outfile_final = fff_print.print_statistics().finalize_output_path(outfile);
                     }
                     if (outfile != outfile_final)
@@ -448,8 +451,18 @@ bool process_actions(Data &cli, const DynamicPrintConfig &print_config, std::vec
                         }
                         outfile = outfile_final;
                     }
-                    // Run the post-processing scripts if defined.
+                    // Run the post-processing scripts on the text gcode file.
                     run_post_process_scripts(outfile, fff_print.full_print_config());
+
+                    // Binarize after scripts have had their chance to modify the text
+                    if (gcode_result.is_binary_file && gcode_result.binary_data.has_value())
+                    {
+                        std::string text_path = outfile + ".tmp";
+                        boost::filesystem::rename(outfile, text_path);
+                        GCodeProcessor::write_binary_gcode_from_file(outfile, text_path, *gcode_result.binary_data);
+                        boost::filesystem::remove(text_path);
+                    }
+
                     boost::nowide::cout << "Slicing result exported to " << outfile << std::endl;
                 }
                 catch (const std::exception &ex)

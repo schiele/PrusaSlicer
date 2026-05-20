@@ -268,6 +268,8 @@ static const char *dbg_stype(SurfaceType t)
         return "stPerimeter";
     case stSolidOverBridge:
         return "stSolidOverBridge";
+    case stBridgeAnchor:
+        return "stBridgeAnchor";
     case stCount:
         return "stCount";
     default:
@@ -448,6 +450,10 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                         params.pattern = surface.is_top() ? region_config.top_fill_pattern.value
                                                           : region_config.bottom_fill_pattern.value;
                     }
+                    else if (surface.surface_type == stBridgeAnchor)
+                    {
+                        params.pattern = ipEnsuring;
+                    }
                     else
                     {
                         // Internal solid: use user-selected solid fill pattern
@@ -457,10 +463,44 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                     // Narrow surface detection via offset erosion. Each threshold gets its
                     // own test since a binary "wider/narrower" answer at one threshold
                     // can't be reused for a different threshold.
+                    // Ring-aware: for expolygons with holes, also check if insetting
+                    // collapses the ring wall (holes disappear even if the result isn't empty).
                     const Flow solid_flow = layerm.flow(frSolidInfill);
-                    const bool is_narrow_1_5x =
-                        !is_bridge && surface.is_solid() &&
-                        offset_ex(surface.expolygon, -float(solid_flow.scaled_width() * 1.5f) / 2.f).empty();
+                    auto is_narrow_at = [&](float inset) -> bool
+                    {
+                        ExPolygons result = offset_ex(surface.expolygon, -inset);
+                        if (result.empty())
+                            return true;
+                        if (!surface.expolygon.holes.empty())
+                        {
+                            size_t remaining_holes = 0;
+                            for (const ExPolygon &ep : result)
+                                remaining_holes += ep.holes.size();
+                            if (remaining_holes < surface.expolygon.holes.size())
+                                return true;
+                        }
+                        return false;
+                    };
+                    // Ring-specific: expand each hole outward by the threshold.
+                    // If the expanded hole breaches the outer contour, the ring
+                    // wall around that hole is thinner than the threshold.
+                    // Catches thin rings connected to wider solid regions that
+                    // the whole-expolygon inset check misses.
+                    auto has_thin_ring_at = [&](float wall_threshold) -> bool
+                    {
+                        if (surface.expolygon.holes.empty())
+                            return false;
+                        Polygons outer = {surface.expolygon.contour};
+                        for (const Polygon &hole : surface.expolygon.holes)
+                        {
+                            Polygons expanded = offset(hole, -wall_threshold);
+                            if (!diff(expanded, outer).empty())
+                                return true;
+                        }
+                        return false;
+                    };
+                    const bool is_narrow_1_5x = !is_bridge && surface.is_solid() &&
+                                                is_narrow_at(solid_flow.scaled_width() * 1.5f / 2.f);
 
                     // When Athena perimeters converge, a narrow sliver may be created that should be covered
                     // by perimeters but gets classified as a fill surface. Skip these very narrow surfaces
@@ -483,11 +523,19 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                         params.pattern != ipEnsuring && region_config.narrow_to_athena.value)
                     {
                         const float threshold = float(region_config.narrow_to_athena_threshold.value);
-                        const bool is_narrow_athena =
-                            !is_bridge &&
-                            offset_ex(surface.expolygon, -float(solid_flow.scaled_width() * threshold) / 2.f).empty();
+                        const bool is_narrow_athena = !is_bridge &&
+                                                      is_narrow_at(solid_flow.scaled_width() * threshold / 2.f);
                         if (is_narrow_athena)
                             params.pattern = ipEnsuring;
+                        // Ring shapes: check if any hole has a thin wall to the
+                        // outer contour. Uses per-hole expansion instead of whole-
+                        // expolygon inset, so thin rings connected to wider areas
+                        // are detected correctly.
+                        if (!is_narrow_athena && !is_bridge && !surface.expolygon.holes.empty())
+                        {
+                            if (has_thin_ring_at(solid_flow.scaled_width() * threshold / 2.f))
+                                params.pattern = ipEnsuring;
+                        }
                     }
 
                     // Unconditional fallback: if a solid surface is so thin that it would
@@ -771,13 +819,14 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
     {
         Polygons other_fill_polys;
         for (const SurfaceFill &sf : surface_fills)
-            if (sf.surface.surface_type != stInternalSolid && sf.surface.surface_type != stInternal &&
-                !sf.expolygons.empty())
+            if (sf.surface.surface_type != stInternalSolid && sf.surface.surface_type != stBridgeAnchor &&
+                sf.surface.surface_type != stInternal && !sf.expolygons.empty())
                 append(other_fill_polys, to_polygons(sf.expolygons));
 
         for (SurfaceFill &fill : surface_fills)
         {
-            if (fill.expolygons.empty() || fill.surface.surface_type != stInternalSolid)
+            if (fill.expolygons.empty() ||
+                (fill.surface.surface_type != stInternalSolid && fill.surface.surface_type != stBridgeAnchor))
                 continue;
             for (ExPolygon &ep : fill.expolygons)
                 ep.holes.erase(
@@ -914,7 +963,8 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
             {
                 if (sf.expolygons.empty())
                     continue;
-                if (sf.surface.surface_type == stInternalSolid || sf.surface.surface_type == stInternal)
+                if (sf.surface.surface_type == stInternalSolid || sf.surface.surface_type == stBridgeAnchor ||
+                    sf.surface.surface_type == stInternal)
                     sf.expolygons = diff_ex(sf.expolygons, sob_polys);
             }
     }
@@ -930,8 +980,8 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
     {
         if (absorber.expolygons.empty())
             continue;
-        if (absorber.surface.surface_type != stInternalSolid && absorber.surface.surface_type != stSolidOverBridge &&
-            !absorber.surface.is_bridge())
+        if (absorber.surface.surface_type != stInternalSolid && absorber.surface.surface_type != stBridgeAnchor &&
+            absorber.surface.surface_type != stSolidOverBridge && !absorber.surface.is_bridge())
             continue;
 
         // Build the "filled" boundary from contours only (no holes).
@@ -1046,7 +1096,8 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
         {
             if (sf.expolygons.empty())
                 continue;
-            if (sf.surface.surface_type != stInternalSolid && sf.surface.surface_type != stSolidOverBridge)
+            if (sf.surface.surface_type != stInternalSolid && sf.surface.surface_type != stBridgeAnchor &&
+                sf.surface.surface_type != stSolidOverBridge)
                 continue;
             if (!processed_solid.empty())
                 sf.expolygons = diff_ex(sf.expolygons, processed_solid);

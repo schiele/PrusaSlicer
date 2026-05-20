@@ -67,7 +67,3 @@ else()
         -Wno-conversion
     )
 endif()
-
-# Install headers (optional, for future use)
-install(FILES ${CLIPPER2_HEADERS} DESTINATION include/clipper2)
-install(TARGETS clipper2 DESTINATION lib)

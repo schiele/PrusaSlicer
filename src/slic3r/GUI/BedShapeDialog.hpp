@@ -77,6 +77,8 @@ class BedShapePanel : public wxPanel
     std::vector<Vec2d> m_loaded_shape;
     std::string m_custom_texture;
     std::string m_custom_model;
+    wxStaticText *m_texture_filename_lbl{nullptr};
+    wxStaticText *m_model_filename_lbl{nullptr};
 
 public:
     BedShapePanel(wxWindow *parent) : wxPanel(parent, wxID_ANY), m_custom_texture(NONE), m_custom_model(NONE) {}
@@ -101,6 +103,8 @@ private:
     void update_preview();
     void update_shape();
     void load_stl();
+    void update_texture_label();
+    void update_model_label();
     void load_texture();
     void load_model();
 

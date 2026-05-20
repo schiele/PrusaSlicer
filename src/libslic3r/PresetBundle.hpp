@@ -12,6 +12,7 @@
 #include "enum_bitmask.hpp"
 
 #include <memory>
+#include <set>
 #include <unordered_map>
 #include <array>
 #include <boost/filesystem/path.hpp>
@@ -232,7 +233,7 @@ public:
 
 private:
     std::pair<PresetsConfigSubstitutions, std::string> load_system_presets(
-        ForwardCompatibilitySubstitutionRule compatibility_rule);
+        ForwardCompatibilitySubstitutionRule compatibility_rule, const std::set<std::string> &installed_models = {});
     // Merge one vendor's presets with the other vendor's presets, report duplicates.
     std::vector<std::string> merge_presets(PresetBundle &&other);
     // Update renamed_from and alias maps of system profiles.

@@ -17,6 +17,15 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0")
   set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 endif()
 
+# CMake 3.30+: use legacy FindBoost instead of BoostConfig.cmake
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
+endif()
+# CMake 3.31+: allow add_custom_command() with OUTPUT in subdirectories
+if(POLICY CMP0175)
+  cmake_policy(SET CMP0175 OLD)
+endif()
+
 project(preFlight)
 
 include("version.inc")
@@ -417,7 +426,7 @@ endif()
 # boost::process was introduced first in version 1.64.0,
 # boost::beast::detail::base64 was introduced first in version 1.66.0
 set(MINIMUM_BOOST_VERSION "1.83.0")
-set(_boost_components "system;filesystem;thread;log;log_setup;locale;regex;chrono;atomic;date_time;iostreams;nowide;process")
+set(_boost_components "filesystem;thread;log;log_setup;locale;regex;chrono;atomic;date_time;iostreams;nowide;process")
 find_package(Boost ${MINIMUM_BOOST_VERSION} REQUIRED COMPONENTS ${_boost_components})
 
 find_package(Eigen3 3.3.7...<6.0 REQUIRED) # preFlight: accept Eigen 5.x (jumped from 3.x)

@@ -4088,6 +4088,17 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
         if (appconfig_new.has_section(section_name))
             app_config->set_section(section_name, appconfig_new.get_section(section_name));
 
+    // Sanitize preset name for use as a filename (replace OS-invalid characters)
+    auto sanitize_filename = [](const std::string &name) -> std::string
+    {
+        std::string out = name;
+        for (char &c : out)
+            if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' ||
+                c == '|')
+                c = '_';
+        return out;
+    };
+
     // preFlight: save selected printer presets to data_dir()/printer/ so they persist
     std::vector<std::string> save_failures;
     {
@@ -4133,7 +4144,7 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
         std::vector<std::pair<const Preset *, fs::path>> conflicts;
         for (const auto *printer : selected_printers)
         {
-            fs::path preset_path = printer_dir / (printer->name + ".ini");
+            fs::path preset_path = printer_dir / (sanitize_filename(printer->name) + ".ini");
             if (fs::exists(preset_path))
                 conflicts.emplace_back(printer, preset_path);
         }
@@ -4163,7 +4174,7 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
         {
             if (skip_overwrite.count(printer->name))
                 continue;
-            fs::path preset_path = printer_dir / (printer->name + ".ini");
+            fs::path preset_path = printer_dir / (sanitize_filename(printer->name) + ".ini");
             try
             {
                 printer->config.save(preset_path.string());
@@ -4179,46 +4190,8 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
         BOOST_LOG_TRIVIAL(info) << "Saved " << selected_printers.size() - skip_overwrite.size()
                                 << " printer presets to " << printer_dir.string();
 
-        // Save print (quality) presets for vendors that have selected printers
-        const fs::path print_dir = fs::path(Slic3r::data_dir()) / "print";
-        fs::create_directories(print_dir);
-        std::set<std::string> saved_vendor_ids;
-        for (const auto *printer : selected_printers)
-            for (const auto &[bname, bundle] : bundles)
-                for (const auto &p : bundle.preset_bundle->printers)
-                    if (&p == printer)
-                        saved_vendor_ids.insert(bname);
-
-        int print_count = 0;
-        for (const auto &vid : saved_vendor_ids)
-        {
-            auto it = bundles.find(vid);
-            if (it == bundles.end())
-                continue;
-            for (const auto &print : it->second.preset_bundle->prints)
-            {
-                if (print.is_default)
-                    continue;
-                fs::path preset_path = print_dir / (print.name + ".ini");
-                if (!fs::exists(preset_path))
-                {
-                    try
-                    {
-                        print.config.save(preset_path.string());
-                        if (!fs::exists(preset_path) || fs::file_size(preset_path) == 0)
-                            save_failures.push_back(print.name);
-                        else
-                            ++print_count;
-                    }
-                    catch (const std::exception &)
-                    {
-                        save_failures.push_back(print.name);
-                    }
-                }
-            }
-        }
-        if (print_count > 0)
-            BOOST_LOG_TRIVIAL(info) << "Saved " << print_count << " print presets to " << print_dir.string();
+        // Print presets come from vendor bundles at runtime, filtered by compatibility
+        // with installed printers. No need to save them as user .ini files.
     }
 
     app_config->set_vendors(appconfig_new);
@@ -4302,7 +4275,7 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
         // Check for existing files that would be overwritten
         std::vector<const Preset *> conflicts;
         for (const auto *filament : selected_filaments)
-            if (fs::exists(filament_dir / (filament->name + ".ini")))
+            if (fs::exists(filament_dir / (sanitize_filename(filament->name) + ".ini")))
                 conflicts.push_back(filament);
 
         // Prompt once for all conflicts
@@ -4330,7 +4303,7 @@ bool ConfigWizard::priv::apply_config(AppConfig *app_config, PresetBundle *prese
         {
             if (skip_overwrite.count(filament->name))
                 continue;
-            fs::path preset_path = filament_dir / (filament->name + ".ini");
+            fs::path preset_path = filament_dir / (sanitize_filename(filament->name) + ".ini");
             try
             {
                 filament->config.save(preset_path.string());

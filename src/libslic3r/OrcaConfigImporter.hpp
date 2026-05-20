@@ -50,7 +50,7 @@ public:
         // Lossy mappings - imported but with data loss
         std::vector<std::string> lossy_mappings;
 
-        // Orca-only keys that were dropped
+        // Orca-exclusive keys with no matching preFlight setting (cannot be imported)
         std::vector<std::string> dropped_keys;
 
         // GCode placeholders that couldn't be fully translated

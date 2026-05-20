@@ -2288,13 +2288,14 @@ void PrintConfigDef::init_fff_params()
     def = this->add("perimeter_compression", coEnum);
     def->label = L("Perimeter compression");
     def->category = L("Layers and Perimeters");
-    def->tooltip = L("Controls the minimum width of gap-fill beads that Athena generates between "
-                     "perimeters in tight areas. This does not affect perimeter widths - only the thin "
-                     "gap-fill beads placed where full-width perimeters cannot fit. "
+    def->tooltip = L("Controls how narrow a center perimeter can be when Athena fills tight wall sections. "
+                     "When full-count perimeters don't quite fit, Athena can squeeze a narrower center "
+                     "bead into the remaining space. This setting determines how thin that center bead "
+                     "is allowed to be. More aggressive compression fills more gaps but produces thinner beads. "
                      "This setting only applies to the Athena perimeter generator.\n\n"
-                     "• Disabled: Gap-fill beads use full perimeter width (no compression)\n"
-                     "• Moderate: Gap-fill beads can compress to 66% of perimeter width\n"
-                     "• Aggressive: Gap-fill beads can compress to 33% of perimeter width\n\n"
+                     "• Disabled: Center beads must be full perimeter width (gaps left unfilled)\n"
+                     "• Moderate: Center beads can narrow to 66% of perimeter width\n"
+                     "• Aggressive: Center beads can narrow to 33% of perimeter width\n\n"
                      "The floor is always 33% of nozzle diameter to ensure printability.");
     def->set_enum<PerimeterCompression>(std::initializer_list<std::pair<std::string_view, std::string_view>>{
         {"off", L("Disabled")}, {"moderate", L("Moderate")}, {"aggressive", L("Aggressive")}});
@@ -2304,11 +2305,11 @@ void PrintConfigDef::init_fff_params()
     def = this->add("max_perimeter_width", coPercent);
     def->label = L("Maximum perimeter width");
     def->category = L("Layers and Perimeters");
-    def->tooltip = L("The maximum width Athena will generate for any perimeter bead, expressed as a "
-                     "percentage of nozzle diameter. Beads expand to fill thin wall gaps but never "
-                     "exceed this limit. This setting only applies to the Athena perimeter generator.\n\n"
-                     "Configured extrusion widths are always preserved as the minimum - "
-                     "this setting only limits how much beads can grow beyond that.");
+    def->tooltip = L("Controls when thin walls split from one bead into two. When a wall is too wide "
+                     "for one perimeter but too narrow for two, Athena can either stretch a single bead "
+                     "or split into a pair. Beads will never exceed this limit - if the wall is wider, "
+                     "Athena splits into two beads instead. Lower values split sooner; higher values "
+                     "allow wider single beads. This setting only applies to the Athena perimeter generator.");
     def->sidetext = L("%");
     def->min = 100;
     def->mode = comAdvanced;
@@ -5124,9 +5125,7 @@ void PrintConfigDef::init_fff_params()
     def->label = L("Minimum feature size");
     def->category = L("Advanced");
     def->tooltip = L(
-        "Minimum thickness of thin features. Model features that are thinner than this value will "
-        "not be printed, while features thicker than the Minimum feature size will be widened to "
-        "the Minimum perimeter width. "
+        "Minimum thickness of thin features. Model features thinner than this value are not generated. "
         "If expressed as a percentage (for example 25%), it will be computed based on the nozzle diameter.");
     def->sidetext = L("mm or %");
     def->mode = comExpert;

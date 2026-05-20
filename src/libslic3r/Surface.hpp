@@ -49,6 +49,9 @@ enum SurfaceType
     stPerimeter,
     // InternalSolid that is directly above stBottomBridge.
     stSolidOverBridge,
+    // Thin solid ring below bridge-over-infill, for anchor fill.
+    // Internally tracked; emits as SolidInfill in G-code/preview.
+    stBridgeAnchor,
     // Number of SurfaceType enums.
     stCount,
 };
@@ -140,7 +143,8 @@ public:
     bool is_solid() const
     {
         return this->is_external() || this->surface_type == stInternalSolid ||
-               this->surface_type == stSolidOverBridge || this->surface_type == stInternalBridge;
+               this->surface_type == stSolidOverBridge || this->surface_type == stInternalBridge ||
+               this->surface_type == stBridgeAnchor;
     }
 };
 

@@ -1,5 +1,48 @@
 # preFlight Changelog
 
+## v1.0.1-beta1
+
+### Orca Import
+Cross-product profile importing is rare for good reason - every slicer has exclusive settings that simply don't exist elsewhere. OrcaSlicer has over 140 of them. preFlight reports these transparently so you know exactly what mapped and what didn't. In this release, we more clearly call that out. We also tackled slicing errors caused by Orca G-code variables in Custom G-code fields by natively mapping them to their preFlight equivalents.
+
+- Orca G-code variables now resolve at runtime via alias mapping to their preFlight equivalents - works in both `[bracket]` and `{brace}` syntax
+- Commented-out G-code lines (starting with `;`) are no longer evaluated, preventing parse errors from leftover Orca placeholders
+- Import results dialog now clearly labels skipped settings as "Orca-Exclusive" with an explanation
+
+### G-code Variables
+- Local variables (`{local ...}`) can now shadow config keys, allowing overrides like `{local retract_lift = 0.5}`
+- Unified resolution order (locals > config > aliases) across both `[bracket]` and `{brace}` syntax
+
+### Cooling
+- Fixed fan ramp backward insertion crossing fan-off commands, causing emitted fan speed to desync from firmware state for the rest of the layer (#164)
+- Fixed reset fan speed firing during manual fan mode, overriding per-feature speeds
+- UI now disables fan_always_on when manual fan controls are active
+
+### Bug Fixes
+- Fixed null dereference crash when printer webview authentication completed after the panel was destroyed (#159)
+- Printer webview tab now reuses the existing tab instead of opening duplicates (#159)
+- Fixed binary G-code (bGcode) export producing plain text output regardless of the binary_gcode setting (#165)
+- Fixed tab button text overflow for translated labels - buttons now dynamically size to fit text with ellipsis truncation (#158)
+- Interlocking perimeters are now automatically disabled when entering spiral vase mode
+- Fixed extruder dropdown in Filaments tab never populated with items on multi-tool printers (#176)
+- Fixed Bed Shape dialog texture/model filename labels not updating on load or remove until the dialog was reopened
+- Fixed auto-slice not triggering when switching to Preview via the Tab key (#177)
+- Improved performance when saving presets
+
+### Infill / Fill
+- Created stBridgeAnchor surface type which assigns Athena instead of potentially choppy infill segments (#173)
+- Fixed narrow-to-athena ring detection
+
+### Linux
+- Fixed WebKit GBM EGL crash on NVIDIA proprietary drivers under Xorg (#157)
+- Fixed AppImage crash on NVIDIA GPUs with older glibc by adding three-way launch strategy (#155)
+- Fixed packaging conflicts with manifold and slicer-udev packages (#154)
+- Statically linked OCCTWrapper on Linux to eliminate runtime dlopen failures
+
+### Build / Packaging
+- Bumped bundled deps cmake_minimum_required to 3.13 for CMake 4 compatibility
+- Added support for building against system libraries for distro packaging
+
 ## Promotion to v1.0.0!
 
 It's a red letter day! A small release of fixes with big implications. Yes, there are still bugs, our roadmap is a mile long, and we're just getting started, but at some point you have to rip off band-aid and ship it - this is that moment. Welcome to preFlight v1.0.0!

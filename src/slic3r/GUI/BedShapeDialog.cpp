@@ -262,6 +262,8 @@ void BedShapePanel::build_panel(const ConfigOptionPoints &default_pt, const Conf
 
     wxPanel *texture_panel = init_texture_panel();
     wxPanel *model_panel = init_model_panel();
+    update_texture_label();
+    update_model_label();
 
     Bind(wxEVT_CHOICEBOOK_PAGE_CHANGED, ([this](wxCommandEvent &e) { update_shape(); }));
 
@@ -332,10 +334,10 @@ wxPanel *BedShapePanel::init_texture_panel()
         wxSizer *load_sizer = new wxBoxSizer(wxHORIZONTAL);
         load_sizer->Add(load_btn, 1, wxEXPAND);
 
-        wxStaticText *filename_lbl = new wxStaticText(parent, wxID_ANY, _(NONE));
+        m_texture_filename_lbl = new wxStaticText(parent, wxID_ANY, _(NONE));
 
         wxSizer *filename_sizer = new wxBoxSizer(wxHORIZONTAL);
-        filename_sizer->Add(filename_lbl, 1, wxEXPAND);
+        filename_sizer->Add(m_texture_filename_lbl, 1, wxEXPAND);
 
         wxButton *remove_btn = new wxButton(parent, wxID_ANY, _L("Remove"));
         wxGetApp().SetWindowVariantForButton(remove_btn);
@@ -352,36 +354,9 @@ wxPanel *BedShapePanel::init_texture_panel()
                                            [this](wxCommandEvent &e)
                                            {
                                                m_custom_texture = NONE;
+                                               update_texture_label();
                                                update_shape();
                                            }));
-
-        filename_lbl->Bind(wxEVT_UPDATE_UI,
-                           (
-                               [this](wxUpdateUIEvent &e)
-                               {
-                                   e.SetText(_(boost::filesystem::path(m_custom_texture).filename().string()));
-                                   wxStaticText *lbl = dynamic_cast<wxStaticText *>(e.GetEventObject());
-                                   if (lbl != nullptr)
-                                   {
-                                       bool exists = (m_custom_texture == NONE) ||
-                                                     boost::filesystem::exists(m_custom_texture);
-                                       lbl->SetForegroundColour(exists ? wxGetApp().get_label_clr_default()
-                                                                       : wxColor(*wxRED));
-
-                                       wxString tooltip_text = "";
-                                       if (m_custom_texture != NONE)
-                                       {
-                                           if (!exists)
-                                               tooltip_text += _L("Not found:") + " ";
-
-                                           tooltip_text += _(m_custom_texture);
-                                       }
-
-                                       wxToolTip *tooltip = lbl->GetToolTip();
-                                       if ((tooltip == nullptr) || (tooltip->GetTip() != tooltip_text))
-                                           lbl->SetToolTip(tooltip_text);
-                                   }
-                               }));
 
         remove_btn->Bind(wxEVT_UPDATE_UI, ([this](wxUpdateUIEvent &e) { e.Enable(m_custom_texture != NONE); }));
 
@@ -416,9 +391,9 @@ wxPanel *BedShapePanel::init_model_panel()
         wxSizer *load_sizer = new wxBoxSizer(wxHORIZONTAL);
         load_sizer->Add(load_btn, 1, wxEXPAND);
 
-        wxStaticText *filename_lbl = new wxStaticText(parent, wxID_ANY, _(NONE));
+        m_model_filename_lbl = new wxStaticText(parent, wxID_ANY, _(NONE));
         wxSizer *filename_sizer = new wxBoxSizer(wxHORIZONTAL);
-        filename_sizer->Add(filename_lbl, 1, wxEXPAND);
+        filename_sizer->Add(m_model_filename_lbl, 1, wxEXPAND);
 
         wxButton *remove_btn = new wxButton(parent, wxID_ANY, _L("Remove"));
         wxGetApp().SetWindowVariantForButton(remove_btn);
@@ -436,36 +411,9 @@ wxPanel *BedShapePanel::init_model_panel()
                                            [this](wxCommandEvent &e)
                                            {
                                                m_custom_model = NONE;
+                                               update_model_label();
                                                update_shape();
                                            }));
-
-        filename_lbl->Bind(wxEVT_UPDATE_UI,
-                           (
-                               [this](wxUpdateUIEvent &e)
-                               {
-                                   e.SetText(_(boost::filesystem::path(m_custom_model).filename().string()));
-                                   wxStaticText *lbl = dynamic_cast<wxStaticText *>(e.GetEventObject());
-                                   if (lbl != nullptr)
-                                   {
-                                       bool exists = (m_custom_model == NONE) ||
-                                                     boost::filesystem::exists(m_custom_model);
-                                       lbl->SetForegroundColour(exists ? wxGetApp().get_label_clr_default()
-                                                                       : wxColor(*wxRED));
-
-                                       wxString tooltip_text = "";
-                                       if (m_custom_model != NONE)
-                                       {
-                                           if (!exists)
-                                               tooltip_text += _L("Not found:") + " ";
-
-                                           tooltip_text += _(m_custom_model);
-                                       }
-
-                                       wxToolTip *tooltip = lbl->GetToolTip();
-                                       if ((tooltip == nullptr) || (tooltip->GetTip() != tooltip_text))
-                                           lbl->SetToolTip(tooltip_text);
-                                   }
-                               }));
 
         remove_btn->Bind(wxEVT_UPDATE_UI, ([this](wxUpdateUIEvent &e) { e.Enable(m_custom_model != NONE); }));
 
@@ -640,6 +588,38 @@ void BedShapePanel::load_stl()
     update_shape();
 }
 
+void BedShapePanel::update_texture_label()
+{
+    if (!m_texture_filename_lbl)
+        return;
+    wxString label = _(boost::filesystem::path(m_custom_texture).filename().string());
+    m_texture_filename_lbl->SetLabel(label);
+
+    bool exists = (m_custom_texture == NONE) || boost::filesystem::exists(m_custom_texture);
+    m_texture_filename_lbl->SetForegroundColour(exists ? wxGetApp().get_label_clr_default() : wxColor(*wxRED));
+
+    wxString tooltip = (m_custom_texture != NONE) ? wxString(_(m_custom_texture)) : "";
+    if (!exists && m_custom_texture != NONE)
+        tooltip = _L("Not found:") + " " + tooltip;
+    m_texture_filename_lbl->SetToolTip(tooltip);
+}
+
+void BedShapePanel::update_model_label()
+{
+    if (!m_model_filename_lbl)
+        return;
+    wxString label = _(boost::filesystem::path(m_custom_model).filename().string());
+    m_model_filename_lbl->SetLabel(label);
+
+    bool exists = (m_custom_model == NONE) || boost::filesystem::exists(m_custom_model);
+    m_model_filename_lbl->SetForegroundColour(exists ? wxGetApp().get_label_clr_default() : wxColor(*wxRED));
+
+    wxString tooltip = (m_custom_model != NONE) ? wxString(_(m_custom_model)) : "";
+    if (!exists && m_custom_model != NONE)
+        tooltip = _L("Not found:") + " " + tooltip;
+    m_model_filename_lbl->SetToolTip(tooltip);
+}
+
 void BedShapePanel::load_texture()
 {
     wxFileDialog dialog(this, _L("Choose a file to import bed texture from (PNG/SVG):"), "", "", file_wildcards(FT_TEX),
@@ -660,6 +640,7 @@ void BedShapePanel::load_texture()
     wxBusyCursor wait;
 
     m_custom_texture = file_name;
+    update_texture_label();
     update_shape();
 }
 
@@ -683,6 +664,7 @@ void BedShapePanel::load_model()
     wxBusyCursor wait;
 
     m_custom_model = file_name;
+    update_model_label();
     update_shape();
 }
 

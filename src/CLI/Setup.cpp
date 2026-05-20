@@ -239,17 +239,23 @@ static bool setup_common()
     // instruct the window manager to fall back to X server mode.
     ::setenv("GDK_BACKEND", "x11", /* replace */ true);
 
-    // WebKit2GTK's compositing mode can fail in GPU-less environments,
-    // causing WebViews to render blank or crash. Only disable compositing and
-    // DMABUF renderer when no GPU is detected (no DRI render nodes).
+    // WebKit2GTK's DMA-BUF renderer uses GBM EGL for compositing.
+    // Disable it when it will fail:
+    //   1. No GPU at all (VMs, RDP, headless) - no DRI render nodes
+    //   2. NVIDIA proprietary + X11 - GBM EGL is unsupported under Xorg;
+    //      WebKit calls abort() with "Could not create GBM EGL display"
+    // Since preFlight forces GDK_BACKEND=x11 above, NVIDIA's GBM EGL will
+    // always fail regardless of the actual session type (Wayland or X11).
     {
+        bool disable_dmabuf = false;
+
+        // Check for GPU presence via DRI device nodes
         bool has_gpu = false;
         if (DIR *dri = opendir("/dev/dri"))
         {
             struct dirent *entry;
             while ((entry = readdir(dri)) != nullptr)
             {
-                // Look for card* or renderD* nodes (indicates a GPU is present)
                 if (strncmp(entry->d_name, "card", 4) == 0 || strncmp(entry->d_name, "renderD", 7) == 0)
                 {
                     has_gpu = true;
@@ -259,6 +265,19 @@ static bool setup_common()
             closedir(dri);
         }
         if (!has_gpu)
+            disable_dmabuf = true;
+
+        // Check for NVIDIA proprietary kernel module
+        if (!disable_dmabuf)
+        {
+            if (DIR *nvidia = opendir("/proc/driver/nvidia"))
+            {
+                closedir(nvidia);
+                disable_dmabuf = true;
+            }
+        }
+
+        if (disable_dmabuf)
         {
             ::setenv("WEBKIT_DISABLE_COMPOSITING_MODE", "1", /* replace */ false);
             ::setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1", /* replace */ false);

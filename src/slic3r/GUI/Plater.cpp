@@ -4282,36 +4282,18 @@ void Plater::priv::set_current_panel(wxPanel *panel)
 
         preview->get_canvas3d()->bind_event_handlers();
 
-        // preFlight enhancement: Preview button should NOT trigger slicing
-        // Only the "Slice now" button should trigger slicing
-        // The original code below would call q->reslice() which triggers automatic slicing
-        /*
-        if (wxGetApp().is_editor()) {
-            // see: Plater::priv::object_list_changed()
-            bool export_in_progress = this->background_process.is_export_scheduled();
-            if (
-                s_multiple_beds.is_bed_occupied(s_multiple_beds.get_active_bed())
-                && !export_in_progress
-                && is_sliceable(s_print_statuses[s_multiple_beds.get_active_bed()])
-            ) {
-                preview->get_canvas3d()->init_gcode_viewer();
-                preview->get_canvas3d()->load_gcode_shells();
-                q->reslice();  // THIS IS WHAT TRIGGERS AUTO-SLICING - DISABLED FOR PREFLIGHT
-            }
-            // keeps current gcode preview, if any
-            preview->reload_print();
-
-            if (! s_multiple_beds.is_bed_occupied(s_multiple_beds.get_active_bed()))
-                preview->get_canvas3d()->reset_gcode_toolpaths();
-
-        }
-        */
-
-        // preFlight replacement: Just load the preview without triggering slicing
         if (wxGetApp().is_editor())
         {
-            preview->get_canvas3d()->init_gcode_viewer();
-            preview->get_canvas3d()->load_gcode_shells();
+            // see: Plater::priv::object_list_changed()
+            bool export_in_progress = this->background_process.is_export_scheduled();
+            if (s_multiple_beds.is_bed_occupied(s_multiple_beds.get_active_bed()) && !export_in_progress &&
+                is_sliceable(s_print_statuses[s_multiple_beds.get_active_bed()]))
+            {
+                preview->get_canvas3d()->init_gcode_viewer();
+                preview->get_canvas3d()->load_gcode_shells();
+                q->reslice();
+            }
+            // keeps current gcode preview, if any
             preview->reload_print();
 
             if (!s_multiple_beds.is_bed_occupied(s_multiple_beds.get_active_bed()))

@@ -21,6 +21,7 @@
 #include <wx/button.h>
 #include <wx/checkbox.h>
 #include <wx/filedlg.h>
+#include <wx/hyperlink.h>
 #include <wx/sizer.h>
 #include <wx/panel.h>
 #include <wx/stattext.h>
@@ -166,10 +167,11 @@ void OrcaImportResultsDialog::build_ui(const OrcaConfigImporter::ImportResult &r
         if (!result.lossy_mappings.empty())
             add_section(main_sizer, content, _L("Imported with Changes"), result.lossy_mappings, 100, true);
 
-        // --- Section 3: Dropped (no equivalent) ---
+        // --- Section 3: Orca-exclusive settings (no match in preFlight) ---
         if (!result.dropped_keys.empty())
-            add_section(main_sizer, content, _L("Dropped Settings (No preFlight Equivalent)"), result.dropped_keys,
-                        120);
+            add_section(main_sizer, content, _L("Skipped Orca-Exclusive Settings"), result.dropped_keys, 120, false,
+                        _L("These settings only exist in OrcaSlicer and have no matching preFlight setting. "
+                           "They cannot be imported."));
 
         // --- Section 4: Unresolved inheritance warnings ---
         if (!result.unresolved_inheritance.empty())
@@ -200,7 +202,8 @@ void OrcaImportResultsDialog::build_ui(const OrcaConfigImporter::ImportResult &r
 }
 
 void OrcaImportResultsDialog::add_section(wxSizer *parent_sizer, wxWindow *parent, const wxString &title,
-                                          const std::vector<std::string> &items, int height, bool double_space)
+                                          const std::vector<std::string> &items, int height, bool double_space,
+                                          const wxString &subtitle)
 {
     // Section label
     wxString label = wxString::Format("%s (%zu)", title, items.size());
@@ -208,6 +211,13 @@ void OrcaImportResultsDialog::add_section(wxSizer *parent_sizer, wxWindow *paren
     section_label->SetFont(section_label->GetFont().Bold());
     m_section_labels.push_back(section_label);
     parent_sizer->Add(section_label, 0, wxLEFT | wxRIGHT | wxTOP, 8);
+
+    if (!subtitle.empty())
+    {
+        wxStaticText *sub = new wxStaticText(parent, wxID_ANY, subtitle);
+        m_section_labels.push_back(sub);
+        parent_sizer->Add(sub, 0, wxLEFT | wxRIGHT, 12);
+    }
 
     // Themed read-only text area with custom scrollbar
     wxString separator = double_space ? "\n\n" : "\n";
@@ -243,8 +253,14 @@ void import_orca_bundle(wxWindow *parent)
 
         sizer->Add(new wxStaticText(&warn_dlg, wxID_ANY,
                                     _L("OrcaSlicer and preFlight use different parameter sets and defaults. "
-                                       "Imported profiles will likely not match OrcaSlicer output exactly.")),
+                                       "Imported profiles will likely not match OrcaSlicer output exactly.\n\n"
+                                       "Many OrcaSlicer settings are exclusive to Orca and have no matching "
+                                       "preFlight setting. These will be skipped during import.")),
                    0, wxALL, 15);
+
+        auto *learn_more = new wxHyperlinkCtrl(&warn_dlg, wxID_ANY, _L("Learn more about Orca import"),
+                                               "https://preflight3d.com/features/orca-import");
+        sizer->Add(learn_more, 0, wxLEFT | wxRIGHT | wxBOTTOM, 15);
 
         sizer->Add(new wxStaticText(&warn_dlg, wxID_ANY,
                                     _L("You must carefully review all imported profiles before printing.")),

@@ -1234,27 +1234,51 @@ void MainFrame::show_connect_tab(const wxString & /*url*/) {}
 
 void MainFrame::show_printer_webview_tab(DynamicPrintConfig *dpc)
 {
-    remove_printer_webview_tab();
-    // if physical printer is selected
-    if (dpc)
+    // No physical printer selected - remove existing tab
+    if (!dpc)
     {
-        std::string url = dpc->opt_string("print_host");
-        if (url.find("http://") != 0 && url.find("https://") != 0)
-        {
-            url = "http://" + url;
-        }
-        // set password / api key
-        if (dynamic_cast<const ConfigOptionEnum<AuthorizationType> *>(dpc->option("printhost_authorization_type"))
-                ->value == AuthorizationType::atKeyPassword)
-        {
-            set_printer_webview_api_key(dpc->opt_string("printhost_apikey"));
-        }
-        else
-        {
-            set_printer_webview_credentials(dpc->opt_string("printhost_user"), dpc->opt_string("printhost_password"));
-        }
-        add_printer_webview_tab(from_u8(url));
+        remove_printer_webview_tab();
+        return;
     }
+
+    std::string url = dpc->opt_string("print_host");
+    if (url.find("http://") != 0 && url.find("https://") != 0)
+        url = "http://" + url;
+    wxString wx_url = from_u8(url);
+
+    // Null-safe auth option access (raw dynamic_cast can return nullptr)
+    auto auth_opt = dpc->option<ConfigOptionEnum<AuthorizationType>>("printhost_authorization_type");
+
+    // If a live webview tab already exists, update auth/URL in place.
+    // Destroying and recreating a wxWebView while WebKit is mid-navigation
+    // can trigger use-after-free crashes in WebKit2GTK on some GPU drivers.
+    if (m_printer_webview_tab_added && m_printer_webview_panel)
+    {
+        if (auth_opt && auth_opt->value == AuthorizationType::atKeyPassword)
+            set_printer_webview_api_key(dpc->opt_string("printhost_apikey"));
+        else
+            set_printer_webview_credentials(dpc->opt_string("printhost_user"), dpc->opt_string("printhost_password"));
+
+        if (wx_url != m_printer_url)
+        {
+            m_printer_url = wx_url;
+            m_printer_webview_panel->LoadURL(wx_url);
+        }
+
+        if (m_modern_tabbar)
+            m_modern_tabbar->SetPrinterConfig(dpc);
+
+        return;
+    }
+
+    remove_printer_webview_tab();
+
+    if (auth_opt && auth_opt->value == AuthorizationType::atKeyPassword)
+        set_printer_webview_api_key(dpc->opt_string("printhost_apikey"));
+    else
+        set_printer_webview_credentials(dpc->opt_string("printhost_user"), dpc->opt_string("printhost_password"));
+
+    add_printer_webview_tab(wx_url);
 }
 
 void MainFrame::add_printer_webview_tab(const wxString &url)

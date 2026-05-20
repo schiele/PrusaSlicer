@@ -1825,16 +1825,17 @@ std::string CoolingBuffer::apply_layer_cooldown(
     };
     std::vector<EmittedMove> emitted_moves;
 
-    bool bridge_ramp_done = false;    // Track if we've already done early ramp for current bridge region
-    std::string current_feature_type; // Track current feature type from ;TYPE: comments
+    bool bridge_ramp_done = false; // Track if we've already done early ramp for current bridge region
+    GCodeExtrusionRole current_feature_role = GCodeExtrusionRole::None;
 
     // Track current position for segment splitting
     float track_x = 0.0f, track_y = 0.0f;
     float track_e = 0.0f; // Previous absolute E position (for absolute E mode split)
     bool have_track_pos = false;
 
-    for (const CoolingLine *line : lines)
+    for (size_t line_idx = 0; line_idx < lines.size(); ++line_idx)
     {
+        const CoolingLine *line = lines[line_idx];
         const char *line_start = gcode.c_str() + line->line_start;
         const char *line_end = gcode.c_str() + line->line_end;
 
@@ -1950,7 +1951,8 @@ std::string CoolingBuffer::apply_layer_cooldown(
                     if (line_len > 6 && strncmp(gap_line_start, ";TYPE:", 6) == 0)
                     {
                         // Extract feature type (everything after ";TYPE:" until newline)
-                        current_feature_type = std::string(gap_line_start + 6, line_len - 6);
+                        current_feature_role = string_to_gcode_extrusion_role(
+                            std::string_view(gap_line_start + 6, line_len - 6));
                     }
                     // Check for M106 (fan speed) - update tracking
                     else if (line_len >= 4 && gap_line_start[0] == 'M' && gap_line_start[1] == '1' &&
@@ -2120,7 +2122,14 @@ std::string CoolingBuffer::apply_layer_cooldown(
             if (res.ec != std::errc::invalid_argument && new_extruder != m_current_extruder)
             {
                 m_current_extruder = new_extruder;
+                manual_fan_active = m_config.enable_manual_fan_speeds.get_at(m_current_extruder);
+                size_t gcode_before_tool = new_gcode.size();
                 change_extruder_set_fan();
+                if (manual_fan_active)
+                {
+                    new_gcode.resize(gcode_before_tool);
+                    emitted_fan_speed = m_fan_speed;
+                }
             }
             new_gcode.append(line_start, line_end - line_start);
         }
@@ -2130,17 +2139,23 @@ std::string CoolingBuffer::apply_layer_cooldown(
         }
         else if (line->type & CoolingLine::TYPE_RESET_FAN_SPEED)
         {
-            change_extruder_set_fan();
+            if (!manual_fan_active)
+                change_extruder_set_fan();
         }
         else if (line->type & CoolingLine::TYPE_BRIDGE_FAN_START)
         {
             // Do early ramp-up for Bridge infill and Overhang perimeter
             // And only once per bridge region (not for every bridge marker)
-            bool is_bridge_infill = (current_feature_type == "Bridge infill");
-            bool is_overhang_perimeter = (current_feature_type == "Overhang perimeter");
+            bool is_bridge_infill = (current_feature_role == GCodeExtrusionRole::BridgeInfill);
+            bool is_overhang_perimeter = (current_feature_role == GCodeExtrusionRole::OverhangPerimeter);
 
-            bool bridge_spinup_enabled = m_config.fan_spinup_bridge_infill.get_at(m_current_extruder);
-            bool overhang_spinup_enabled = m_config.fan_spinup_overhang_perimeter.get_at(m_current_extruder);
+            // Fan ramp unsupported on firmware with non-standard fan commands (M126/M127, M106 P)
+            bool fan_ramp_supported = (m_config.gcode_flavor != gcfMakerWare && m_config.gcode_flavor != gcfSailfish &&
+                                       m_config.gcode_flavor != gcfMach3 && m_config.gcode_flavor != gcfMachinekit);
+            bool bridge_spinup_enabled = fan_ramp_supported &&
+                                         m_config.fan_spinup_bridge_infill.get_at(m_current_extruder);
+            bool overhang_spinup_enabled = fan_ramp_supported &&
+                                           m_config.fan_spinup_overhang_perimeter.get_at(m_current_extruder);
             bool needs_early_ramp = (is_bridge_infill && bridge_spinup_enabled) ||
                                     (is_overhang_perimeter && overhang_spinup_enabled);
             bool did_early_ramp = false;
@@ -2148,24 +2163,18 @@ std::string CoolingBuffer::apply_layer_cooldown(
             // The SET_FAN_SPEED marker appears AFTER BRIDGE_FAN_START in the G-code,
             // so we need to look ahead in the lines vector to find the target fan speed
             int upcoming_fan_speed = -1;
+            for (size_t i = line_idx + 1; i < lines.size(); ++i)
             {
-                auto current_it = std::find(lines.begin(), lines.end(), line);
-                if (current_it != lines.end())
+                if (lines[i]->type & CoolingLine::TYPE_SET_FAN_SPEED)
                 {
-                    for (auto it = current_it + 1; it != lines.end(); ++it)
-                    {
-                        if ((*it)->type & CoolingLine::TYPE_SET_FAN_SPEED)
-                        {
-                            upcoming_fan_speed = (*it)->fan_speed;
-                            break;
-                        }
-                        // Stop at end of this bridge region or start of next
-                        if (((*it)->type & CoolingLine::TYPE_BRIDGE_FAN_END) ||
-                            ((*it)->type & CoolingLine::TYPE_BRIDGE_FAN_START))
-                        {
-                            break;
-                        }
-                    }
+                    upcoming_fan_speed = lines[i]->fan_speed;
+                    break;
+                }
+                // Stop at end of this bridge region or start of next
+                if ((lines[i]->type & CoolingLine::TYPE_BRIDGE_FAN_END) ||
+                    (lines[i]->type & CoolingLine::TYPE_BRIDGE_FAN_START))
+                {
+                    break;
                 }
             }
 
@@ -2251,172 +2260,197 @@ std::string CoolingBuffer::apply_layer_cooldown(
                             const EmittedMove &split_move = emitted_moves[split_move_idx];
                             size_t insert_pos = split_move.gcode_start;
 
-                            // If there's an M106 between insert_pos and current position, replace it instead
-                            // This avoids complex suppression logic and gives us the actual available ramp time
+                            // Can't rewind past a fan-off command (M107 or M106 S0)
                             float actual_ramp_time = ramp_time;
-                            size_t last_m106_pos = new_gcode.rfind("M106 S");
-                            bool replace_m106 = (last_m106_pos != std::string::npos && last_m106_pos > insert_pos);
+                            bool replace_m106 = false;
+                            bool abort_ramp = false;
 
-                            if (replace_m106)
+                            // Find any fan-off between insert_pos and current position
+                            size_t fan_off_pos = std::string::npos;
+                            size_t m107_pos = new_gcode.rfind("M107");
+                            if (m107_pos != std::string::npos && m107_pos > insert_pos)
+                                fan_off_pos = m107_pos;
+                            size_t m106s0_pos = new_gcode.rfind("M106 S0");
+                            if (m106s0_pos != std::string::npos && m106s0_pos > insert_pos)
                             {
-                                // Can't rewind past the M106 - replace it instead
-                                insert_pos = last_m106_pos;
-                                // Calculate actual ramp time from M106 position to now
-                                actual_ramp_time = 0.f;
-                                for (const auto &move : emitted_moves)
-                                {
-                                    if (move.gcode_start >= insert_pos)
-                                    {
-                                        actual_ramp_time += move.time;
-                                    }
-                                }
+                                if (fan_off_pos == std::string::npos || m106s0_pos > fan_off_pos)
+                                    fan_off_pos = m106s0_pos;
                             }
 
-                            // Generate the M106 command with timing comment
-                            std::string fan_cmd = GCodeWriter::set_fan(m_config.gcode_flavor, m_config.gcode_comments,
-                                                                       target_fan_speed);
-                            if (!fan_cmd.empty() && fan_cmd.back() == '\n')
+                            if (fan_off_pos != std::string::npos)
                             {
-                                fan_cmd.pop_back();
-                            }
-
-                            char comment_buf[128];
-                            snprintf(comment_buf, sizeof(comment_buf), " ; Ramping %.3fs before %s\n", actual_ramp_time,
-                                     current_feature_type.c_str());
-                            fan_cmd += comment_buf;
-                            std::string segment_first_part;
-                            std::string segment_second_part;
-                            std::string feedrate_for_split;
-
-                            // If we need to split the segment, generate the two parts
-                            if (need_segment_split && split_move.length > 1.0f)
-                            {
-                                // Parse original G1 to split it
-                                std::string_view orig_line(new_gcode.data() + split_move.gcode_start,
-                                                           split_move.gcode_end - split_move.gcode_start);
-
-                                // Find line end (without trailing newline)
-                                size_t line_end_pos = orig_line.find('\n');
-                                if (line_end_pos != std::string_view::npos)
-                                    orig_line = orig_line.substr(0, line_end_pos);
-
-                                // Calculate split position using linear interpolation
-                                float split_x = split_move.start_x +
-                                                split_fraction * (split_move.end_x - split_move.start_x);
-                                float split_y = split_move.start_y +
-                                                split_fraction * (split_move.end_y - split_move.start_y);
-
-                                // Parse E value from original line
-                                float orig_e = 0.0f;
-                                float orig_f = split_move.feedrate;
-                                bool has_e = false;
-                                size_t e_pos = orig_line.find('E');
-                                if (e_pos != std::string_view::npos)
-                                {
-                                    orig_e = strtof(orig_line.data() + e_pos + 1, nullptr);
-                                    has_e = true;
-                                }
-                                size_t f_pos = orig_line.find('F');
-                                if (f_pos != std::string_view::npos)
-                                {
-                                    orig_f = strtof(orig_line.data() + f_pos + 1, nullptr);
-                                }
-
-                                // Generate first part (from start to split point)
-                                // Feedrate handled separately via inject_feedrate at emission point
-                                char buf[256];
-                                segment_first_part.clear();
-
-                                if (int(orig_f) != current_feedrate)
-                                {
-                                    snprintf(buf, sizeof(buf), "G1 F%.0f\n", orig_f);
-                                    feedrate_for_split = buf;
-                                }
-
-                                if (has_e)
-                                {
-                                    float e_first;
-                                    if (m_config.use_relative_e_distances.value)
-                                    {
-                                        // Relative E: split proportionally
-                                        e_first = orig_e * split_fraction;
-                                    }
-                                    else
-                                    {
-                                        // Absolute E: interpolate between previous and current position
-                                        float prev_e = split_move.prev_abs_e;
-                                        float delta_e = orig_e - prev_e;
-                                        e_first = prev_e + delta_e * split_fraction;
-                                    }
-                                    snprintf(buf, sizeof(buf), "G1 X%.3f Y%.3f E%.5f\n", split_x, split_y, e_first);
-                                }
-                                else
-                                {
-                                    snprintf(buf, sizeof(buf), "G1 X%.3f Y%.3f\n", split_x, split_y);
-                                }
-                                segment_first_part += buf;
-
-                                // Generate second part (from split point to end)
-                                // No feedrate needed - already set by first part
-                                if (has_e)
-                                {
-                                    float e_second;
-                                    if (m_config.use_relative_e_distances.value)
-                                        e_second = orig_e * (1.0f - split_fraction);
-                                    else
-                                        e_second = orig_e; // Absolute: end at original endpoint
-                                    snprintf(buf, sizeof(buf), "G1 X%.3f Y%.3f E%.5f\n", split_move.end_x,
-                                             split_move.end_y, e_second);
-                                }
-                                else
-                                {
-                                    snprintf(buf, sizeof(buf), "G1 X%.3f Y%.3f\n", split_move.end_x, split_move.end_y);
-                                }
-                                segment_second_part = buf;
-                            }
-
-                            // Build modified G-code
-                            std::string new_gcode_modified;
-                            new_gcode_modified.reserve(new_gcode.size() + fan_cmd.size() + segment_first_part.size() +
-                                                       segment_second_part.size());
-
-                            // Copy up to insert_pos
-                            new_gcode_modified.append(new_gcode, 0, insert_pos);
-
-                            if (replace_m106)
-                            {
-                                // Replace existing M106 - add our command, skip old M106 line
-                                new_gcode_modified += fan_cmd;
-                                size_t line_end = new_gcode.find('\n', insert_pos);
-                                if (line_end != std::string::npos)
-                                    new_gcode_modified.append(new_gcode, line_end + 1, std::string::npos);
-                            }
-                            else if (need_segment_split && (!segment_first_part.empty() || !feedrate_for_split.empty()))
-                            {
-                                // Split a G1 move: feedrate + first_part + M106 + second_part
-                                if (!feedrate_for_split.empty())
-                                    inject_feedrate(new_gcode_modified, feedrate_for_split);
-                                new_gcode_modified += segment_first_part;
-                                new_gcode_modified += fan_cmd;
-                                new_gcode_modified += segment_second_part;
-
-                                // Skip the original line when copying the rest
-                                size_t orig_line_end = new_gcode.find('\n', split_move.gcode_start);
-                                if (orig_line_end != std::string::npos)
-                                    new_gcode_modified.append(new_gcode, orig_line_end + 1, std::string::npos);
+                                abort_ramp = true;
+                                emitted_moves.clear();
                             }
                             else
                             {
-                                // Simple insert at the start of the move
-                                new_gcode_modified += fan_cmd;
-                                new_gcode_modified.append(new_gcode, insert_pos, std::string::npos);
+                                // Check for M106 between insert_pos and current position
+                                size_t last_m106_pos = new_gcode.rfind("M106 S");
+                                replace_m106 = (last_m106_pos != std::string::npos && last_m106_pos > insert_pos);
+
+                                if (replace_m106)
+                                {
+                                    insert_pos = last_m106_pos;
+                                    actual_ramp_time = 0.f;
+                                    for (const auto &move : emitted_moves)
+                                    {
+                                        if (move.gcode_start >= insert_pos)
+                                            actual_ramp_time += move.time;
+                                    }
+                                }
                             }
 
-                            new_gcode = std::move(new_gcode_modified);
-                            emitted_fan_speed = target_fan_speed;
-                            bridge_ramp_done = true;
-                            did_early_ramp = true;
-                            emitted_moves.clear(); // Positions are now invalid
+                            if (!abort_ramp)
+                            {
+                                // Generate the M106 command with timing comment
+                                std::string fan_cmd = GCodeWriter::set_fan(m_config.gcode_flavor,
+                                                                           m_config.gcode_comments, target_fan_speed);
+                                if (!fan_cmd.empty() && fan_cmd.back() == '\n')
+                                {
+                                    fan_cmd.pop_back();
+                                }
+
+                                char comment_buf[128];
+                                snprintf(comment_buf, sizeof(comment_buf), " ; Ramping %.3fs before %s\n",
+                                         actual_ramp_time,
+                                         gcode_extrusion_role_to_string(current_feature_role).c_str());
+                                fan_cmd += comment_buf;
+                                std::string segment_first_part;
+                                std::string segment_second_part;
+                                std::string feedrate_for_split;
+
+                                // If we need to split the segment, generate the two parts
+                                if (need_segment_split && split_move.length > 1.0f)
+                                {
+                                    // Parse original G1 to split it
+                                    std::string_view orig_line(new_gcode.data() + split_move.gcode_start,
+                                                               split_move.gcode_end - split_move.gcode_start);
+
+                                    // Find line end (without trailing newline)
+                                    size_t line_end_pos = orig_line.find('\n');
+                                    if (line_end_pos != std::string_view::npos)
+                                        orig_line = orig_line.substr(0, line_end_pos);
+
+                                    // Calculate split position using linear interpolation
+                                    float split_x = split_move.start_x +
+                                                    split_fraction * (split_move.end_x - split_move.start_x);
+                                    float split_y = split_move.start_y +
+                                                    split_fraction * (split_move.end_y - split_move.start_y);
+
+                                    // Parse E value from original line
+                                    float orig_e = 0.0f;
+                                    float orig_f = split_move.feedrate;
+                                    bool has_e = false;
+                                    size_t e_pos = orig_line.find('E');
+                                    if (e_pos != std::string_view::npos)
+                                    {
+                                        orig_e = strtof(orig_line.data() + e_pos + 1, nullptr);
+                                        has_e = true;
+                                    }
+                                    size_t f_pos = orig_line.find('F');
+                                    if (f_pos != std::string_view::npos)
+                                    {
+                                        orig_f = strtof(orig_line.data() + f_pos + 1, nullptr);
+                                    }
+
+                                    // Generate first part (from start to split point)
+                                    // Feedrate handled separately via inject_feedrate at emission point
+                                    char buf[256];
+                                    segment_first_part.clear();
+
+                                    if (int(orig_f) != current_feedrate)
+                                    {
+                                        snprintf(buf, sizeof(buf), "G1 F%.0f\n", orig_f);
+                                        feedrate_for_split = buf;
+                                    }
+
+                                    if (has_e)
+                                    {
+                                        float e_first;
+                                        if (m_config.use_relative_e_distances.value)
+                                        {
+                                            // Relative E: split proportionally
+                                            e_first = orig_e * split_fraction;
+                                        }
+                                        else
+                                        {
+                                            // Absolute E: interpolate between previous and current position
+                                            float prev_e = split_move.prev_abs_e;
+                                            float delta_e = orig_e - prev_e;
+                                            e_first = prev_e + delta_e * split_fraction;
+                                        }
+                                        snprintf(buf, sizeof(buf), "G1 X%.3f Y%.3f E%.5f\n", split_x, split_y, e_first);
+                                    }
+                                    else
+                                    {
+                                        snprintf(buf, sizeof(buf), "G1 X%.3f Y%.3f\n", split_x, split_y);
+                                    }
+                                    segment_first_part += buf;
+
+                                    // Generate second part (from split point to end)
+                                    // No feedrate needed - already set by first part
+                                    if (has_e)
+                                    {
+                                        float e_second;
+                                        if (m_config.use_relative_e_distances.value)
+                                            e_second = orig_e * (1.0f - split_fraction);
+                                        else
+                                            e_second = orig_e; // Absolute: end at original endpoint
+                                        snprintf(buf, sizeof(buf), "G1 X%.3f Y%.3f E%.5f\n", split_move.end_x,
+                                                 split_move.end_y, e_second);
+                                    }
+                                    else
+                                    {
+                                        snprintf(buf, sizeof(buf), "G1 X%.3f Y%.3f\n", split_move.end_x,
+                                                 split_move.end_y);
+                                    }
+                                    segment_second_part = buf;
+                                }
+
+                                // Build modified G-code
+                                std::string new_gcode_modified;
+                                new_gcode_modified.reserve(new_gcode.size() + fan_cmd.size() +
+                                                           segment_first_part.size() + segment_second_part.size());
+
+                                // Copy up to insert_pos
+                                new_gcode_modified.append(new_gcode, 0, insert_pos);
+
+                                if (replace_m106)
+                                {
+                                    // Replace existing M106 - add our command, skip old M106 line
+                                    new_gcode_modified += fan_cmd;
+                                    size_t line_end = new_gcode.find('\n', insert_pos);
+                                    if (line_end != std::string::npos)
+                                        new_gcode_modified.append(new_gcode, line_end + 1, std::string::npos);
+                                }
+                                else if (need_segment_split &&
+                                         (!segment_first_part.empty() || !feedrate_for_split.empty()))
+                                {
+                                    // Split a G1 move: feedrate + first_part + M106 + second_part
+                                    if (!feedrate_for_split.empty())
+                                        inject_feedrate(new_gcode_modified, feedrate_for_split);
+                                    new_gcode_modified += segment_first_part;
+                                    new_gcode_modified += fan_cmd;
+                                    new_gcode_modified += segment_second_part;
+
+                                    // Skip the original line when copying the rest
+                                    size_t orig_line_end = new_gcode.find('\n', split_move.gcode_start);
+                                    if (orig_line_end != std::string::npos)
+                                        new_gcode_modified.append(new_gcode, orig_line_end + 1, std::string::npos);
+                                }
+                                else
+                                {
+                                    // Simple insert at the start of the move
+                                    new_gcode_modified += fan_cmd;
+                                    new_gcode_modified.append(new_gcode, insert_pos, std::string::npos);
+                                }
+
+                                new_gcode = std::move(new_gcode_modified);
+                                emitted_fan_speed = target_fan_speed;
+                                bridge_ramp_done = true;
+                                did_early_ramp = true;
+                                emitted_moves.clear(); // Positions are now invalid
+                            } // !abort_ramp
                         }
                     }
                 }
@@ -2426,7 +2460,7 @@ std::string CoolingBuffer::apply_layer_cooldown(
                 {
                     new_gcode += GCodeWriter::set_fan(m_config.gcode_flavor, m_config.gcode_comments, target_fan_speed);
                     emitted_fan_speed = target_fan_speed;
-                    bridge_ramp_done = true; // Don't trigger again for this bridge region
+                    bridge_ramp_done = true;
                 }
             }
 
@@ -2440,10 +2474,28 @@ std::string CoolingBuffer::apply_layer_cooldown(
         }
         else if (line->type & CoolingLine::TYPE_BRIDGE_FAN_END)
         {
-            bridge_ramp_done = false; // Allow early ramp-up for next bridge region
-            // Recompute baseline fan speed from scratch - _SET_FAN_SPEED markers during
-            // bridge regions may have overwritten m_fan_speed with the overhang/bridge value.
-            change_extruder_set_fan();
+            bridge_ramp_done = false;
+
+            // Manual fan: _SET_FAN_SPEED markers handle all transitions
+            if (!manual_fan_active)
+            {
+                // Only reset fan at true bridge boundaries, not between same-feature islands
+                bool skip_reset = false;
+                for (size_t i = line_idx + 1; i < lines.size(); ++i)
+                {
+                    if (lines[i]->type & CoolingLine::TYPE_BRIDGE_FAN_START)
+                    {
+                        skip_reset = true;
+                        break;
+                    }
+                    if (lines[i]->type & (CoolingLine::TYPE_SET_FAN_SPEED | CoolingLine::TYPE_RESET_FAN_SPEED |
+                                          CoolingLine::TYPE_EXTRUDE_END))
+                        break;
+                }
+
+                if (!skip_reset)
+                    change_extruder_set_fan();
+            }
         }
         else if (line->type & CoolingLine::TYPE_EXTRUDE_END)
         {

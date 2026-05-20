@@ -1,11 +1,10 @@
 cmake_minimum_required(VERSION 3.13)
 project(OCCTWrapper)
 
-if (APPLE)
-    # TODO: we need to fix notarization with the separate shared library
-    add_library(OCCTWrapper STATIC OCCTWrapper.cpp)
-else ()
+if (WIN32)
     add_library(OCCTWrapper MODULE OCCTWrapper.cpp)
+else ()
+    add_library(OCCTWrapper STATIC OCCTWrapper.cpp)
 endif ()
 
 # Place OCCTWrapper next to the main executable so dlopen()/LoadLibrary() can find it.
@@ -74,5 +73,7 @@ target_link_libraries(OCCTWrapper libslic3r admesh)
 
 include(GNUInstallDirs)
 
-install(TARGETS OCCTWrapper DESTINATION "${CMAKE_INSTALL_BINDIR}")
+if (WIN32)
+    install(TARGETS OCCTWrapper DESTINATION "${CMAKE_INSTALL_BINDIR}")
+endif ()
 

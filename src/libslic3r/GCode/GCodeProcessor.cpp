@@ -752,6 +752,7 @@ GCodeProcessorResult::GCodeProcessorResult(GCodeProcessorResult &&other) noexcep
     , print_statistics(std::move(other.print_statistics))
     , gcode_object(other.gcode_object)
     , owns_gcode_object(other.owns_gcode_object)
+    , binary_data(std::move(other.binary_data))
 {
     other.gcode_object = nullptr;
     other.owns_gcode_object = false;
@@ -793,6 +794,7 @@ GCodeProcessorResult &GCodeProcessorResult::operator=(GCodeProcessorResult &&oth
         // Transfer virtual file ownership
         gcode_object = other.gcode_object;
         owns_gcode_object = other.owns_gcode_object;
+        binary_data = std::move(other.binary_data);
 
         other.gcode_object = nullptr;
         other.owns_gcode_object = false;
@@ -836,6 +838,7 @@ void GCodeProcessorResult::reset()
         gcode_object = nullptr;
     }
     owns_gcode_object = false;
+    binary_data.reset();
 
 #ifdef _WIN32
     _heapmin();                                                              // Compact the heap
@@ -2364,6 +2367,113 @@ void GCodeProcessor::post_process_gcode_object()
             if (map_it != gcode_lines_map.end() && map_it->first == move.gcode_id)
                 move.gcode_id = map_it->second;
         }
+    }
+
+    // Binary gcode: populate metadata for deferred export
+    if (m_binarizer.is_enabled())
+    {
+        auto stringify = [](const std::vector<double> &values)
+        {
+            std::string ret;
+            char buf[1024];
+            for (size_t i = 0; i < values.size(); ++i)
+            {
+                sprintf(buf, i < values.size() - 1 ? "%.2lf, " : "%.2lf", values[i]);
+                ret += buf;
+            }
+            return ret;
+        };
+
+        double total_g_wipe_tower = m_print ? m_print->print_statistics().total_wipe_tower_filament_weight : 0.0;
+
+        bgcode::binarize::BinaryData &binary_data = m_binarizer.get_binary_data();
+        binary_data.print_metadata.raw_data.emplace_back(PrintStatistics::FilamentUsedMm, stringify(filament_mm));
+        binary_data.print_metadata.raw_data.emplace_back(PrintStatistics::FilamentUsedCm3, stringify(filament_cm3));
+        binary_data.print_metadata.raw_data.emplace_back(PrintStatistics::FilamentUsedG, stringify(filament_g));
+        binary_data.print_metadata.raw_data.emplace_back(PrintStatistics::FilamentCost, stringify(filament_cost));
+        binary_data.print_metadata.raw_data.emplace_back(PrintStatistics::TotalFilamentUsedG,
+                                                         stringify({filament_total_g}));
+        binary_data.print_metadata.raw_data.emplace_back(PrintStatistics::TotalFilamentCost,
+                                                         stringify({filament_total_cost}));
+        binary_data.print_metadata.raw_data.emplace_back(PrintStatistics::TotalFilamentUsedWipeTower,
+                                                         stringify({total_g_wipe_tower}));
+
+        binary_data.printer_metadata.raw_data.emplace_back(PrintStatistics::FilamentUsedMm, stringify(filament_mm));
+        binary_data.printer_metadata.raw_data.emplace_back(PrintStatistics::FilamentUsedG, stringify(filament_g));
+        binary_data.printer_metadata.raw_data.emplace_back(PrintStatistics::FilamentCost, stringify(filament_cost));
+        binary_data.printer_metadata.raw_data.emplace_back(PrintStatistics::FilamentUsedCm3, stringify(filament_cm3));
+        binary_data.printer_metadata.raw_data.emplace_back(PrintStatistics::TotalFilamentUsedWipeTower,
+                                                           stringify({total_g_wipe_tower}));
+
+        for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i)
+        {
+            const TimeMachine &machine = m_time_processor.machines[i];
+            PrintEstimatedStatistics::ETimeMode mode = static_cast<PrintEstimatedStatistics::ETimeMode>(i);
+            if (mode == PrintEstimatedStatistics::ETimeMode::Normal || machine.enabled)
+            {
+                char buf[128];
+                sprintf(buf, "(%s mode)", (mode == PrintEstimatedStatistics::ETimeMode::Normal) ? "normal" : "silent");
+                binary_data.print_metadata.raw_data.emplace_back("estimated printing time " + std::string(buf),
+                                                                 get_time_dhms(machine.time));
+                binary_data.print_metadata.raw_data.emplace_back("estimated first layer printing time " +
+                                                                     std::string(buf),
+                                                                 get_time_dhms(machine.first_layer_time));
+                binary_data.printer_metadata.raw_data.emplace_back("estimated printing time " + std::string(buf),
+                                                                   get_time_dhms(machine.time));
+            }
+        }
+
+        // Store binary data in result for deferred export
+        m_result.binary_data = binary_data;
+    }
+}
+
+void GCodeProcessor::write_binary_gcode_from_file(const std::string &binary_path, const std::string &text_path,
+                                                  bgcode::binarize::BinaryData binary_data)
+{
+    try
+    {
+        bgcode::binarize::Binarizer binarizer;
+        binarizer.set_enabled(true);
+        binarizer.get_binary_data() = std::move(binary_data);
+
+        FilePtr out{boost::nowide::fopen(binary_path.c_str(), "wb")};
+        if (out.f == nullptr)
+            throw Slic3r::RuntimeError(std::string("Cannot open file for binary gcode export: ") + binary_path);
+
+        const bgcode::core::EResult res = binarizer.initialize(*out.f, s_binarizer_config);
+        if (res != bgcode::core::EResult::Success)
+            throw Slic3r::RuntimeError(
+                format("Unable to initialize the gcode binarizer.\nError: %1%", bgcode::core::translate_result(res)));
+
+        // Read text file and feed line-by-line to the binarizer
+        boost::nowide::ifstream in(text_path, std::ios::binary);
+        if (!in.is_open())
+            throw Slic3r::RuntimeError(std::string("Cannot open text gcode for binarization: ") + text_path);
+
+        std::string line;
+        while (std::getline(in, line))
+        {
+            line += '\n';
+            if (binarizer.append_gcode(line) != bgcode::core::EResult::Success)
+                throw Slic3r::RuntimeError("Error while sending gcode to the binarizer.");
+        }
+
+        if (in.bad())
+            throw Slic3r::RuntimeError(std::string("I/O error reading text gcode: ") + text_path);
+
+        in.close();
+
+        if (binarizer.finalize() != bgcode::core::EResult::Success)
+            throw Slic3r::RuntimeError("Error while finalizing the gcode binarizer.");
+
+        if (ferror(out.f))
+            throw Slic3r::RuntimeError(std::string("I/O error writing binary gcode: ") + binary_path);
+    }
+    catch (...)
+    {
+        boost::filesystem::remove(binary_path);
+        throw;
     }
 }
 

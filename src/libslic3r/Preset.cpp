@@ -467,11 +467,9 @@ void Preset::set_visible_from_appconfig(const AppConfig &app_config)
 
     if (type == TYPE_PRINTER)
     {
-        const std::string &model = config.opt_string("printer_model");
-        const std::string &variant = config.opt_string("printer_variant");
-        if (model.empty() || variant.empty())
-            return;
-        is_visible = app_config.get_variant(vendor->id, model, variant);
+        // preFlight: user .ini files in the printer folder are the source of truth.
+        // The vendor pointer is only for bed model/texture resolution.
+        is_visible = true;
     }
     else if (type == TYPE_FILAMENT)
     {

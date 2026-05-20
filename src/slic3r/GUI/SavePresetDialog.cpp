@@ -116,7 +116,8 @@ void SavePresetDialog::Item::init_input_name_ctrl(wxBoxSizer *input_name_sizer, 
         std::vector<std::string> values;
         for (const Preset &preset : *m_presets)
         {
-            if (preset.is_default || preset.is_system || preset.is_external)
+            if (preset.is_default || preset.is_system || preset.is_external || !preset.is_visible ||
+                !preset.is_compatible)
                 continue;
             values.push_back(preset.name);
         }

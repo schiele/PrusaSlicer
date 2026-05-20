@@ -2289,7 +2289,8 @@ void PrintObject::bridge_over_infill()
 
                     for (const LayerRegion *region : layer->regions())
                     {
-                        SurfacesPtr region_internal_solids = region->fill_surfaces().filter_by_type(stInternalSolid);
+                        SurfacesPtr region_internal_solids = region->fill_surfaces().filter_by_types(
+                            {stInternalSolid, stBridgeAnchor});
                         for (const Surface *s : region_internal_solids)
                         {
                             Polygons unsupported = intersection(to_polygons(s->expolygon), unsupported_area);
@@ -2421,7 +2422,8 @@ void PrintObject::bridge_over_infill()
                                               region->num_interlocking_shells() > 0;
 
                 ExPolygons sparse_infill = to_expolygons(region->fill_surfaces().filter_by_type(stInternal));
-                ExPolygons solid_infill = to_expolygons(region->fill_surfaces().filter_by_type(stInternalSolid));
+                ExPolygons solid_infill = to_expolygons(
+                    region->fill_surfaces().filter_by_types({stInternalSolid, stBridgeAnchor}));
 
                 if (sparse_infill.empty())
                 {
@@ -2443,7 +2445,7 @@ void PrintObject::bridge_over_infill()
                 // the same way to maintain proper solid infill structure.
                 sparse_infill = diff_ex(sparse_infill, solid_infill);
 
-                region->m_fill_surfaces.remove_types({stInternalSolid, stInternal});
+                region->m_fill_surfaces.remove_types({stInternalSolid, stBridgeAnchor, stInternal});
 
                 // This modification prevented bridge anchor areas from being added as stInternalSolid when
                 // interlocking was enabled. Now we always add them as solid to preserve the proper
@@ -3034,7 +3036,7 @@ void PrintObject::bridge_over_infill()
                         Polygons top_polys = to_polygons(region->fill_surfaces().filter_by_types({stTop}));
                         total_top_area.insert(total_top_area.end(), top_polys.begin(), top_polys.end());
                         Polygons internal_polys = to_polygons(
-                            region->fill_surfaces().filter_by_types({stInternal, stInternalSolid}));
+                            region->fill_surfaces().filter_by_types({stInternal, stInternalSolid, stBridgeAnchor}));
                         expansion_area.insert(expansion_area.end(), internal_polys.begin(), internal_polys.end());
                         Polygons fill_polys = to_polygons(region->fill_expolygons());
                         total_fill_area.insert(total_fill_area.end(), fill_polys.begin(), fill_polys.end());
@@ -3175,7 +3177,8 @@ void PrintObject::bridge_over_infill()
             ExPolygons solids;
             for (const LayerRegion *layerm : layer->upper_layer->regions())
             {
-                ExPolygons region_solids = to_expolygons(layerm->fill_surfaces().filter_by_type(stInternalSolid));
+                ExPolygons region_solids = to_expolygons(
+                    layerm->fill_surfaces().filter_by_types({stInternalSolid, stBridgeAnchor}));
                 solids.insert(solids.end(), region_solids.begin(), region_solids.end());
             }
             if (!solids.empty())
@@ -3254,7 +3257,8 @@ void PrintObject::bridge_over_infill()
                         new_surfaces.emplace_back(stInternal, ep);
                     }
 
-                    SurfacesPtr internal_solids = region->m_fill_surfaces.filter_by_type(stInternalSolid);
+                    SurfacesPtr internal_solids = region->m_fill_surfaces.filter_by_types(
+                        {stInternalSolid, stBridgeAnchor});
                     if (surfaces_by_layer.find(lidx) != surfaces_by_layer.end())
                     {
                         // When interlocking is enabled, use pre-snapshotted solid infill from the layer above
@@ -3358,16 +3362,25 @@ void PrintObject::bridge_over_infill()
                         }
                     }
 
+                    // Bridge anchor ring: emit as stBridgeAnchor before unioning
+                    // with regular internal solids so the type is preserved.
+                    ExPolygons bridge_anchors;
+                    if (!additional_ensuring.empty())
+                    {
+                        bridge_anchors = diff_ex(additional_ensuring, cut_from_infill);
+                        bridge_anchors = union_safety_offset_ex(bridge_anchors);
+                        for (const ExPolygon &ep : bridge_anchors)
+                            new_surfaces.emplace_back(stBridgeAnchor, ep);
+                    }
+
                     ExPolygons new_internal_solids = to_expolygons(internal_solids);
-                    new_internal_solids.insert(new_internal_solids.end(), additional_ensuring.begin(),
-                                               additional_ensuring.end());
                     new_internal_solids = diff_ex(new_internal_solids, cut_from_infill);
+                    if (!bridge_anchors.empty())
+                        new_internal_solids = diff_ex(new_internal_solids, bridge_anchors);
                     new_internal_solids = union_safety_offset_ex(new_internal_solids);
 
                     for (const ExPolygon &ep : new_internal_solids)
-                    {
                         new_surfaces.emplace_back(stInternalSolid, ep);
-                    }
 
 #ifdef DEBUG_BRIDGE_OVER_INFILL
                     debug_draw("Aensuring_" + std::to_string(reinterpret_cast<uint64_t>(&region)),
@@ -3379,7 +3392,7 @@ void PrintObject::bridge_over_infill()
                                to_polylines(to_polygons(new_internal_solids)));
 #endif
 
-                    region->m_fill_surfaces.remove_types({stInternalSolid, stInternal});
+                    region->m_fill_surfaces.remove_types({stInternalSolid, stBridgeAnchor, stInternal});
                     region->m_fill_surfaces.append(new_surfaces);
                 }
             } // for lidx

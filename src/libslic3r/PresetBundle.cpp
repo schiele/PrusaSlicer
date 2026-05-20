@@ -289,10 +289,48 @@ PresetsConfigSubstitutions PresetBundle::load_presets(
     AppConfig &config, ForwardCompatibilitySubstitutionRule substitution_rule,
     const PresetPreferences &preferred_selection /* = PresetPreferences()*/)
 {
-    // First load the vendor specific system presets.
     PresetsConfigSubstitutions substitutions;
     std::string errors_cummulative;
-    std::tie(substitutions, errors_cummulative) = this->load_system_presets(substitution_rule);
+
+    // Quick scan of installed printer models before loading vendor bundles.
+    // Only vendors with models matching installed printers need full loading.
+    std::set<std::string> installed_models;
+    {
+        boost::filesystem::path printer_dir =
+            boost::filesystem::absolute(boost::filesystem::path(data_dir()) / "printer").make_preferred();
+        if (boost::filesystem::is_directory(printer_dir))
+        {
+            for (auto &entry : boost::filesystem::directory_iterator(printer_dir))
+            {
+                if (!Slic3r::is_ini_file(entry))
+                    continue;
+                boost::nowide::ifstream ifs(entry.path().string());
+                std::string line;
+                while (std::getline(ifs, line))
+                {
+                    boost::algorithm::trim_left(line);
+                    if (line.compare(0, 14, "printer_model ") == 0 || line.compare(0, 14, "printer_model=") == 0)
+                    {
+                        auto eq = line.find('=');
+                        if (eq != std::string::npos)
+                        {
+                            std::string model = line.substr(eq + 1);
+                            boost::algorithm::trim(model);
+                            if (!model.empty())
+                                installed_models.insert(model);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Load vendor bundles: full load for vendors with installed printers, VendorProfile only for others
+    std::tie(substitutions, errors_cummulative) = this->load_system_presets(substitution_rule, installed_models);
+
+    // Clear vendor-loaded printer presets - user .ini files are the sole source of truth
+    this->printers.reset(false);
 
     const std::string &dir_user_presets = data_dir()
 #ifdef SLIC3R_PROFILE_USE_PRESETS_SUBDIR
@@ -303,6 +341,47 @@ PresetsConfigSubstitutions PresetBundle::load_presets(
 #endif
         ;
 
+    // Load printers first so we can filter print presets by compatibility
+    try
+    {
+        this->printers.load_presets(dir_user_presets, "printer", substitutions, substitution_rule);
+    }
+    catch (const std::runtime_error &err)
+    {
+        errors_cummulative += err.what();
+    }
+
+    // Re-link vendor pointers on user printer presets for bed model/texture resolution.
+    // The reset above cleared vendor presets, so load_presets couldn't inherit them.
+    // Match via printer_model against the VendorProfile::PrinterModel entries in this->vendors.
+    for (Preset &preset : this->printers)
+    {
+        if (preset.is_default || preset.vendor != nullptr)
+            continue;
+        const std::string &model_id = preset.config.opt_string("printer_model");
+        if (model_id.empty())
+            continue;
+        for (const auto &[vendor_id, vendor_profile] : this->vendors)
+        {
+            auto it = std::find_if(vendor_profile.models.begin(), vendor_profile.models.end(),
+                                   [&model_id](const VendorProfile::PrinterModel &pm) { return pm.id == model_id; });
+            if (it != vendor_profile.models.end())
+            {
+                preset.vendor = &vendor_profile;
+                break;
+            }
+        }
+    }
+
+    try
+    {
+        this->physical_printers.load_printers(dir_user_presets, "physical_printer", substitutions, substitution_rule);
+    }
+    catch (const std::runtime_error &err)
+    {
+        errors_cummulative += err.what();
+    }
+
     try
     {
         this->prints.load_presets(dir_user_presets, "print", substitutions, substitution_rule);
@@ -311,6 +390,52 @@ PresetsConfigSubstitutions PresetBundle::load_presets(
     {
         errors_cummulative += err.what();
     }
+
+    // Filter print presets to only those compatible with at least one installed printer.
+    {
+        bool has_visible_printers = false;
+        for (const Preset &printer : this->printers)
+            if (!printer.is_default && printer.is_visible)
+            {
+                has_visible_printers = true;
+                break;
+            }
+
+        if (has_visible_printers)
+        {
+            // Step 1: Filter in-memory presets to only compatible ones
+            auto &presets = this->prints.m_presets;
+            size_t num_defaults = this->prints.num_default_presets();
+            std::deque<Preset> filtered;
+            for (size_t i = 0; i < num_defaults; ++i)
+                filtered.push_back(std::move(presets[i]));
+
+            for (size_t i = num_defaults; i < presets.size(); ++i)
+            {
+                Preset &print_preset = presets[i];
+                bool compatible_with_any = false;
+                const PresetWithVendorProfile print_with_vendor = {print_preset, nullptr};
+
+                for (const Preset &printer : this->printers)
+                {
+                    if (printer.is_default || !printer.is_visible)
+                        continue;
+                    const PresetWithVendorProfile printer_with_vendor = this->printers.get_preset_with_vendor_profile(
+                        printer);
+                    if (is_compatible_with_printer(print_with_vendor, printer_with_vendor))
+                    {
+                        compatible_with_any = true;
+                        break;
+                    }
+                }
+                if (compatible_with_any)
+                    filtered.push_back(std::move(print_preset));
+            }
+            presets = std::move(filtered);
+            this->prints.select_preset(this->prints.first_visible_idx());
+        }
+    }
+
     try
     {
         this->sla_prints.load_presets(dir_user_presets, "sla_print", substitutions, substitution_rule);
@@ -335,22 +460,7 @@ PresetsConfigSubstitutions PresetBundle::load_presets(
     {
         errors_cummulative += err.what();
     }
-    try
-    {
-        this->printers.load_presets(dir_user_presets, "printer", substitutions, substitution_rule);
-    }
-    catch (const std::runtime_error &err)
-    {
-        errors_cummulative += err.what();
-    }
-    try
-    {
-        this->physical_printers.load_printers(dir_user_presets, "physical_printer", substitutions, substitution_rule);
-    }
-    catch (const std::runtime_error &err)
-    {
-        errors_cummulative += err.what();
-    }
+
     this->update_multi_material_filament_presets();
     this->update_compatible(PresetSelectCompatibleType::Never);
     if (!errors_cummulative.empty())
@@ -364,7 +474,7 @@ PresetsConfigSubstitutions PresetBundle::load_presets(
 // Load system presets into this PresetBundle.
 // For each vendor, there will be a single PresetBundle loaded.
 std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_presets(
-    ForwardCompatibilitySubstitutionRule compatibility_rule)
+    ForwardCompatibilitySubstitutionRule compatibility_rule, const std::set<std::string> &installed_models)
 {
     if (compatibility_rule == ForwardCompatibilitySubstitutionRule::EnableSystemSilent)
         // Loading system presets, don't log substitutions.
@@ -378,6 +488,11 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
     PresetsConfigSubstitutions substitutions;
     std::string errors_cummulative;
     bool first = true;
+
+    // Deferred VendorProfiles for vendors without installed printers.
+    // These are inserted after the first full-load vendor's reset() to avoid being wiped.
+    VendorMap deferred_vendors;
+
     for (auto &dir_entry : boost::filesystem::directory_iterator(dir))
         if (Slic3r::is_ini_file(dir_entry))
         {
@@ -387,9 +502,40 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
             // Filaments.ini is a standalone filament database, not a vendor bundle
             if (name == "Filaments")
                 continue;
+
+            // Determine if this vendor has any installed printers.
+            // Vendors without installed printers only need VendorProfile data (bed models, textures).
+            bool vendor_has_installed_printers = installed_models.empty(); // empty = load all (wizard/first run)
+            if (!vendor_has_installed_printers)
+            {
+                try
+                {
+                    boost::property_tree::ptree tree;
+                    boost::property_tree::read_ini(dir_entry.path().string(), tree);
+                    VendorProfile vp = VendorProfile::from_ini(tree, dir_entry.path().string());
+                    for (const auto &model : vp.models)
+                        if (installed_models.count(model.id))
+                        {
+                            vendor_has_installed_printers = true;
+                            break;
+                        }
+                    if (!vendor_has_installed_printers)
+                    {
+                        deferred_vendors.insert({vp.id, std::move(vp)});
+                        continue;
+                    }
+                }
+                catch (const std::exception &err)
+                {
+                    errors_cummulative += err.what();
+                    errors_cummulative += "\n";
+                    continue;
+                }
+            }
+
             try
             {
-                // Load the config bundle, flatten it.
+                // Full load for vendors with installed printers
                 if (first)
                 {
                     // Reset this PresetBundle and load the first vendor config.
@@ -433,6 +579,9 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
         // No config bundle loaded, reset.
         this->reset(false);
     }
+
+    // Insert deferred VendorProfiles now that reset() has already run
+    this->vendors.insert(deferred_vendors.begin(), deferred_vendors.end());
 
     // preFlight: clear compatible_printers_condition on all filaments so they work with any printer
     for (auto &filament : this->filaments)

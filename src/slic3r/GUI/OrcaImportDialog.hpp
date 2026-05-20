@@ -34,9 +34,10 @@ private:
     void build_ui(const OrcaConfigImporter::ImportResult &result);
     void apply_theme_overrides();
 
-    // Add a labeled read-only text area section.
+    // Add a labeled read-only text area section with optional subtitle.
     void add_section(wxSizer *parent_sizer, wxWindow *parent, const wxString &title,
-                     const std::vector<std::string> &items, int height, bool double_space = false);
+                     const std::vector<std::string> &items, int height, bool double_space = false,
+                     const wxString &subtitle = "");
 
     ScrollablePanel *m_scroll{nullptr};
     wxButton *m_ok_btn{nullptr};

@@ -572,14 +572,15 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig *config, con
     if (config->opt_bool("spiral_vase") &&
         !(config->opt_int("perimeters") == 1 && config->opt_int("top_solid_layers") == 0 && fill_density == 0 &&
           !config->opt_bool("support_material") && config->opt_int("support_material_enforce_layers") == 0 &&
-          !config->opt_bool("thin_walls")))
+          !config->opt_bool("thin_walls") && !config->opt_bool("interlock_perimeters_enabled")))
     {
         wxString msg_text = _(L("The Spiral Vase mode requires:\n"
                                 "- one perimeter\n"
                                 "- no top solid layers\n"
                                 "- 0% fill density\n"
                                 "- no support material\n"
-                                "- Detect thin walls disabled"));
+                                "- Detect thin walls disabled\n"
+                                "- Interlocking perimeters disabled"));
         if (is_global_config)
             msg_text += "\n\n" + _(L("Shall I adjust those settings in order to enable Spiral Vase?"));
         MessageDialog dialog(m_msg_dlg_parent, msg_text, _(L("Spiral Vase")),
@@ -595,6 +596,7 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig *config, con
             new_conf.set_key_value("support_material", new ConfigOptionBool(false));
             new_conf.set_key_value("support_material_enforce_layers", new ConfigOptionInt(0));
             new_conf.set_key_value("thin_walls", new ConfigOptionBool(false));
+            new_conf.set_key_value("interlock_perimeters_enabled", new ConfigOptionBool(false));
             fill_density = 0;
             support = false;
         }
@@ -809,6 +811,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config)
 
     // fuzzy_skin_point_placement applies to all fuzzy skin modes, so always visible
 
+    toggle_field("interlock_perimeters_enabled", !has_spiral_vase);
     bool interlock_enabled = config->opt_bool("interlock_perimeters_enabled");
     toggle_field("interlock_perimeter_count", interlock_enabled);
     toggle_field("interlock_regular_perimeters", interlock_enabled);
@@ -819,6 +822,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config)
     toggle_field("interlock_flow_detection", interlock_enabled);
 
     // Clamp interlock_regular_perimeters to not exceed perimeters
+    if (interlock_enabled)
     {
         int il_reg = config->opt_int("interlock_regular_perimeters");
         int perims = config->opt_int("perimeters");

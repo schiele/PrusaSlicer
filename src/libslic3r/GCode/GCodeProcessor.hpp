@@ -199,6 +199,9 @@ struct GCodeProcessorResult
     GCodeObject *gcode_object = nullptr;
     bool owns_gcode_object = false;
 
+    // Binary gcode metadata (thumbnails, config, stats) - preserved for deferred export
+    std::optional<bgcode::binarize::BinaryData> binary_data;
+
     ~GCodeProcessorResult();
 
     GCodeProcessorResult() = default;
@@ -571,6 +574,10 @@ public:
     };
 
     static bgcode::binarize::BinarizerConfig &get_binarizer_config() { return s_binarizer_config; }
+
+    // Binarize a text gcode file using the provided metadata.
+    static void write_binary_gcode_from_file(const std::string &binary_path, const std::string &text_path,
+                                             bgcode::binarize::BinaryData binary_data);
 
 private:
     GCodeReader m_parser;

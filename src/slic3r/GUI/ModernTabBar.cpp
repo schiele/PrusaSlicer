@@ -4,6 +4,7 @@
 ///|/
 #include "ModernTabBar.hpp"
 #include "Widgets/UIColors.hpp"
+#include <wx/control.h>
 #include <wx/dcclient.h>
 #include <wx/sizer.h>
 #include <wx/settings.h>
@@ -34,6 +35,11 @@ static int GetScaledTabHeight()
 static int GetScaledButtonWidth()
 {
     return static_cast<int>(12 * wxGetApp().em_unit()); // 120px at 100%
+}
+
+static int GetScaledMaxButtonWidth()
+{
+    return static_cast<int>(24 * wxGetApp().em_unit()); // 240px at 100%
 }
 
 static int GetScaledButtonHeight()
@@ -94,6 +100,22 @@ static int GetScaledDotTextGap()
 static int GetScaledHMargin()
 {
     return static_cast<int>(0.8 * wxGetApp().em_unit()); // 8px at 100%
+}
+
+// Measure text and return a button width clamped to [120px, 240px] (scaled)
+static int GetButtonWidthForLabel(const wxString &label)
+{
+    int min_w = GetScaledButtonWidth();
+    int max_w = GetScaledMaxButtonWidth();
+    int padding = 2 * GetScaledHMargin();
+
+    wxScreenDC dc;
+    dc.SetFont(wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT));
+    wxCoord tw = 0, th = 0;
+    dc.GetTextExtent(label, &tw, &th);
+
+    int needed = tw + padding;
+    return std::min(std::max(needed, min_w), max_w);
 }
 
 static int GetScaledChevronPenWidth()
@@ -330,17 +352,23 @@ void ModernTabBar::AddSettingsDropdownButton(std::function<void(TabType)> callba
                                           dc.DrawRoundedRectangle(0, 0, size.x - 1, size.y - 1, corner_radius);
                                       }
 
-                                      // Draw text
+                                      // Draw text (with ellipsis if it overflows)
                                       dc.SetTextForeground(m_settings_dropdown_btn->GetForegroundColour());
                                       dc.SetFont(m_settings_dropdown_btn->GetFont());
 
-                                      wxString label = m_settings_dropdown_btn->GetLabel();
+                                      wxString display_text = m_settings_dropdown_btn->GetLabel();
                                       wxCoord textWidth, textHeight;
-                                      dc.GetTextExtent(label, &textWidth, &textHeight);
+                                      dc.GetTextExtent(display_text, &textWidth, &textHeight);
+
+                                      int available_width = size.x - 2 * GetScaledHMargin();
+                                      if (textWidth > available_width)
+                                          display_text = wxControl::Ellipsize(display_text, dc, wxELLIPSIZE_END,
+                                                                              available_width);
+                                      dc.GetTextExtent(display_text, &textWidth, &textHeight);
 
                                       int x = (size.x - textWidth) / 2;
                                       int y = (size.y - textHeight) / 2;
-                                      dc.DrawText(label, x, y);
+                                      dc.DrawText(display_text, x, y);
                                   });
 
     m_settings_dropdown_btn->Bind(
@@ -418,27 +446,30 @@ void ModernTabBar::UpdateSettingsLayout(bool force)
     if (!m_print_settings_btn || !m_settings_dropdown_btn)
         return;
 
-    // Use INTENDED sizes (MinSize/scaled constants) rather than current GetSize(),
-    // because the sizer may have already compressed buttons when space is tight.
     const int margin = GetScaledSmallMargin();
     const int left_margin = GetScaledMargin();
-    const int btn_w = GetScaledButtonWidth();
 
     int fixed_width = left_margin; // Left spacer
 
-    // Tab buttons (Prepare, Preview) - use intended width
-    fixed_width += static_cast<int>(m_tabs.size()) * (btn_w + margin);
+    // Tab buttons (Prepare, Preview) - use actual MinSize widths
+    for (const auto &tab : m_tabs)
+        fixed_width += tab.button->GetMinSize().GetWidth() + margin;
 
-    // Printer webview button (if present) - use MinSize since it's dynamically sized
+    // Printer webview button (if present)
     if (m_printer_webview_btn && m_printer_webview_btn->IsShown())
         fixed_width += m_printer_webview_btn->GetMinSize().GetWidth() + margin;
 
-    // Slice button + its right margin - use intended width
+    // Slice button + its right margin
     if (m_slice_button && m_slice_button->IsShown())
         fixed_width += GetScaledSliceButtonWidth() + GetScaledMargin();
 
-    // Calculate width for expanded mode (3 individual settings buttons + search button)
-    int expanded_settings_width = 4 * (btn_w + margin);
+    // Calculate width for expanded mode (sum of actual settings button widths)
+    int expanded_settings_width = 0;
+    for (wxPanel *btn : {m_print_settings_btn, m_filament_settings_btn, m_printer_settings_btn, m_search_btn})
+    {
+        if (btn)
+            expanded_settings_width += btn->GetMinSize().GetWidth() + margin;
+    }
 
     int total_expanded = fixed_width + expanded_settings_width;
 
@@ -620,10 +651,13 @@ void ModernTabBar::UpdateButtonStyles()
 
 wxPanel *ModernTabBar::CreateStyledButton(const wxString &label)
 {
-    // preFlight: Use wxPanel instead of wxButton — wxButton on GTK3 has native theme rendering
+    // preFlight: Use wxPanel instead of wxButton -- wxButton on GTK3 has native theme rendering
     // that can't be fully suppressed, producing inconsistent custom-drawn buttons.
     // wxPanel with wxBG_STYLE_PAINT gives us a clean canvas on all platforms.
-    auto *button = new wxPanel(this, wxID_ANY, wxDefaultPosition, GetScaledButtonSize(), wxBORDER_NONE);
+    int btn_w = GetButtonWidthForLabel(label);
+    wxSize btn_size(btn_w, GetScaledButtonHeight());
+    auto *button = new wxPanel(this, wxID_ANY, wxDefaultPosition, btn_size, wxBORDER_NONE);
+    button->SetMinSize(btn_size);
     button->SetLabel(label);
 
     // Set modern styling
@@ -682,17 +716,22 @@ wxPanel *ModernTabBar::CreateStyledButton(const wxString &label)
                          dc.DrawRoundedRectangle(0, 0, size.x - 1, size.y - 1, corner_radius);
                      }
 
-                     // Draw text
+                     // Draw text (with ellipsis if it overflows the button)
                      dc.SetTextForeground(button->GetForegroundColour());
                      dc.SetFont(button->GetFont());
 
-                     wxString label = button->GetLabel();
+                     wxString display_text = button->GetLabel();
                      wxCoord textWidth, textHeight;
-                     dc.GetTextExtent(label, &textWidth, &textHeight);
+                     dc.GetTextExtent(display_text, &textWidth, &textHeight);
+
+                     int available_width = size.x - 2 * GetScaledHMargin();
+                     if (textWidth > available_width)
+                         display_text = wxControl::Ellipsize(display_text, dc, wxELLIPSIZE_END, available_width);
+                     dc.GetTextExtent(display_text, &textWidth, &textHeight);
 
                      int x = (size.x - textWidth) / 2;
                      int y = (size.y - textHeight) / 2;
-                     dc.DrawText(label, x, y);
+                     dc.DrawText(display_text, x, y);
                  });
 
     return button;
@@ -773,28 +812,33 @@ void ModernTabBar::msw_rescale()
     // Update panel height
     SetMinSize(wxSize(-1, GetScaledTabHeight()));
 
-    // Update all tab buttons
-    wxSize button_size = GetScaledButtonSize();
+    // Update all tab buttons with text-dependent widths
+    int btn_h = GetScaledButtonHeight();
     for (auto &tab : m_tabs)
     {
-        tab.button->SetMinSize(button_size);
-        tab.button->SetSize(button_size);
+        int w = GetButtonWidthForLabel(tab.button->GetLabel());
+        wxSize sz(w, btn_h);
+        tab.button->SetMinSize(sz);
+        tab.button->SetSize(sz);
     }
 
-    // Update settings dropdown button
+    // Update settings dropdown button (fixed width - "Settings" is always short)
     if (m_settings_dropdown_btn)
     {
-        m_settings_dropdown_btn->SetMinSize(button_size);
-        m_settings_dropdown_btn->SetSize(button_size);
+        wxSize dropdown_sz(GetScaledButtonWidth(), btn_h);
+        m_settings_dropdown_btn->SetMinSize(dropdown_sz);
+        m_settings_dropdown_btn->SetSize(dropdown_sz);
     }
 
-    // Update individual settings buttons
+    // Update individual settings buttons with text-dependent widths
     for (wxPanel *btn : {m_print_settings_btn, m_filament_settings_btn, m_printer_settings_btn, m_search_btn})
     {
         if (btn)
         {
-            btn->SetMinSize(button_size);
-            btn->SetSize(button_size);
+            int w = GetButtonWidthForLabel(btn->GetLabel());
+            wxSize sz(w, btn_h);
+            btn->SetMinSize(sz);
+            btn->SetSize(sz);
         }
     }
 

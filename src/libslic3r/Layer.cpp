@@ -1612,8 +1612,8 @@ void Layer::RoleIndex::build_from_layer(const Layer *layer)
             // Interlocking only occurs in sparse regions (internal), never on visible surfaces.
             // We reduce flow when printing onto ANY solid infill, regardless of what's above.
             // Also include bridge infill - interlocking on top of bridges should also use 100% flow.
-            if (surface.surface_type == stInternalSolid || surface.surface_type == stBottomBridge ||
-                surface.surface_type == stInternalBridge)
+            if (surface.surface_type == stInternalSolid || surface.surface_type == stBridgeAnchor ||
+                surface.surface_type == stBottomBridge || surface.surface_type == stInternalBridge)
             {
                 all_solid_infill.push_back(surface.expolygon);
             }

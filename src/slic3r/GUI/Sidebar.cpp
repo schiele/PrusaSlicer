@@ -8584,17 +8584,20 @@ void FilamentSettingsPanel::ApplyToggleLogic()
 
     // Cooling dependencies
     bool cooling = config.opt_bool("cooling", 0);
+    bool manual_fan_enabled = config.opt_bool("enable_manual_fan_speeds", 0);
     bool fan_always_on = cooling || config.opt_bool("fan_always_on", 0);
+
+    // fan_always_on is an auto-cooling concept - disable when manual fan controls are active
+    ToggleOption("fan_always_on", !manual_fan_enabled);
 
     for (const char *el : {"max_fan_speed", "fan_below_layer_time", "slowdown_below_layer_time", "min_print_speed",
                            "cooling_slowdown_logic"})
         ToggleOption(el, cooling);
 
     for (const char *el : {"min_fan_speed", "full_fan_speed_layer"})
-        ToggleOption(el, fan_always_on);
+        ToggleOption(el, fan_always_on && !manual_fan_enabled);
 
     // Manual fan controls require enable_manual_fan_speeds to be ON
-    bool manual_fan_enabled = config.opt_bool("enable_manual_fan_speeds", 0);
     for (const char *el : {"manual_fan_speed_perimeter", "manual_fan_speed_external_perimeter",
                            "manual_fan_speed_interlocking_perimeter", "manual_fan_speed_internal_infill",
                            "manual_fan_speed_solid_infill", "manual_fan_speed_top_solid_infill",

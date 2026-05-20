@@ -24,6 +24,7 @@
 
 #include "Exception.hpp"
 #include "Flow.hpp"
+#include "OrcaGCodeAliases.hpp"
 #include "Utils.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -208,9 +209,16 @@ struct OptWithPos
     // -1 means it is a scalar variable, or it is a vector variable and index was not assigned yet or the whole vector is considered.
     int index{-1};
     IteratorRange it_range;
+    // preFlight: canonical preFlight key name, set when an Orca alias was resolved.
+    // When non-empty, downstream code uses this instead of it_range for config lookups.
+    std::string resolved_key;
 
     bool empty() const { return opt == nullptr; }
     bool has_index() const { return index != -1; }
+    std::string key_name() const
+    {
+        return resolved_key.empty() ? std::string(it_range.begin(), it_range.end()) : resolved_key;
+    }
 };
 
 std::ostream &operator<<(std::ostream &os, OptWithPos const &opt)
@@ -1035,7 +1043,26 @@ struct MyContext : public ConfigOptionResolver
         return opt;
     }
 
-    const ConfigOption *resolve_symbol(const std::string &opt_key) const { return this->optptr(opt_key); }
+    const ConfigOption *resolve_symbol(const std::string &opt_key) const { return resolve_symbol(opt_key, nullptr); }
+
+    // preFlight: resolve with optional alias tracking. When resolved_key is non-null and an
+    // Orca alias matched, the canonical preFlight key name is written to *resolved_key.
+    const ConfigOption *resolve_symbol(const std::string &opt_key, std::string *resolved_key) const
+    {
+        const ConfigOption *opt = this->optptr(opt_key);
+        if (opt == nullptr)
+        {
+            const auto &aliases = orca_gcode_aliases();
+            auto it = aliases.find(opt_key);
+            if (it != aliases.end())
+            {
+                opt = this->optptr(it->second);
+                if (opt != nullptr && resolved_key != nullptr)
+                    *resolved_key = it->second;
+            }
+        }
+        return opt;
+    }
     ConfigOption *resolve_output_symbol(const std::string &opt_key) const
     {
         ConfigOption *out = nullptr;
@@ -1065,7 +1092,10 @@ struct MyContext : public ConfigOptionResolver
             return;
 
         std::string opt_key_str(opt_key.begin(), opt_key.end());
-        const ConfigOption *opt = ctx->resolve_symbol(opt_key_str);
+        // preFlight: check locals first so [bracket] syntax matches {brace} behavior
+        const ConfigOption *opt = ctx->resolve_output_symbol(opt_key_str);
+        if (opt == nullptr)
+            opt = ctx->resolve_symbol(opt_key_str);
         size_t idx = ctx->current_extruder_id;
         if (opt == nullptr)
         {
@@ -1073,7 +1103,9 @@ struct MyContext : public ConfigOptionResolver
             idx = opt_key_str.rfind('_');
             if (idx != std::string::npos)
             {
-                opt = ctx->resolve_symbol(opt_key_str.substr(0, idx));
+                opt = ctx->resolve_output_symbol(opt_key_str.substr(0, idx));
+                if (opt == nullptr)
+                    opt = ctx->resolve_symbol(opt_key_str.substr(0, idx));
                 if (opt != nullptr)
                 {
                     if (!opt->is_vector())
@@ -1115,14 +1147,19 @@ struct MyContext : public ConfigOptionResolver
             return;
 
         std::string opt_key_str(opt_key.begin(), opt_key.end());
-        const ConfigOption *opt = ctx->resolve_symbol(opt_key_str);
+        // preFlight: check locals first so [bracket] syntax matches {brace} behavior
+        const ConfigOption *opt = ctx->resolve_output_symbol(opt_key_str);
+        if (opt == nullptr)
+            opt = ctx->resolve_symbol(opt_key_str);
         if (opt == nullptr)
         {
             // Check whether the opt_key ends with '_'.
             if (opt_key_str.back() == '_')
             {
                 opt_key_str.resize(opt_key_str.size() - 1);
-                opt = ctx->resolve_symbol(opt_key_str);
+                opt = ctx->resolve_output_symbol(opt_key_str);
+                if (opt == nullptr)
+                    opt = ctx->resolve_symbol(opt_key_str);
             }
             if (opt == nullptr)
                 ctx->throw_exception("Variable does not exist", opt_key);
@@ -1154,15 +1191,22 @@ struct MyContext : public ConfigOptionResolver
         if (!ctx->skipping())
         {
             const std::string key{opt_key.begin(), opt_key.end()};
-            const ConfigOption *opt = ctx->resolve_symbol(key);
-            if (opt == nullptr)
+            std::string resolved;
+            // Resolution order: local/output variables > config keys > Orca aliases.
+            // Locals shadow config keys and Orca aliases.
+            const ConfigOption *opt = ctx->resolve_output_symbol(key);
+            if (opt != nullptr)
             {
-                opt = ctx->resolve_output_symbol(key);
-                if (opt == nullptr)
-                    ctx->throw_exception("Not a variable name", opt_key);
                 output.writable = true;
             }
+            else
+            {
+                opt = ctx->resolve_symbol(key, &resolved);
+                if (opt == nullptr)
+                    ctx->throw_exception("Not a variable name", opt_key);
+            }
             output.opt = opt;
+            output.resolved_key = std::move(resolved);
         }
         output.it_range = opt_key;
     }
@@ -1219,7 +1263,7 @@ struct MyContext : public ConfigOptionResolver
             break;
         case coFloatOrPercent:
         {
-            std::string opt_key(opt.it_range.begin(), opt.it_range.end());
+            std::string opt_key = opt.key_name();
             if (boost::ends_with(opt_key, "extrusion_width"))
             {
                 // Extrusion width supports defaults and a complex graph of dependencies.
@@ -1491,8 +1535,8 @@ struct MyContext : public ConfigOptionResolver
         if (!ctx->skipping())
         {
             t_config_option_key key(std::string(it_range.begin(), it_range.end()));
-            if (const ConfigOption *opt = ctx->resolve_symbol(key); opt)
-                ctx->throw_exception("Symbol is already defined in read-only system dictionary", it_range);
+            // preFlight: allow {local} to shadow config keys. The resolve_variable
+            // resolution order (locals before config) ensures the local value is used.
             if (ctx->config_outputs && ctx->config_outputs->optptr(key))
                 ctx->throw_exception("Symbol is already defined as system output variable", it_range);
             bool has_global_dictionary = ctx->context_data != nullptr && ctx->context_data->global_config;

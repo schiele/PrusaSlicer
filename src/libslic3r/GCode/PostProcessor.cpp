@@ -170,7 +170,6 @@ static int run_script(const std::string &script, const std::string &gcode, std::
     }
     LocalFree(szArglist);
     quote_argv_winapi(boost::nowide::widen(gcode), command_line);
-    printf("DEBUG: command_line = [%ls]\n", command_line.c_str());
     return (int) execute_process_winapi(command_line);
 }
 

@@ -220,7 +220,8 @@ BGCODE_CONVERT_EXPORT EResult from_ascii_to_binary(FILE& src_file, FILE& dst_fil
     static constexpr const std::string_view ThumbnailQOIBegin = "thumbnail_QOI begin"sv;
     static constexpr const std::string_view ThumbnailQOIEnd   = "thumbnail_QOI end"sv;
 
-    static constexpr const std::string_view PrusaSlicerConfig = "prusaslicer_config"sv;
+    static constexpr const std::string_view PreFlightConfig = "preflight_config"sv;
+    static constexpr const std::string_view LegacyConfig    = "prusaslicer_config"sv;
 
     auto search_metadata_value = [&](const std::string_view& str, const std::string_view& key) {
         std::string ret;
@@ -377,14 +378,16 @@ BGCODE_CONVERT_EXPORT EResult from_ascii_to_binary(FILE& src_file, FILE& dst_fil
 
         // update slicer metadata
         if (!reading_config) {
-            if (search_metadata_value(sv_line, PrusaSlicerConfig) == "begin") {
+            if (search_metadata_value(sv_line, PreFlightConfig) == "begin" ||
+                search_metadata_value(sv_line, LegacyConfig) == "begin") {
                 reading_config = true;
                 processed_lines.emplace_back(lines_counter++);
                 return;
             }
         }
         else {
-            if (search_metadata_value(sv_line, PrusaSlicerConfig) == "end") {
+            if (search_metadata_value(sv_line, PreFlightConfig) == "end" ||
+                search_metadata_value(sv_line, LegacyConfig) == "end") {
                 reading_config = false;
                 processed_lines.emplace_back(lines_counter++);
                 return;
@@ -824,11 +827,11 @@ BGCODE_CONVERT_EXPORT EResult from_binary_to_ascii(FILE& src_file, FILE& dst_fil
     if (res != EResult::Success)
         // propagate error
         return res;
-    if (!write_line("\n; prusaslicer_config = begin\n"))
+    if (!write_line("\n; preflight_config = begin\n"))
         return EResult::WriteError;
     if (!write_metadata(slicer_metadata_block.raw_data))
         return EResult::WriteError;
-    if (!write_line("; prusaslicer_config = end\n\n"))
+    if (!write_line("; preflight_config = end\n\n"))
         return EResult::WriteError;
 
     return EResult::Success;

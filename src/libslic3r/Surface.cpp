@@ -67,6 +67,8 @@ const char *surface_type_to_color_name(const SurfaceType surface_type)
         return "rgb(128,128,128)";
     case stSolidOverBridge:
         return "rgb(255,128,0)"; // orange
+    case stBridgeAnchor:
+        return "rgb(0,192,0)"; // dark green
     case stPerimeter:
         return "rgb(128,0,0)"; // maroon
     default:

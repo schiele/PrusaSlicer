@@ -580,7 +580,11 @@ void Tab::OnActivate()
     m_hsizer->Layout();
 
     if (m_presets_choice->IsShown())
-        Refresh(); // Just refresh page, if m_presets_choice is already shown
+    {
+        if (TabFilament *tab = dynamic_cast<TabFilament *>(this))
+            tab->update_extruder_combobox();
+        Refresh();
+    }
     else
     {
         // From the tab creation whole top sizer is hidden to correct update of preset combobox's size
@@ -595,7 +599,7 @@ void Tab::OnActivate()
         m_btn_hide_incompatible_presets->Show(m_show_btn_incompatible_presets &&
                                               m_type != Slic3r::Preset::TYPE_PRINTER);
         if (TabFilament *tab = dynamic_cast<TabFilament *>(this))
-            tab->update_extruder_combobox_visibility();
+            tab->update_extruder_combobox();
 
         Layout();
     }
@@ -3008,16 +3012,6 @@ void TabFilament::create_extruder_combobox()
     m_h_buttons_sizer->Add(m_extruders_cb, 0, wxALIGN_CENTER_VERTICAL);
 }
 
-void TabFilament::update_extruder_combobox_visibility()
-{
-    const auto &printer_config = m_preset_bundle->printers.get_edited_preset().config;
-    const size_t extruder_cnt =
-        static_cast<const ConfigOptionFloats *>(printer_config.option("nozzle_diameter"))->values.size();
-    // Only show for multi-tool printers (multiple extruders that are NOT single_extruder_multi_material/MMU)
-    const bool is_single_extruder_mm = printer_config.opt_bool("single_extruder_multi_material");
-    m_extruders_cb->Show(extruder_cnt > 1 && !is_single_extruder_mm);
-}
-
 void TabFilament::update_extruder_combobox()
 {
     const size_t extruder_cnt = m_preset_bundle->printers.get_selected_preset().printer_technology() == ptSLA
@@ -3046,7 +3040,8 @@ void TabFilament::update_extruder_combobox()
         m_presets_choice->set_extruder_idx(m_active_extruder);
     }
 
-    m_extruders_cb->SetSelection(m_active_extruder);
+    if (m_active_extruder >= 0)
+        m_extruders_cb->SetSelection(m_active_extruder);
     // Only show for multi-tool printers (multiple extruders that are NOT single_extruder_multi_material/MMU)
     const bool is_single_extruder_mm = m_preset_bundle->printers.get_edited_preset().config.opt_bool(
         "single_extruder_multi_material");
@@ -3389,21 +3384,18 @@ void TabFilament::toggle_options()
     if (m_active_page->title() == "Cooling")
     {
         bool cooling = m_config->opt_bool("cooling", 0);
+        bool manual_fan_enabled = m_config->opt_bool("enable_manual_fan_speeds", 0);
         bool fan_always_on = cooling || m_config->opt_bool("fan_always_on", 0);
+
+        // fan_always_on is an auto-cooling concept - disable when manual fan controls are active
+        toggle_option("fan_always_on", !manual_fan_enabled);
 
         for (auto el : {"max_fan_speed", "fan_below_layer_time", "slowdown_below_layer_time", "min_print_speed",
                         "cooling_slowdown_logic", "dont_slow_down_outer_wall"})
             toggle_option(el, cooling);
 
         for (auto el : {"min_fan_speed", "full_fan_speed_layer"})
-            toggle_option(el, fan_always_on);
-
-        // Manual fan controls require enable_manual_fan_speeds to be ON
-        // Note: bridge_fan_speed and manual_fan_speed_overhang_perimeter are always enabled
-        // - bridge_fan_speed: Used for bridge infill in all modes
-        // - manual_fan_speed_overhang_perimeter: Used for overhang perimeters in all modes
-        //   (overrides bridge_fan_speed specifically for overhang perimeters)
-        bool manual_fan_enabled = m_config->opt_bool("enable_manual_fan_speeds", 0);
+            toggle_option(el, fan_always_on && !manual_fan_enabled);
         for (auto el : {"manual_fan_speed_perimeter", "manual_fan_speed_external_perimeter",
                         "manual_fan_speed_interlocking_perimeter", "manual_fan_speed_internal_infill",
                         "manual_fan_speed_solid_infill", "manual_fan_speed_top_solid_infill",
@@ -3505,6 +3497,9 @@ void TabFilament::sys_color_changed()
 
 void TabFilament::load_current_preset()
 {
+    // Ensure extruder dropdown is populated and visible for multi-tool printers
+    update_extruder_combobox();
+
     const std::string &selected_filament_name = m_presets->get_selected_preset_name();
     if (m_active_extruder < 0)
     {
@@ -6044,8 +6039,8 @@ void Tab::save_preset(std::string name /*= ""*/, bool detach)
 
     update_changed_ui();
 
-    /* If filament preset is saved for multi-material printer preset, 
-     * there are cases when filament comboboxs are updated for old (non-modified) colors, 
+    /* If filament preset is saved for multi-material printer preset,
+     * there are cases when filament comboboxs are updated for old (non-modified) colors,
      * but in full_config a filament_colors option aren't.*/
     if (m_type == Preset::TYPE_FILAMENT && wxGetApp().extruders_edited_cnt() > 1)
         wxGetApp().plater()->force_filament_colors_update();

@@ -810,22 +810,29 @@ void GCodeGenerator::do_export(Print *print, const char *path, GCodeProcessorRes
     _heapmin();
 #endif
 
-    // Write the post-processed G-code to the output file
-    if (result != nullptr && path != nullptr && strlen(path) > 0)
+    // Write the post-processed G-code as TEXT to the output file.
+    // Always write text here - callers handle binarization after post-processing scripts run.
+    // Use the external result if provided, otherwise pull from the processor's internal result (CLI mode).
+    if (path != nullptr && strlen(path) > 0)
     {
-        FILE *output_file = boost::nowide::fopen(path, "wb");
-        if (output_file == nullptr)
+        const GCodeProcessorResult &write_result = result ? *result : m_processor.get_result();
+        if (write_result.gcode_object)
         {
-            throw Slic3r::RuntimeError(std::string("Cannot open output file for writing: ") + path);
-        }
+            FILE *output_file = boost::nowide::fopen(path, "wb");
+            if (output_file == nullptr)
+                throw Slic3r::RuntimeError(std::string("Cannot open output file for writing: ") + path);
 
-        if (result->gcode_object)
-        {
-            const std::string &buf = result->gcode_object->text_buffer();
-            fwrite(buf.c_str(), 1, buf.size(), output_file);
-        }
+            const std::string &buf = write_result.gcode_object->text_buffer();
+            size_t written = fwrite(buf.c_str(), 1, buf.size(), output_file);
+            bool write_error = (written != buf.size()) || ferror(output_file);
+            fclose(output_file);
 
-        fclose(output_file);
+            if (write_error)
+            {
+                boost::nowide::remove(path);
+                throw Slic3r::RuntimeError(std::string("Failed to write G-code to ") + path + "\nIs the disk full?");
+            }
+        }
     }
     gx_timer.stage("gcode: file write");
 
