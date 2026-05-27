@@ -155,3 +155,27 @@ BUILD: version_2.9.6-beta1-13-g3df036ad8c
 system: rolling
 date: Wed May 27 08:36:24 AM CEST 2026
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+-- Found nlohmann_json: /usr/share/cmake/nlohmann_json/nlohmann_jsonConfig.cmake (found version "3.12.0")
+CMake Error at src/libslic3r/CMakeLists.txt:24 (find_package):
+  By not providing "FindLibBGCode.cmake" in CMAKE_MODULE_PATH this project
+  has asked CMake to find a package configuration file provided by
+  "LibBGCode", but CMake did not find one.
+
+  Could not find a package configuration file provided by "LibBGCode" with
+  any of the following names:
+
+    LibBGCode.cps
+    libbgcode.cps
+    LibBGCodeConfig.cmake
+    libbgcode-config.cmake
+
+  Add the installation prefix of "LibBGCode" to CMAKE_PREFIX_PATH or set
+  "LibBGCode_DIR" to a directory containing one of the above files.  If
+  "LibBGCode" provides a separate development package or SDK, be sure it has
+  been installed.
+
+-- Configuring incomplete, errors occurred!
