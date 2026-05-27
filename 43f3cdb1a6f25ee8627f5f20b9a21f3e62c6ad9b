@@ -213,3 +213,5 @@ CMake Error at CMakeLists.txt:376 (find_package):
       The version found is not compatible with the version requested.
 
 -- Configuring incomplete, errors occurred!
+======================================================================
+BUILD: version_2.9.6-beta1-13-g3df036ad8c
