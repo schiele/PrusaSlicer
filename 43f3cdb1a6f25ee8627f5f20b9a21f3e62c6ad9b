@@ -86,3 +86,5 @@ make[2]: *** Waiting for unfinished jobs....
 [ 15%] Building CXX object src/libslic3r/CMakeFiles/libslic3r_cgal.dir/CutSurface.cpp.o
 make[1]: *** [CMakeFiles/Makefile2:1722: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/all] Error 2
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: version_2.9.6-beta1-12-g8ca91a94e6
