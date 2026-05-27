@@ -150,3 +150,5 @@ CMake Error at src/libslic3r/CMakeLists.txt:24 (find_package):
   been installed.
 
 -- Configuring incomplete, errors occurred!
+======================================================================
+BUILD: version_2.9.6-beta1-13-g3df036ad8c
