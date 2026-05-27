@@ -183,9 +183,9 @@ CMake Error at src/libslic3r/CMakeLists.txt:24 (find_package):
 BUILD: version_2.9.6-beta1-13-g3df036ad8c
 system: rolling
 date: Wed May 27 08:38:10 AM CEST 2026
-tasks: configure_deps build_deps configure build configure_deps[incomplete]
+tasks: configure_deps build_deps configure build configure_deps build_deps[incomplete]
 ======================================================================
 BUILD: version_2.9.6-beta1-13-g3df036ad8c
 system: rolling
 date: Wed May 27 08:38:46 AM CEST 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
