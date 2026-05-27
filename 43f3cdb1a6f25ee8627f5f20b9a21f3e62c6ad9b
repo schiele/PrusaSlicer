@@ -60,3 +60,29 @@ BUILD: version_2.9.6-beta1-13-g1bd5ff53b4
 system: rolling
 date: Wed May 27 07:19:51 AM CEST 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+      |                                                      ^
+In file included from /home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/slice.h:84,
+                 from /home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/remove_unreferenced.cpp:9,
+                 from /home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/remove_unreferenced.h:79,
+                 from /home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/copyleft/cgal/mesh_boolean.cpp:22:
+/home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/slice.cpp: In function ‘void igl::slice(const Eigen::SparseMatrix<Scalar>&, const Eigen::Matrix<int, -1, 1>&, const Eigen::Matrix<int, -1, 1>&, Eigen::SparseMatrix<TY>&)’:
+/home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/slice.cpp:54:10: error: ‘DynamicSparseMatrix’ is not a member of ‘Eigen’; did you mean ‘SparseMatrix’? [-Wtemplate-body]
+   54 |   Eigen::DynamicSparseMatrix<TY, Eigen::RowMajor> dyn_Y(ym,yn);
+      |          ^~~~~~~~~~~~~~~~~~~
+      |          SparseMatrix
+/home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/slice.cpp:54:32: error: expected primary-expression before ‘,’ token [-Wtemplate-body]
+   54 |   Eigen::DynamicSparseMatrix<TY, Eigen::RowMajor> dyn_Y(ym,yn);
+      |                                ^
+/home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/slice.cpp:54:51: error: there are no arguments to ‘dyn_Y’ that depend on a template parameter, so a declaration of ‘dyn_Y’ must be available [-Wtemplate-body]
+   54 |   Eigen::DynamicSparseMatrix<TY, Eigen::RowMajor> dyn_Y(ym,yn);
+      |                                                   ^~~~~
+/home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/slice.cpp:54:51: note: (if you use ‘-fpermissive’, G++ will accept your code, but allowing the use of an undeclared name is deprecated)
+/home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/slice.cpp:57:3: error: ‘dyn_Y’ was not declared in this scope [-Wtemplate-body]
+   57 |   dyn_Y.reserve((X.nonZeros()/(X.rows()*X.cols())) * (ym*yn));
+      |   ^~~~~
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r_cgal.dir/build.make:121: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/MeshBoolean.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+[ 15%] Building CXX object src/libslic3r/CMakeFiles/libslic3r_cgal.dir/CutSurface.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:1722: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
