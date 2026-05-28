@@ -73,3 +73,28 @@ BUILD: v1.0.0-2-g963130d7e7
 system: rolling
 date: Thu May 28 09:46:24 AM CEST 2026
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+  command to set the policy and suppress this warning.
+Call Stack (most recent call first):
+  src/slic3r/CMakeLists.txt:474 (encoding_check)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Found GTK3: /usr/include/gtk-3.0;/usr/include/pango-1.0;/usr/include;/usr/include/cloudproviders;/usr/include/cairo;/usr/include/gdk-pixbuf-2.0;/usr/include/glycin-2;/usr/include/at-spi2-atk/2.0;/usr/include/at-spi-2.0;/usr/include/atk-1.0;/usr/include/dbus-1.0;/usr/lib/dbus-1.0/include;/usr/include/fribidi;/usr/include/pixman-1;/usr/include/harfbuzz;/usr/include/freetype2;/usr/include/libpng16;/usr/include/gio-unix-2.0;/usr/include/glib-2.0;/usr/lib/glib-2.0/include;/usr/include/libmount;/usr/include/blkid;/usr/include/sysprof-6
+-- Checking for one of the modules 'webkit2gtk-4.0;webkit2gtk-4.1'
+-- Configuring done (2.7s)
+CMake Error at cmake/modules/FindOpenVDB.cmake:568 (set_target_properties):
+  The link interface of target "OpenVDB::openvdb" contains:
+
+    Boost::system
+
+  but the target was not found.  Possible reasons include:
+
+    * There is a typo in the target name.
+    * A find_package call is missing for an IMPORTED target.
+    * An ALIAS target is missing.
+
+Call Stack (most recent call first):
+  CMakeLists.txt:615 (find_package)
+
+-- Generating done (0.1s)
+CMake Generate step failed.  Build files cannot be regenerated correctly.
