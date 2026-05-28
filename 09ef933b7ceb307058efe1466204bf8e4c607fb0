@@ -289,3 +289,29 @@ BUILD: v1.0.0-9-ge0b64a1c94
 system: rolling
 date: Thu May 28 10:17:30 AM CEST 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+      |                                           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:635:10:   required from here
+  635 |     void set(const std::vector<const ConfigOption *> &rhs) override
+      |          ^~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:350:25: warning: ‘virtual std::string Slic3r::ConfigOption::serialize() const’ was hidden [-Woverloaded-virtual=]
+  350 |     virtual std::string serialize() const = 0;
+      |                         ^~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:566:10: note:   by ‘void Slic3r::ConfigOptionSingle<T, NULLABLE>::serialize(Archive&) [with T = unsigned char; bool NULLABLE = false]’
+  566 |     void serialize(Archive &ar)
+      |          ^~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp: In instantiation of ‘class Slic3r::ConfigOptionSingle<Slic3r::FloatOrPercent, false>’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:650:43:   required from ‘void Slic3r::ConfigOptionVector<T>::set(const std::vector<const Slic3r::ConfigOption*>&) [with T = Slic3r::FloatOrPercent]’
+  650 |                 this->values.emplace_back(static_cast<const ConfigOptionSingle<T> *>(opt)->value);
+      |                                           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:635:10:   required from here
+  635 |     void set(const std::vector<const ConfigOption *> &rhs) override
+      |          ^~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:350:25: warning: ‘virtual std::string Slic3r::ConfigOption::serialize() const’ was hidden [-Woverloaded-virtual=]
+  350 |     virtual std::string serialize() const = 0;
+      |                         ^~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/Config.hpp:566:10: note:   by ‘void Slic3r::ConfigOptionSingle<T, NULLABLE>::serialize(Archive&) [with T = Slic3r::FloatOrPercent; bool NULLABLE = false]’
+  566 |     void serialize(Archive &ar)
+      |          ^~~~~~~~~
+make[1]: *** [CMakeFiles/Makefile2:1744: src/slic3r/CMakeFiles/libslic3r_gui.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
