@@ -12,3 +12,28 @@ BUILD: v1.0.0
 system: rolling
 date: Thu May 28 09:38:51 AM CEST 2026
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+-- CMAKE_PREFIX_PATH: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr (from cache or command line)
+-- Found PkgConfig: /usr/bin/pkg-config (found version "2.5.1")
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Found DBus1: /usr/lib/libdbus-1.so
+-- preFlight: Enabled Link-Time Optimization for Release builds (GCC -flto=16)
+CMake Error at /usr/lib/cmake/Boost-1.91.0/BoostConfig.cmake:141 (find_package):
+  Could not find a package configuration file provided by "boost_system"
+  (requested version 1.91.0) with any of the following names:
+
+    boost_system.cps
+    boost_systemConfig.cmake
+    boost_system-config.cmake
+
+  Add the installation prefix of "boost_system" to CMAKE_PREFIX_PATH or set
+  "boost_system_DIR" to a directory containing one of the above files.  If
+  "boost_system" provides a separate development package or SDK, be sure it
+  has been installed.
+Call Stack (most recent call first):
+  /usr/lib/cmake/Boost-1.91.0/BoostConfig.cmake:262 (boost_find_component)
+  CMakeLists.txt:421 (find_package)
+
+-- Configuring incomplete, errors occurred!
