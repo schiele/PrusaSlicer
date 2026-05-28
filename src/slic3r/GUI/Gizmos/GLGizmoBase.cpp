@@ -5,6 +5,8 @@
 ///|/
 #include "GLGizmoBase.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
+#include "slic3r/GUI/GUI_App.hpp"
+#include "slic3r/GUI/ImGuiPureWrap.hpp"
 #include "slic3r/GUI/GLShader.hpp"
 #include "slic3r/GUI/InputEvents_wx.hpp"
 #include "slic3r/GUI/EventTypes.hpp"
@@ -371,6 +373,12 @@ void GLGizmoBase::render_input_window(float x, float y, float bottom_limit)
         m_parent.request_extra_frame();
         m_first_input_window_render = false;
     }
+}
+
+void GLGizmoBase::set_side_flyout_pos(float x, float y, float pivot_y) const
+{
+    float pivot_x = wxGetApp().legacy_prepare_layout() ? 0.0f : 1.0f;
+    ImGuiPureWrap::set_next_window_pos(x, y, ImGuiCond_Always, pivot_x, pivot_y);
 }
 
 std::string GLGizmoBase::get_name(bool include_shortcut) const

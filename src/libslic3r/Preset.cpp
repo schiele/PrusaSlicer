@@ -333,10 +333,24 @@ void Preset::normalize(DynamicPrintConfig &config)
     if (const auto *gap_fill_speed = config.option<ConfigOptionFloat>("gap_fill_speed", false);
         gap_fill_speed && gap_fill_speed->value <= 0.)
     {
-        // Legacy conversion. If the gap fill speed is zero, it means the gap fill is not enabled.
-        // Set the new gap_fill_enabled value, so that it will show up in the UI as disabled.
         if (auto *gap_fill_enabled = config.option<ConfigOptionBool>("gap_fill_enabled", false); gap_fill_enabled)
             gap_fill_enabled->value = false;
+    }
+    // MVF is the primary volumetric limit; MVS is a legacy alias kept for scripting.
+    // Legacy presets have MVS but no MVF - detected by MVF=0 with MVS>0 (safe because
+    // the new UI always keeps both in sync, so this state only occurs from old presets).
+    {
+        auto *flow = config.option<ConfigOptionFloats>("filament_max_volumetric_flow", false);
+        auto *speed = config.option<ConfigOptionFloats>("filament_max_volumetric_speed", false);
+        if (flow && speed)
+        {
+            for (size_t i = 0; i < std::min(flow->values.size(), speed->values.size()); ++i)
+            {
+                if (flow->values[i] == 0 && speed->values[i] > 0)
+                    flow->values[i] = speed->values[i];
+            }
+            speed->values = flow->values;
+        }
     }
     if (auto *first_layer_height = config.option<ConfigOptionFloatOrPercent>("first_layer_height", false);
         first_layer_height && first_layer_height->percent)
@@ -581,6 +595,7 @@ static std::vector<std::string> s_Preset_print_options{
     "ironing_flowrate",
     "ironing_speed",
     "ironing_spacing",
+    "auto_speed",
     "max_print_speed",
     "max_volumetric_speed",
     "avoid_crossing_perimeters_max_detour",
@@ -772,10 +787,11 @@ static std::vector<std::string> s_Preset_print_options{
 static std::vector<std::string> s_Preset_filament_options{
     "filament_colour", "filament_transmission_distance", "filament_diameter", "filament_type", "filament_soluble",
     "filament_abrasive", "filament_enable_pressure_advance", "filament_pressure_advance", "filament_notes",
-    "filament_max_volumetric_speed", "filament_infill_max_speed", "filament_infill_max_crossing_speed",
-    "extrusion_multiplier", "filament_density", "filament_cost", "filament_spool_weight", "filament_loading_speed",
-    "filament_loading_speed_start", "filament_load_time", "filament_unloading_speed", "filament_unloading_speed_start",
-    "filament_unload_time", "filament_toolchange_delay", "filament_cooling_moves", "filament_stamping_loading_speed",
+    "filament_max_volumetric_speed", "filament_max_volumetric_flow", "filament_max_print_speed",
+    "filament_infill_max_speed", "filament_infill_max_crossing_speed", "extrusion_multiplier", "filament_density",
+    "filament_cost", "filament_spool_weight", "filament_loading_speed", "filament_loading_speed_start",
+    "filament_load_time", "filament_unloading_speed", "filament_unloading_speed_start", "filament_unload_time",
+    "filament_toolchange_delay", "filament_cooling_moves", "filament_stamping_loading_speed",
     "filament_stamping_distance", "filament_cooling_initial_speed", "filament_purge_multiplier",
     "filament_cooling_final_speed", "filament_ramming_parameters", "filament_minimal_purge_on_wipe_tower",
     "filament_multitool_ramming", "filament_multitool_ramming_volume", "filament_multitool_ramming_flow", "temperature",
@@ -832,6 +848,10 @@ static std::vector<std::string> s_Preset_machine_limits_options{
     "machine_rrf_m203",
     "machine_rrf_m204",
     "machine_rrf_m207",
+    "machine_klipper_max_velocity",
+    "machine_klipper_max_accel",
+    "machine_klipper_square_corner_velocity",
+    "machine_klipper_minimum_cruise_ratio",
     "machine_time_compensation",
 };
 

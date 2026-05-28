@@ -66,5 +66,5 @@ void WebView::webview_create(wxWebView *webView, wxWindow *parent, const wxStrin
 #ifndef __WIN32__
         });
 #endif
-    webView->EnableContextMenu(false);
+    webView->EnableContextMenu(true);
 }

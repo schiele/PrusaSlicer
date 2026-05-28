@@ -129,11 +129,6 @@ bool Bundle::load(fs::path source_path, BundleLocation location, bool ais_prefli
                                     presets_loaded;
     this->vendor_profile = &first_vendor->second;
 
-    // Clear compatible_printers_condition on all filaments so they work with any printer
-    for (auto &filament : preset_bundle->filaments)
-        if (filament.config.has("compatible_printers_condition"))
-            filament.config.option<ConfigOptionString>("compatible_printers_condition")->value.clear();
-
     // preFlight: make all presets editable (no locked system presets)
     for (auto &preset : preset_bundle->prints)
         preset.is_system = false;

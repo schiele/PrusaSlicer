@@ -426,7 +426,7 @@ static void recalculate_trapezoids(std::vector<GCodeProcessor::TimeBlock> &block
 void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult &result, PrintEstimatedStatistics::ETimeMode mode,
                                                  size_t keep_last_n_blocks, float additional_time,
                                                  float time_compensation, std::function<void(int)> progress_callback,
-                                                 bool skip_speed_interpolation)
+                                                 bool skip_speed_interpolation, float minimum_cruise_ratio)
 {
     if (!enabled || blocks.size() < 2)
         return;
@@ -443,6 +443,16 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult &result, P
     for (size_t i = 0; i + 1 < blocks.size(); ++i)
     {
         planner_forward_pass_kernel(blocks[i], blocks[i + 1]);
+    }
+
+    // Klipper minimum_cruise_ratio: re-enforce entry speed floor after planner passes
+    if (minimum_cruise_ratio > 0.0f)
+    {
+        for (auto &block : blocks)
+        {
+            float min_speed = minimum_cruise_ratio * block.feedrate_profile.cruise;
+            block.feedrate_profile.entry = std::max(block.feedrate_profile.entry, min_speed);
+        }
     }
 
     recalculate_trapezoids(blocks);
@@ -1003,11 +1013,16 @@ void GCodeProcessor::apply_config(const PrintConfig &config)
         config.machine_limits_usage.value != MachineLimitsUsage::Ignore)
     {
         m_time_processor.machine_limits = reinterpret_cast<const MachineEnvelopeConfig &>(config);
-        if (m_flavor == gcfMarlinLegacy || m_flavor == gcfKlipper)
+        if (m_flavor == gcfMarlinLegacy)
         {
-            // Legacy Marlin and Klipper don't have separate travel acceleration, they use the 'extruding' value instead.
+            // Legacy Marlin doesn't have separate travel acceleration
             m_time_processor.machine_limits.machine_max_acceleration_travel =
                 m_time_processor.machine_limits.machine_max_acceleration_extruding;
+        }
+        if (m_flavor == gcfKlipper)
+        {
+            // Override with Klipper-native config values
+            parse_klipper_limits_from_config(config);
         }
         if (m_flavor == gcfRepRapFirmware || m_flavor == gcfRapid)
         {
@@ -1418,6 +1433,53 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig &config)
         if (machine_max_junction_deviation != nullptr)
             m_time_processor.machine_limits.machine_max_junction_deviation.values =
                 machine_max_junction_deviation->values;
+
+        // Klipper: override with native config values if present
+        if (m_flavor == gcfKlipper)
+        {
+            const ConfigOptionFloat *klipper_max_velocity = config.option<ConfigOptionFloat>(
+                "machine_klipper_max_velocity");
+            const ConfigOptionFloat *klipper_max_accel = config.option<ConfigOptionFloat>("machine_klipper_max_accel");
+            const ConfigOptionFloat *klipper_scv = config.option<ConfigOptionFloat>(
+                "machine_klipper_square_corner_velocity");
+            const ConfigOptionFloat *klipper_mcr = config.option<ConfigOptionFloat>(
+                "machine_klipper_minimum_cruise_ratio");
+
+            if (klipper_max_velocity != nullptr && klipper_max_velocity->value > 0)
+            {
+                float vel = static_cast<float>(klipper_max_velocity->value);
+                for (size_t i = 0; i < m_time_processor.machine_limits.machine_max_feedrate_x.size(); ++i)
+                {
+                    set_option_value(m_time_processor.machine_limits.machine_max_feedrate_x, i, vel);
+                    set_option_value(m_time_processor.machine_limits.machine_max_feedrate_y, i, vel);
+                }
+            }
+            if (klipper_max_accel != nullptr && klipper_max_accel->value > 0)
+            {
+                float accel = static_cast<float>(klipper_max_accel->value);
+                for (size_t i = 0; i < m_time_processor.machine_limits.machine_max_acceleration_x.size(); ++i)
+                {
+                    set_option_value(m_time_processor.machine_limits.machine_max_acceleration_x, i, accel);
+                    set_option_value(m_time_processor.machine_limits.machine_max_acceleration_y, i, accel);
+                    set_option_value(m_time_processor.machine_limits.machine_max_acceleration_extruding, i, accel);
+                    set_option_value(m_time_processor.machine_limits.machine_max_acceleration_retracting, i, accel);
+                    set_option_value(m_time_processor.machine_limits.machine_max_acceleration_travel, i, accel);
+                }
+            }
+            if (klipper_scv != nullptr && klipper_scv->value > 0)
+            {
+                m_klipper_scv = static_cast<float>(klipper_scv->value);
+                float accel = get_option_value(m_time_processor.machine_limits.machine_max_acceleration_extruding, 0);
+                if (accel > 0.0f)
+                {
+                    float jd = (m_klipper_scv * m_klipper_scv) / (2.0f * accel);
+                    for (size_t i = 0; i < m_time_processor.machine_limits.machine_max_junction_deviation.size(); ++i)
+                        set_option_value(m_time_processor.machine_limits.machine_max_junction_deviation, i, jd);
+                }
+            }
+            if (klipper_mcr != nullptr)
+                m_klipper_minimum_cruise_ratio = static_cast<float>(klipper_mcr->value);
+        }
     }
 
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i)
@@ -1556,6 +1618,115 @@ void GCodeProcessor::parse_rrf_limits_from_config(const PrintConfig &config)
         parse_rrf_mcode_field(config.machine_rrf_m207.value);
 }
 
+void GCodeProcessor::parse_klipper_limits_from_config(const PrintConfig &config)
+{
+    float max_velocity = static_cast<float>(config.machine_klipper_max_velocity.value);
+    float max_accel = static_cast<float>(config.machine_klipper_max_accel.value);
+    float scv = static_cast<float>(config.machine_klipper_square_corner_velocity.value);
+    float mcr = static_cast<float>(config.machine_klipper_minimum_cruise_ratio.value);
+
+    m_klipper_scv = scv;
+    m_klipper_minimum_cruise_ratio = mcr;
+
+    for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i)
+    {
+        if (max_velocity > 0.0f)
+        {
+            set_option_value(m_time_processor.machine_limits.machine_max_feedrate_x, i, max_velocity);
+            set_option_value(m_time_processor.machine_limits.machine_max_feedrate_y, i, max_velocity);
+        }
+        if (max_accel > 0.0f)
+        {
+            set_option_value(m_time_processor.machine_limits.machine_max_acceleration_x, i, max_accel);
+            set_option_value(m_time_processor.machine_limits.machine_max_acceleration_y, i, max_accel);
+            set_option_value(m_time_processor.machine_limits.machine_max_acceleration_extruding, i, max_accel);
+            set_option_value(m_time_processor.machine_limits.machine_max_acceleration_retracting, i, max_accel);
+            set_option_value(m_time_processor.machine_limits.machine_max_acceleration_travel, i, max_accel);
+            set_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), max_accel);
+            set_travel_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), max_accel);
+        }
+        // Convert SCV to junction deviation: jd = scv^2 / (2 * accel)
+        if (scv > 0.0f && max_accel > 0.0f)
+        {
+            float jd = (scv * scv) / (2.0f * max_accel);
+            set_option_value(m_time_processor.machine_limits.machine_max_junction_deviation, i, jd);
+        }
+    }
+
+    // Klipper doesn't use min feedrates or per-axis jerk
+    m_time_processor.machine_limits.machine_min_travel_rate.values.assign(
+        m_time_processor.machine_limits.machine_min_travel_rate.size(), 0.);
+    m_time_processor.machine_limits.machine_min_extruding_rate.values.assign(
+        m_time_processor.machine_limits.machine_min_extruding_rate.size(), 0.);
+}
+
+void GCodeProcessor::process_SET_VELOCITY_LIMIT(const std::string &line)
+{
+    // Parse Klipper SET_VELOCITY_LIMIT command
+    // Format: SET_VELOCITY_LIMIT [VELOCITY=<val>] [ACCEL=<val>] [SQUARE_CORNER_VELOCITY=<val>]
+    //         [MINIMUM_CRUISE_RATIO=<val>]
+
+    auto parse_param = [&line](const std::string &param_name) -> std::pair<bool, float>
+    {
+        std::string search = param_name + "=";
+        size_t pos = 0;
+        while ((pos = line.find(search, pos)) != std::string::npos)
+        {
+            if (pos == 0 || line[pos - 1] == ' ' || line[pos - 1] == '\t')
+                break;
+            pos += search.size();
+        }
+        if (pos == std::string::npos)
+            return {false, 0.0f};
+        pos += search.size();
+        size_t end = line.find_first_of(" \t\r\n;", pos);
+        std::string value_str = (end != std::string::npos) ? line.substr(pos, end - pos) : line.substr(pos);
+        size_t read = 0;
+        float val = string_to_float_decimal_point(value_str, &read);
+        return (read > 0) ? std::pair{true, val} : std::pair{false, 0.0f};
+    };
+
+    auto [has_velocity, velocity] = parse_param("VELOCITY");
+    auto [has_accel, accel] = parse_param("ACCEL");
+    auto [has_scv, scv] = parse_param("SQUARE_CORNER_VELOCITY");
+    auto [has_mcr, mcr] = parse_param("MINIMUM_CRUISE_RATIO");
+
+    if (has_scv && scv > 0.0f)
+        m_klipper_scv = scv;
+    if (has_mcr)
+        m_klipper_minimum_cruise_ratio = std::clamp(mcr, 0.0f, 0.99f);
+
+    for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i)
+    {
+        if (has_velocity && velocity > 0.0f)
+        {
+            set_option_value(m_time_processor.machine_limits.machine_max_feedrate_x, i, velocity);
+            set_option_value(m_time_processor.machine_limits.machine_max_feedrate_y, i, velocity);
+        }
+        if (has_accel && accel > 0.0f)
+        {
+            set_option_value(m_time_processor.machine_limits.machine_max_acceleration_x, i, accel);
+            set_option_value(m_time_processor.machine_limits.machine_max_acceleration_y, i, accel);
+            set_option_value(m_time_processor.machine_limits.machine_max_acceleration_extruding, i, accel);
+            set_option_value(m_time_processor.machine_limits.machine_max_acceleration_retracting, i, accel);
+            set_option_value(m_time_processor.machine_limits.machine_max_acceleration_travel, i, accel);
+            set_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), accel);
+            set_travel_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), accel);
+        }
+        // Recalculate junction deviation whenever SCV or accel changes
+        if (has_scv || has_accel)
+        {
+            float current_accel = get_option_value(m_time_processor.machine_limits.machine_max_acceleration_extruding,
+                                                   i);
+            if (m_klipper_scv > 0.0f && current_accel > 0.0f)
+            {
+                float jd = (m_klipper_scv * m_klipper_scv) / (2.0f * current_accel);
+                set_option_value(m_time_processor.machine_limits.machine_max_junction_deviation, i, jd);
+            }
+        }
+    }
+}
+
 void GCodeProcessor::process_M207(const GCodeReader::GCodeLine &line)
 {
     // M207 - Set firmware retraction parameters (RepRapFirmware)
@@ -1597,6 +1768,8 @@ void GCodeProcessor::reset()
     m_flavor = gcfRepRapSprinter;
     m_rrf_jerk_policy = true;
     m_rrf_jerk_affected_blocks = 0;
+    m_klipper_scv = 5.0f;
+    m_klipper_minimum_cruise_ratio = 0.5f;
 
     m_time_compensation = 0.0f;
 
@@ -3602,6 +3775,11 @@ void GCodeProcessor::process_gcode_line(const GCodeReader::GCodeLine &line, bool
         case 't':
         case 'T':
             process_T(line); // Select Tool
+            break;
+        case 's':
+        case 'S':
+            if (m_flavor == gcfKlipper && cmd == "SET_VELOCITY_LIMIT")
+                process_SET_VELOCITY_LIMIT(line.raw());
             break;
         default:
             break;
@@ -5828,6 +6006,27 @@ void GCodeProcessor::process_M204(const GCodeReader::GCodeLine &line)
                     // Interpret the T value as the travel acceleration in the new Marlin format.
                     set_travel_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), value);
             }
+
+            // Klipper treats M204 as equivalent to SET_VELOCITY_LIMIT ACCEL=
+            // It updates the global max_accel limit and recalculates junction deviation.
+            if (m_flavor == gcfKlipper)
+            {
+                float accel = get_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i));
+                if (accel > 0.0f)
+                {
+                    set_option_value(m_time_processor.machine_limits.machine_max_acceleration_x, i, accel);
+                    set_option_value(m_time_processor.machine_limits.machine_max_acceleration_y, i, accel);
+                    set_option_value(m_time_processor.machine_limits.machine_max_acceleration_extruding, i, accel);
+                    set_option_value(m_time_processor.machine_limits.machine_max_acceleration_retracting, i, accel);
+                    set_option_value(m_time_processor.machine_limits.machine_max_acceleration_travel, i, accel);
+
+                    if (m_klipper_scv > 0.0f)
+                    {
+                        float jd = (m_klipper_scv * m_klipper_scv) / (2.0f * accel);
+                        set_option_value(m_time_processor.machine_limits.machine_max_junction_deviation, i, jd);
+                    }
+                }
+            }
         }
     }
 }
@@ -7240,8 +7439,9 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult &result, size_t keep_la
     for (size_t i = 0; i < time_mode_count; ++i)
     {
         TimeMachine &machine = m_time_processor.machines[i];
+        float mcr = (m_flavor == gcfKlipper) ? m_klipper_minimum_cruise_ratio : 0.0f;
         machine.calculate_time(m_result, static_cast<PrintEstimatedStatistics::ETimeMode>(i), keep_last_n_blocks,
-                               additional_time, m_time_compensation, nullptr, m_large_print_optimization_applied);
+                               additional_time, m_time_compensation, nullptr, m_large_print_optimization_applied, mcr);
 
         if (static_cast<PrintEstimatedStatistics::ETimeMode>(i) == PrintEstimatedStatistics::ETimeMode::Normal)
         {

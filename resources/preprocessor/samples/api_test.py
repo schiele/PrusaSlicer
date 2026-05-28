@@ -21,13 +21,14 @@ destroy the print. To run without modifications, remove this script from
 the preprocessor folder.
 """
 
+import re
 import sys
 import preFlight
 from preFlight import MoveType, ExtrusionRole, CustomEventType
 
 
 def process(gcode: preFlight.GCode):
-    if tuple(int(x) for x in preFlight.version.split(".")) < (0, 9, 13):
+    if tuple(int(x) for x in re.sub(r'[^0-9.].*', '', preFlight.version).split(".")) < (0, 9, 13):
         print(f"[api_test] Requires preFlight 0.9.13+ (running {preFlight.version})")
         return
 

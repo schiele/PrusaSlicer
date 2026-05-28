@@ -33,6 +33,10 @@ public:
     // returns currently active shader, nullptr if none
     GLShaderProgram *get_current_shader();
 
+    // Compile phong shaders on demand if they were skipped during init.
+    // Returns true if phong shaders are now available.
+    bool ensure_phong_shaders();
+
 private:
     // Try to compile a shader; on failure, map its name to fallback_name so
     // get_shader(name) transparently returns the fallback program.

@@ -166,7 +166,8 @@ static const t_config_enum_values s_keys_map_TopSurfaceVisibilityDetection{
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(TopSurfaceVisibilityDetection)
 
-static const t_config_enum_values s_keys_map_PerimeterCompression{{"off", int(pcOff)},
+static const t_config_enum_values s_keys_map_PerimeterCompression{{"off", int(pcMinimal)},
+                                                                  {"minimal", int(pcMinimal)},
                                                                   {"moderate", int(pcModerate)},
                                                                   {"aggressive", int(pcAggressive)}};
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(PerimeterCompression)
@@ -672,7 +673,7 @@ void PrintConfigDef::init_fff_params()
     def = this->add("bed_temperature", coInts);
     def->label = L("Other layers");
     def->tooltip = L("Bed temperature for layers after the first one. "
-                     "Set this to zero to disable bed temperature control commands in the output.");
+                     "Set this to zero to keep the first layer bed temperature for the entire print.");
     def->sidetext = L("°C");
     def->full_label = L("Bed temperature");
     def->min = 0;
@@ -981,8 +982,9 @@ void PrintConfigDef::init_fff_params()
     // TRN: Label for speed used to print infill above bridges.
     def->label = L("Over bridges");
     def->category = L("Speed");
-    def->tooltip = L("Speed for printing solid infill above bridges. Set to 0 to use solid infill speed. "
-                     "If set as percentage, the speed is calculated over solid infill speed. ");
+    def->tooltip = L("Speed for printing solid infill above bridges. "
+                     "Set to 0 to use solid infill speed. "
+                     "If set as percentage, the speed is calculated over solid infill speed.");
     def->sidetext = L("mm/s or %");
     def->min = 0;
     def->mode = comAdvanced;
@@ -1591,12 +1593,33 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionStrings{""});
 
+    // Legacy alias - kept for preset compatibility and pre/post-processing scripts
     def = this->add("filament_max_volumetric_speed", coFloats);
-    def->label = L("Max volumetric speed");
-    def->tooltip = L("Maximum volumetric speed allowed for this filament. Limits the maximum volumetric "
-                     "speed of a print to the minimum of print and filament volumetric speed. "
-                     "Set to zero for no limit.");
+    def->label = L("Max volumetric flow");
+    def->tooltip = L("Maximum volumetric flow (mm³/s) this filament can sustain. "
+                     "Used by Auto speed to calculate print move speeds. "
+                     "Also caps all print speeds regardless of Auto speed.");
     def->sidetext = L("mm³/s");
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats{0.});
+
+    // Alias for filament_max_volumetric_speed with the correct name
+    def = this->add("filament_max_volumetric_flow", coFloats);
+    def->label = L("Max volumetric flow");
+    def->tooltip = L("Maximum volumetric flow (mm³/s) this filament can sustain. "
+                     "Used by Auto speed to calculate print move speeds. "
+                     "Also caps all print speeds regardless of Auto speed.");
+    def->sidetext = L("mm³/s");
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats{0.});
+
+    def = this->add("filament_max_print_speed", coFloats);
+    def->label = L("Max print speed");
+    def->tooltip = L("Overrides the print profile's Max print speed for auto speed calculations. "
+                     "Set to zero to use the print profile's value.");
+    def->sidetext = L("mm/s");
     def->min = 0;
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloats{0.});
@@ -2293,14 +2316,14 @@ void PrintConfigDef::init_fff_params()
                      "bead into the remaining space. This setting determines how thin that center bead "
                      "is allowed to be. More aggressive compression fills more gaps but produces thinner beads. "
                      "This setting only applies to the Athena perimeter generator.\n\n"
-                     "• Disabled: Center beads must be full perimeter width (gaps left unfilled)\n"
-                     "• Moderate: Center beads can narrow to 66% of perimeter width\n"
-                     "• Aggressive: Center beads can narrow to 33% of perimeter width\n\n"
+                     "• Minimal: Center beads can narrow to 75% of perimeter width\n"
+                     "• Moderate: Center beads can narrow to 50% of perimeter width\n"
+                     "• Aggressive: Center beads can narrow to 25% of perimeter width\n\n"
                      "The floor is always 33% of nozzle diameter to ensure printability.");
     def->set_enum<PerimeterCompression>(std::initializer_list<std::pair<std::string_view, std::string_view>>{
-        {"off", L("Disabled")}, {"moderate", L("Moderate")}, {"aggressive", L("Aggressive")}});
+        {"minimal", L("Minimal")}, {"moderate", L("Moderate")}, {"aggressive", L("Aggressive")}});
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionEnum<PerimeterCompression>(pcOff));
+    def->set_default_value(new ConfigOptionEnum<PerimeterCompression>(pcAggressive));
 
     def = this->add("max_perimeter_width", coPercent);
     def->label = L("Maximum perimeter width");
@@ -2360,13 +2383,13 @@ void PrintConfigDef::init_fff_params()
     def->set_enum<GCodeFlavor>(
         std::initializer_list<std::pair<std::string_view, std::string_view>>{{"rapid", "oozeBot Rapid"},
                                                                              {"reprapfirmware", "RepRapFirmware"},
+                                                                             {"klipper", "Klipper"},
+                                                                             {"marlin2", "Marlin 2"},
+                                                                             {"marlin", "Marlin (legacy)"},
                                                                              {"reprap", "RepRap/Sprinter"},
                                                                              {"repetier", "Repetier"},
                                                                              {"teacup", "Teacup"},
                                                                              {"makerware", "MakerWare (MakerBot)"},
-                                                                             {"marlin", "Marlin (legacy)"},
-                                                                             {"marlin2", "Marlin 2"},
-                                                                             {"klipper", "Klipper"},
                                                                              {"sailfish", "Sailfish (MakerBot)"},
                                                                              {"mach3", "Mach3/LinuxCNC"},
                                                                              {"machinekit", "Machinekit"},
@@ -2771,9 +2794,9 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionFloat(0.1));
 
     def = this->add("ironing_speed", coFloat);
-    def->label = L("Ironing");
-    def->category = L("Speed");
-    def->tooltip = L("Ironing");
+    def->label = L("Speed");
+    def->category = L("Ironing");
+    def->tooltip = L("Speed for ironing top surfaces.");
     def->sidetext = L("mm/s");
     def->min = 0;
     def->mode = comAdvanced;
@@ -2993,6 +3016,60 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionString(""));
 
+    // Klipper printer.cfg fields
+    def = this->add("machine_klipper_max_velocity", coFloat);
+    def->label = L("Max velocity");
+    def->category = L("Machine limits");
+    def->tooltip = L("Maximum velocity from your Klipper printer.cfg [printer] section.\n\n"
+                     "This is the global velocity limit for all moves.\n\n"
+                     "Can be changed mid-print with:\n"
+                     "  SET_VELOCITY_LIMIT VELOCITY=<value>");
+    def->sidetext = L("mm/s");
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(300));
+
+    def = this->add("machine_klipper_max_accel", coFloat);
+    def->label = L("Max acceleration");
+    def->category = L("Machine limits");
+    def->tooltip = L("Maximum acceleration from your Klipper printer.cfg [printer] section.\n\n"
+                     "This is the global acceleration limit for all moves.\n\n"
+                     "Can be changed mid-print with:\n"
+                     "  SET_VELOCITY_LIMIT ACCEL=<value>\n"
+                     "  M204 S<value>");
+    def->sidetext = L("mm/s²");
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(3000));
+
+    def = this->add("machine_klipper_square_corner_velocity", coFloat);
+    def->label = L("Square corner velocity");
+    def->category = L("Machine limits");
+    def->tooltip = L("Square corner velocity from your Klipper printer.cfg [printer] section.\n\n"
+                     "Controls how fast the toolhead moves through corners.\n"
+                     "Higher values allow faster cornering but may cause ringing.\n"
+                     "Klipper default is 5.0 mm/s.\n\n"
+                     "Can be changed mid-print with:\n"
+                     "  SET_VELOCITY_LIMIT SQUARE_CORNER_VELOCITY=<value>");
+    def->sidetext = L("mm/s");
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(5.0));
+
+    def = this->add("machine_klipper_minimum_cruise_ratio", coFloat);
+    def->label = L("Minimum cruise ratio");
+    def->category = L("Machine limits");
+    def->tooltip = L("Minimum cruise ratio from your Klipper printer.cfg [printer] section.\n\n"
+                     "On short moves, the printer maintains at least this fraction\n"
+                     "of the requested speed instead of decelerating fully.\n"
+                     "Klipper default is 0.5 (50% of nominal speed).\n\n"
+                     "Can be changed mid-print with:\n"
+                     "  SET_VELOCITY_LIMIT MINIMUM_CRUISE_RATIO=<value>");
+    def->min = 0;
+    def->max = 0.99;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.5));
+
     def = this->add("machine_time_compensation", coPercent);
     def->label = L("Real-World Compensation");
     def->category = L("Machine limits");
@@ -3061,11 +3138,19 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloats{0.});
 
+    def = this->add("auto_speed", coBool);
+    def->label = L("Auto speed");
+    def->tooltip = L("When enabled, print move speeds are automatically calculated from each filament's "
+                     "max volumetric flow and capped at Max print speed. "
+                     "Bridge and small perimeter speeds remain manual (set to 0 for auto speed). "
+                     "Over-bridge set to 0 uses solid infill speed. "
+                     "Gap fill set to 0 disables it.");
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("max_print_speed", coFloat);
     def->label = L("Max print speed");
-    def->tooltip = L("When setting other speed settings to 0 Slic3r will autocalculate the optimal speed "
-                     "in order to keep constant extruder pressure. This experimental setting is used "
-                     "to set the highest print speed you want to allow.");
+    def->tooltip = L("The maximum speed for any print move when using auto speed, "
+                     "or the fallback speed when individual speeds are set to 0.");
     def->sidetext = L("mm/s");
     def->min = 1;
     def->mode = comExpert;
@@ -3186,6 +3271,22 @@ void PrintConfigDef::init_fff_params()
     def->tooltip = L("This is the diameter of your extruder nozzle (for example: 0.5, 0.35 etc.)");
     def->sidetext = L("mm");
     def->set_default_value(new ConfigOptionFloats{0.4});
+
+    def = this->add("nozzle_width_warning_min", coPercents);
+    def->label = L("Width warning min");
+    def->tooltip = L("Warn when any extrusion width falls below this percentage of the nozzle diameter.");
+    def->sidetext = L("%");
+    def->min = 33;
+    def->max = 500;
+    def->set_default_value(new ConfigOptionPercents{60});
+
+    def = this->add("nozzle_width_warning_max", coPercents);
+    def->label = L("Width warning max");
+    def->tooltip = L("Warn when any extrusion width exceeds this percentage of the nozzle diameter.");
+    def->sidetext = L("%");
+    def->min = 33;
+    def->max = 500;
+    def->set_default_value(new ConfigOptionPercents{150});
 
     def = this->add("host_type", coEnum);
     def->label = L("Host Type");
@@ -3388,7 +3489,7 @@ void PrintConfigDef::init_fff_params()
                      "extrude at 200% flow to compress material into gaps from the layer below.\n\n"
                      "100% = base interlocking (200% flow on inner shells)\n"
                      "150% = aggressive (may cause artifacts)\n\n"
-                     "Note: Bead-to-bead bonding is controlled separately by 'Interlocking overlap'.");
+                     "Note: The gap between interlocking shells is controlled separately by 'Interlocking overlap'.");
     def->sidetext = L("%");
     def->min = 0;
     def->max = 200;
@@ -3398,16 +3499,12 @@ void PrintConfigDef::init_fff_params()
     def = this->add("interlock_perimeter_overlap", coFloatOrPercent);
     def->label = L("Interlocking overlap");
     def->category = L("Layers and Perimeters");
-    def->tooltip = L("Adjusts flow for interlocking perimeters to control bead-to-bead bonding. "
-                     "Interlocking shells are spaced apart by design; this setting fattens or "
-                     "thins beads to fine-tune layer adhesion.\n\n"
-                     "The default 10.73% is derived from the geometric constant (1 - π/4) / 2, "
-                     "which accounts for the semicircular bead cross-section. The overlap amount "
-                     "is calculated from layer height: at 10.73%, beads bond optimally; at 100%, "
-                     "beads completely overlap.\n\n"
-                     "Smaller values = thinner beads, less overlap / bonding\n"
-                     "10.73% = ideal overlap / bonding\n"
-                     "Larger values = thicker beads, more overlap / bonding");
+    def->tooltip = L("Controls the gap width between interlocking shells. Higher values narrow the "
+                     "channels and compress more material into the interlocking pattern, resulting "
+                     "in a stronger bond.\n\n"
+                     "Default: 10.73% (safe starting point)\n\n"
+                     "Start with a test print at 10.73% and increase gradually until over-extrusion "
+                     "is reached, then dial it back to the last safe value.");
     def->sidetext = L("mm or %");
     def->ratio_over = "layer_height";
     def->min = -50;
@@ -4006,9 +4103,10 @@ void PrintConfigDef::init_fff_params()
     def = this->add("small_perimeter_speed", coFloatOrPercent);
     def->label = L("Small perimeters");
     def->category = L("Speed");
-    def->tooltip = L("This separate setting will affect the speed of perimeters having radius <= 6.5mm "
-                     "(usually holes). If expressed as percentage (for example: 80%) it will be calculated "
-                     "on the perimeters speed setting above. Set to zero for auto.");
+    def->tooltip = L("Speed for perimeters having radius <= 6.5mm (usually holes). "
+                     "A percentage is recommended - it will be calculated as a percentage of "
+                     "the perimeter speed, whether set manually or calculated by auto speed. "
+                     "Set to zero to use the full perimeter speed.");
     def->sidetext = L("mm/s or %");
     def->ratio_over = "perimeter_speed";
     def->min = 0;
@@ -4698,8 +4796,8 @@ void PrintConfigDef::init_fff_params()
 
     def = this->add("temperature", coInts);
     def->label = L("Other layers");
-    def->tooltip = L("Nozzle temperature for layers after the first one. Set this to zero to disable "
-                     "temperature control commands in the output G-code.");
+    def->tooltip = L("Nozzle temperature for layers after the first one. Set this to zero to keep "
+                     "the first layer nozzle temperature for the entire print.");
     def->sidetext = L("°C");
     def->full_label = L("Nozzle temperature");
     def->min = 0;
@@ -5234,6 +5332,8 @@ void PrintConfigDef::init_extruder_option_keys()
 {
     // ConfigOptionFloats, ConfigOptionPercents, ConfigOptionBools, ConfigOptionStrings
     m_extruder_option_keys = {"nozzle_diameter",
+                              "nozzle_width_warning_min",
+                              "nozzle_width_warning_max",
                               "fan_spinup_time",
                               "fan_spinup_response_type",
                               "min_layer_height",

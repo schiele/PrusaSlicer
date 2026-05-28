@@ -901,7 +901,8 @@ const std::vector<VariableWidthLines> &WallToolPaths::generate()
         SkeletalTrapezoidation wall_maker(prepared_outline, *beading_strat, beading_strat->getTransitioningAngle(),
                                           discretization_step_size, transition_filter_dist, allowed_filter_deviation,
                                           wall_transition_length, this->max_bead_width_external,
-                                          this->max_bead_width_internal, ext_w, ext_s, split_s);
+                                          this->max_bead_width_internal, ext_w, ext_s, split_s, debug_print_z,
+                                          debug_layer_id);
 
         wall_maker.generateToolpaths(toolpaths);
     }

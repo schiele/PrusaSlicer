@@ -81,6 +81,8 @@ class SkeletalTrapezoidation
     coord_t ext_perimeter_width;     //!< External perimeter width
     coord_t ext_perimeter_spacing;   //!< External perimeter spacing matching the pre-inset
     coord_t ext_split_spacing;       //!< External perimeter spacing for split overlap (ext/perimeter overlap setting)
+    double debug_print_z{0.0};       //!< Print z for FILL_DEBUG log lines
+    int debug_layer_id{-1};          //!< Layer ID for FILL_DEBUG log lines
     static constexpr coord_t central_filter_dist = scaled<coord_t>(
         0.02); //!< Filter areas marked as 'central' smaller than this
     static constexpr coord_t snap_dist = scaled<coord_t>(
@@ -122,7 +124,7 @@ public:
                            coord_t allowed_filter_deviation, coord_t beading_propagation_transition_dist,
                            coord_t max_bead_width_external = 0, coord_t max_bead_width_internal = 0,
                            coord_t ext_perimeter_width = 0, coord_t ext_perimeter_spacing = 0,
-                           coord_t ext_split_spacing = 0);
+                           coord_t ext_split_spacing = 0, double debug_print_z = 0.0, int debug_layer_id = -1);
 
     /*!
      * A skeletal graph through the polygons that we need to fill with beads.

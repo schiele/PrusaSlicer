@@ -158,6 +158,8 @@ BeadingStrategy::Beading RedistributeBeadingStrategy::compute(coord_t thickness,
             // Wide walls: positive left_over allows expansion via applyBeadWidthAdjustments.
             ret.left_over = (half_thickness >= ext_perimeter_spacing) ? (thickness - 2 * ext_perimeter_spacing) : 0;
             ret.total_thickness = thickness;
+            if (innermost_spacing > 0)
+                ret.preserve_innermost_position = true;
             return ret;
         }
 

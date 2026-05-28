@@ -426,7 +426,6 @@ private:
     const Layer *m_layer;
     // m_layer is an object layer and it is being printed over raft surface.
     bool m_object_layer_over_raft;
-    double m_volumetric_speed;
     // Support for the extrusion role markers. Which marker is active?
     GCodeExtrusionRole m_last_extrusion_role;
     // Support for G-Code Processor

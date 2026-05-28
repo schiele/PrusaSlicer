@@ -7,6 +7,7 @@
 #include "SkeletalTrapezoidation.hpp"
 
 #include <boost/log/trivial.hpp>
+#include "libslic3r/Fill/FillBase.hpp" // FILL_DEBUG flag + dbg_fill_print()
 #include <boost/polygon/polygon.hpp>
 #include <queue>
 #include <algorithm>
@@ -380,7 +381,7 @@ SkeletalTrapezoidation::SkeletalTrapezoidation(const Polygons &polys, const Bead
                                                coord_t beading_propagation_transition_dist,
                                                coord_t max_bead_width_external, coord_t max_bead_width_internal,
                                                coord_t ext_perimeter_width, coord_t ext_perimeter_spacing,
-                                               coord_t ext_split_spacing)
+                                               coord_t ext_split_spacing, double debug_print_z, int debug_layer_id)
     : transitioning_angle(transitioning_angle)
     , discretization_step_size(discretization_step_size)
     , transition_filter_dist(transition_filter_dist)
@@ -391,6 +392,8 @@ SkeletalTrapezoidation::SkeletalTrapezoidation(const Polygons &polys, const Bead
     , ext_perimeter_width(ext_perimeter_width)
     , ext_perimeter_spacing(ext_perimeter_spacing)
     , ext_split_spacing(ext_split_spacing)
+    , debug_print_z(debug_print_z)
+    , debug_layer_id(debug_layer_id)
     , beading_strategy(beading_strategy)
 {
     constructFromPolygons(polys);
@@ -595,6 +598,24 @@ void SkeletalTrapezoidation::generateToolpaths(std::vector<VariableWidthLines> &
 
     updateBeadCount();
 
+    if (FILL_DEBUG)
+    {
+        // Summarize bead count distribution after updateBeadCount
+        std::map<coord_t, int> count_dist;
+        int transition_edges = 0;
+        for (const auto &node : graph.nodes)
+            if (node.data.bead_count >= 0)
+                count_dist[node.data.bead_count]++;
+        for (const auto &edge : graph.edges)
+            if (edge.data.isCentral() && edge.from->data.bead_count != edge.to->data.bead_count)
+                transition_edges++;
+        dbg_fill_print("z=%.3f [SKEL] PIPELINE_SUMMARY layer=%d after=updateBeadCount nodes_by_count=[",
+                       debug_print_z, debug_layer_id);
+        for (auto &[count, n] : count_dist)
+            dbg_fill_print("%d:%d ", (int) count, n);
+        dbg_fill_print("] transition_edges=%d\n", transition_edges);
+    }
+
 #ifdef ATHENA_DEBUG
     export_graph_to_svg(debug_out_path("ST-updateBeadCount-final-%d.svg", iRun), this->graph, this->outline);
 #endif
@@ -606,6 +627,18 @@ void SkeletalTrapezoidation::generateToolpaths(std::vector<VariableWidthLines> &
 #endif
 
     generateTransitioningRibs();
+
+    if (FILL_DEBUG)
+    {
+        // Count transitions after rib generation
+        int transition_ratio_nodes = 0;
+        for (const auto &node : graph.nodes)
+            if (node.data.transition_ratio != 0)
+                transition_ratio_nodes++;
+        dbg_fill_print("z=%.3f [SKEL] PIPELINE_SUMMARY layer=%d after=generateTransitioningRibs "
+                       "transition_ratio_nodes=%d\n",
+                       debug_print_z, debug_layer_id, transition_ratio_nodes);
+    }
 
 #ifdef ATHENA_DEBUG
     export_graph_to_svg(debug_out_path("ST-generateTransitioningRibs-final-%d.svg", iRun), this->graph, this->outline);
@@ -759,6 +792,28 @@ void SkeletalTrapezoidation::updateBeadCount()
             }
             coord_t bead_count = beading_strategy.getOptimalBeadCount(node.data.distance_to_boundary * 2);
             node.data.bead_count = bead_count;
+
+            if (FILL_DEBUG)
+            {
+                coord_t thickness = node.data.distance_to_boundary * 2;
+                coord_t ext_sp = ext_perimeter_spacing;
+                coord_t inner_thickness = (thickness > 2 * ext_sp) ? (thickness - 2 * ext_sp) : thickness;
+                coord_t spacing = beading_strategy.getBeadSpacing();
+                coord_t inner_naive = (thickness > 2 * ext_sp) ? (inner_thickness / spacing) : 0;
+                coord_t inner_remainder = (thickness > 2 * ext_sp) ? (inner_thickness - inner_naive * spacing) : 0;
+                double add_thresh = beading_strategy.getAddMiddleThreshold();
+                double split_thresh = beading_strategy.getSplitMiddleThreshold();
+                const char *thresh_type = (inner_naive % 2 == 1) ? "split" : "add";
+                double thresh_val = (inner_naive % 2 == 1) ? split_thresh : add_thresh;
+                coord_t min_line_w = coord_t(spacing * thresh_val);
+                dbg_fill_print("z=%.3f [SKEL] BEAD_COUNT local_max layer=%d thickness=%.4fmm "
+                               "ext_sp=%.4fmm inner=%.4fmm naive=%d remainder=%.4fmm "
+                               "min_line_w=%.4fmm (%s=%.4f) bead_count=%d pos=(%.4f,%.4f)\n",
+                               debug_print_z, debug_layer_id, unscaled<double>(thickness), unscaled<double>(ext_sp),
+                               unscaled<double>(inner_thickness), (int) inner_naive, unscaled<double>(inner_remainder),
+                               unscaled<double>(min_line_w), thresh_type, thresh_val, (int) bead_count,
+                               unscaled<double>(node.p.x()), unscaled<double>(node.p.y()));
+            }
         }
     }
 }
@@ -946,6 +1001,19 @@ void SkeletalTrapezoidation::generateTransitionMids(ptr_vector_t<std::list<Trans
                 transitions = edge.data.getTransitions();
             }
             transitions->emplace_back(mid_pos, transition_lower_bead_count, mid_R);
+
+            if (FILL_DEBUG)
+            {
+                dbg_fill_print("z=%.3f [SKEL] TRANSITION_MID layer=%d lower_count=%d thickness=%.4fmm "
+                               "start_R=%.4fmm end_R=%.4fmm mid_R=%.4fmm edge_size=%.4fmm mid_pos=%.4fmm "
+                               "from_count=%d to_count=%d from=(%.4f,%.4f) to=(%.4f,%.4f)\n",
+                               debug_print_z, debug_layer_id, transition_lower_bead_count,
+                               unscaled<double>(mid_R * 2), unscaled<double>(start_R), unscaled<double>(end_R),
+                               unscaled<double>(mid_R), unscaled<double>(edge_size), unscaled<double>(mid_pos),
+                               start_bead_count, end_bead_count, unscaled<double>(edge.from->p.x()),
+                               unscaled<double>(edge.from->p.y()), unscaled<double>(edge.to->p.x()),
+                               unscaled<double>(edge.to->p.y()));
+            }
         }
         assert((edge.from->data.bead_count == edge.to->data.bead_count) || edge.data.hasTransitions());
     }
@@ -1584,6 +1652,23 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
     double split_middle_threshold = beading_strategy.getSplitMiddleThreshold();
     coord_t expand_gap_threshold = coord_t(nominal_spacing * add_middle_threshold);
 
+    if (FILL_DEBUG && beading.left_over != 0)
+    {
+        dbg_fill_print("z=%.3f [SKEL] ADJUST_BEGIN layer=%d beads=%zu thickness=%.4fmm left_over=%.4fmm "
+                       "nominal_w=%.4fmm nominal_s=%.4fmm add_thresh=%.4f split_thresh=%.4f widths=[",
+                       debug_print_z, debug_layer_id, beading.bead_widths.size(),
+                       unscaled<double>(beading.total_thickness), unscaled<double>(beading.left_over),
+                       unscaled<double>(nominal_width), unscaled<double>(nominal_spacing), add_middle_threshold,
+                       split_middle_threshold);
+        for (size_t i = 0; i < beading.bead_widths.size(); ++i)
+        {
+            if (i > 0)
+                dbg_fill_print(",");
+            dbg_fill_print("%.4f", unscaled<double>(beading.bead_widths[i]));
+        }
+        dbg_fill_print("]\n");
+    }
+
     // EVEN case: Adjust two innermost beads (expand for gap OR contract for overfill)
     // Only applies when BeadingStrategy did NOT place a center bead (even count)
     if (beading.bead_widths.size() >= 2 && beading.bead_widths.size() % 2 == 0 && beading.left_over != 0)
@@ -1640,6 +1725,12 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
             coord_t width_reduction = (coord_t) width_reduction_double;
             new_width = current_width - width_reduction;
 
+            // For multi-bead walls (>2 beads), don't contract internal beads below
+            // nominal spacing - they must remain wide enough to overlap with neighbors.
+            // Thin walls (2 beads) are exempt - both beads are external and legitimately narrow.
+            if (beading.bead_widths.size() > 2 && new_width < nominal_spacing)
+                new_width = nominal_spacing;
+
             // Toolpath locations move outward (away from center)
             centerline_adjustment = reduction_per_bead / 2;
         }
@@ -1647,12 +1738,28 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
         coord_t min_safe_width = nominal_width / 3;
         if (new_width < min_safe_width)
         {
+            if (FILL_DEBUG)
+            {
+                dbg_fill_print("z=%.3f [SKEL] ADJUST_EVEN_REJECT layer=%d new_width=%.4fmm < min_safe=%.4fmm "
+                               "left_over=%.4fmm ABANDONED\n",
+                               debug_print_z, debug_layer_id, unscaled<double>(new_width),
+                               unscaled<double>(min_safe_width), unscaled<double>(beading.left_over));
+            }
             beading.left_over = 0;
             return;
         }
 
         if (mid_idx > 0 && mid_idx < beading.bead_widths.size() && new_width > 0)
         {
+            if (FILL_DEBUG)
+            {
+                dbg_fill_print("z=%.3f [SKEL] ADJUST_EVEN layer=%d %s mid_beads[%zu,%zu] %.4fmm -> %.4fmm "
+                               "left_over=%.4fmm\n",
+                               debug_print_z, debug_layer_id, is_expand ? "EXPAND" : "CONTRACT", mid_idx - 1, mid_idx,
+                               unscaled<double>(current_width), unscaled<double>(new_width),
+                               unscaled<double>(beading.left_over));
+            }
+
             // Apply width changes
             beading.bead_widths[mid_idx - 1] = new_width;
             beading.bead_widths[mid_idx] = new_width;
@@ -1722,6 +1829,8 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
                 coord_t reduction_per_bead = -beading.left_over / 2;
                 coord_t width_reduction = (coord_t) ((double) reduction_per_bead * adjustment_factor);
                 new_width = current_width - width_reduction;
+                if (new_width < nominal_spacing)
+                    new_width = nominal_spacing;
                 centerline_adjustment = reduction_per_bead / 2;
             }
 
@@ -1781,6 +1890,14 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
             new_center_width = current_center_width - width_reduction;
         }
 
+        if (FILL_DEBUG)
+        {
+            dbg_fill_print("z=%.3f [SKEL] ADJUST_ODD layer=%d center_idx=%zu current=%.4fmm new=%.4fmm "
+                           "left_over=%.4fmm adj_factor=%.4f\n",
+                           debug_print_z, debug_layer_id, center_idx, unscaled<double>(current_center_width),
+                           unscaled<double>(new_center_width), unscaled<double>(beading.left_over), adjustment_factor);
+        }
+
         // Decide whether to keep one wide bead or split into two beads based on deviation from nominal
         // Option A: One wide bead - deviation = expanded_width - nominal
         // Option B: Two beads - deviation = 2 × |split_width - nominal|
@@ -1814,6 +1931,19 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
                 split_source = beading.total_thickness + (ext_perimeter_width - ext_perimeter_spacing);
             coord_t split_width = (coord_t) ((double) split_source / loop_width_factor);
 
+            // Split bias: two beads win unless one bead deviates less than HALF
+            // as much as two beads (i.e., one bead must be dramatically better)
+            // For single-bead walls: if the wall exceeds max_bead_width, one bead can't
+            // fill it (it gets capped, leaving a gap). Split into two beads instead.
+            // Only reject if split beads would be below minimum printable width.
+            bool force_split = false;
+            if (beading.bead_widths.size() <= 1 && max_bead_width_external > 0 && ext_perimeter_width > 0 &&
+                ext_perimeter_spacing > 0)
+            {
+                coord_t actual_wall = beading.total_thickness + (ext_perimeter_width - ext_perimeter_spacing);
+                force_split = (actual_wall > max_bead_width_external + scaled<coord_t>(0.001));
+            }
+
             // With perimeter overlap, block the split when each resulting bead would
             // be too narrow to form continuous perimeters. Narrow split beads create
             // fragmented diamond artifacts at skeleton transition zones because
@@ -1838,18 +1968,15 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
                                                                          : (split_threshold - split_width);
             coord_t two_bead_deviation = per_bead_deviation * 2;
 
-            // Split bias: two beads win unless one bead deviates less than HALF
-            // as much as two beads (i.e., one bead must be dramatically better)
-            // For single-bead walls: if the wall exceeds max_bead_width, one bead can't
-            // fill it (it gets capped, leaving a gap). Split into two beads instead.
-            // Only reject if split beads would be below minimum printable width.
-            bool force_split = false;
-            if (beading.bead_widths.size() <= 1 && max_bead_width_external > 0 && ext_perimeter_width > 0 &&
-                ext_perimeter_spacing > 0)
+            if (FILL_DEBUG)
             {
-                coord_t actual_wall = beading.total_thickness + (ext_perimeter_width - ext_perimeter_spacing);
-                // Small tolerance prevents rounding-induced splits when wall ≈ max
-                force_split = (actual_wall > max_bead_width_external + scaled<coord_t>(0.001));
+                dbg_fill_print("z=%.3f [SKEL] SPLIT_EVAL layer=%d center_w=%.4fmm split_w=%.4fmm "
+                               "split_thresh=%.4fmm 1bead_dev=%.4fmm 2bead_dev=%.4fmm "
+                               "min_split_w=%.4fmm split_viable=%d force_split=%d\n",
+                               debug_print_z, debug_layer_id, unscaled<double>(new_center_width),
+                               unscaled<double>(split_width), unscaled<double>(split_threshold),
+                               unscaled<double>(one_bead_deviation), unscaled<double>(two_bead_deviation),
+                               unscaled<double>(min_split_width), (int) split_viable, (int) force_split);
             }
 
             if (split_viable && (force_split || two_bead_deviation < one_bead_deviation * 2))
@@ -1886,6 +2013,21 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
                 beading.toolpath_locations.insert(beading.toolpath_locations.begin() + center_idx + 1, new_right_pos);
 
                 beading.left_over = 0;
+
+                if (FILL_DEBUG)
+                {
+                    dbg_fill_print("z=%.3f [SKEL] SPLIT_OK layer=%d center_bead -> 2 beads @ %.4fmm "
+                                   "pos=(%.4f,%.4f)\n",
+                                   debug_print_z, debug_layer_id, unscaled<double>(split_width),
+                                   unscaled<double>(new_left_pos), unscaled<double>(new_right_pos));
+                }
+            }
+            else if (FILL_DEBUG)
+            {
+                dbg_fill_print("z=%.3f [SKEL] SPLIT_REJECTED layer=%d split_viable=%d force_split=%d "
+                               "2bead_dev=%.4fmm >= 1bead_dev*2=%.4fmm\n",
+                               debug_print_z, debug_layer_id, (int) split_viable, (int) force_split,
+                               unscaled<double>(two_bead_deviation), unscaled<double>(one_bead_deviation * 2));
             }
         }
 
@@ -1906,12 +2048,27 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
 
             if (new_center_width < min_safe_width)
             {
+                if (FILL_DEBUG)
+                {
+                    dbg_fill_print("z=%.3f [SKEL] ADJUST_ODD_REJECT layer=%d new_center=%.4fmm < "
+                                   "min_safe=%.4fmm left_over=%.4fmm ABANDONED\n",
+                                   debug_print_z, debug_layer_id, unscaled<double>(new_center_width),
+                                   unscaled<double>(min_safe_width), unscaled<double>(beading.left_over));
+                }
                 beading.left_over = 0; // CRITICAL: Clear to prevent caching issues
                 return;                // Skip this adjustment - would cause Flow::spacing() to fail
             }
 
             if (new_center_width > 0)
             {
+                if (FILL_DEBUG)
+                {
+                    dbg_fill_print("z=%.3f [SKEL] ADJUST_ODD_OK layer=%d center[%zu] %.4fmm -> %.4fmm "
+                                   "left_over=%.4fmm\n",
+                                   debug_print_z, debug_layer_id, center_idx, unscaled<double>(current_center_width),
+                                   unscaled<double>(new_center_width), unscaled<double>(beading.left_over));
+                }
+
                 // When adjusting the center bead, we also need to adjust its toolpath_location
                 // to match the actual boundary position (total_thickness / 2).
                 // The BeadingStrategy calculated toolpath_locations assuming the center bead
@@ -1925,23 +2082,15 @@ void SkeletalTrapezoidation::applyBeadWidthAdjustments(Beading &beading)
         } // End of if (!split_center_into_loop)
     }
 
-    // Hard cap: clamp bead widths per type. External beads (outermost pair)
-    // cap at max_bead_width_external, internal beads cap at max_bead_width_internal.
-    if (max_bead_width_external > 0 || max_bead_width_internal > 0)
+    // Sanity check: a bead can never be wider than the wall itself (multi-bead only).
+    // Single thin-wall beads are exempt - WideningBeadingStrategy intentionally produces
+    // beads wider than total_thickness to compensate for the pre-inset polygon shrinkage.
     {
         const size_t n = beading.bead_widths.size();
         for (size_t i = 0; i < n; ++i)
         {
-            // Multi-bead walls: a bead can never be wider than the wall. Single thin-wall
-            // beads are exempt - WideningBeadingStrategy intentionally produces beads wider
-            // than total_thickness to compensate for the pre-inset polygon shrinkage.
             if (n > 1 && beading.total_thickness > 0 && beading.bead_widths[i] > beading.total_thickness)
                 beading.bead_widths[i] = beading.total_thickness;
-
-            bool is_external = (i == 0 || i == n - 1);
-            coord_t cap = is_external ? max_bead_width_external : max_bead_width_internal;
-            if (cap > 0 && beading.bead_widths[i] > cap)
-                beading.bead_widths[i] = cap;
         }
     }
 }
@@ -2056,9 +2205,7 @@ void SkeletalTrapezoidation::generateSegments()
 #endif
 
     // Finalize bead widths: enforce max caps on all node beadings after propagation
-    // and interpolation are complete. This is the single enforcement point - the
-    // strategy produces correct widths for 2-external thin walls, and this pass
-    // catches any remaining over-wide beads from interpolation or other sources.
+    // and interpolation are complete.
     {
         for (auto &node : graph.nodes)
         {
@@ -2292,7 +2439,16 @@ SkeletalTrapezoidation::Beading SkeletalTrapezoidation::interpolate(const Beadin
         {
             ret.bead_widths[inset_idx] = ratio_left_to_whole * left.bead_widths[inset_idx] +
                                          ratio_right_to_whole * right.bead_widths[inset_idx];
-            // Finalization pass in generateSegments() handles capping
+            // Internal interpolated beads must stay wide enough to overlap with neighbors.
+            // External beads (first/last) are exempt - thin walls need narrow beads.
+            size_t n = std::min(left.bead_widths.size(), right.bead_widths.size());
+            bool is_external = (inset_idx == 0 || inset_idx == n - 1);
+            if (!is_external && n > 2)
+            {
+                coord_t min_w = beading_strategy.getBeadSpacing();
+                if (ret.bead_widths[inset_idx] < min_w)
+                    ret.bead_widths[inset_idx] = min_w;
+            }
         }
         ret.toolpath_locations[inset_idx] = ratio_left_to_whole * left.toolpath_locations[inset_idx] +
                                             ratio_right_to_whole * right.toolpath_locations[inset_idx];
@@ -2374,12 +2530,44 @@ void SkeletalTrapezoidation::generateJunctions(ptr_vector_t<BeadingPropagation> 
 
             Point junction(a +
                            (ab.cast<int64_t>() * int64_t(bead_R - start_R) / int64_t(end_R - start_R)).cast<coord_t>());
+            bool snapped = false;
             if (bead_R > start_R - scaled<coord_t>(0.005))
             { // Snap to start node if it is really close, in order to be able to see 3-way intersection later on more robustly
                 junction = a;
+                snapped = true;
             }
 
-            ret.emplace_back(junction, beading->bead_widths[junction_idx], junction_idx);
+            if (FILL_DEBUG && beading->preserve_innermost_position)
+            {
+                dbg_fill_print("z=%.3f [SKEL] JUNCTION_IL layer=%d idx=%zu bead_R=%.4fmm start_R=%.4fmm "
+                               "end_R=%.4fmm delta_R=%.4fmm snapped=%d pos=(%.4f,%.4f) w=%.4fmm "
+                               "total_t=%.4fmm beads=%zu\n",
+                               debug_print_z, debug_layer_id, junction_idx, unscaled<double>(bead_R),
+                               unscaled<double>(start_R), unscaled<double>(end_R),
+                               unscaled<double>(end_R - start_R), (int) snapped,
+                               unscaled<double>(junction.x()), unscaled<double>(junction.y()),
+                               unscaled<double>(beading->bead_widths[junction_idx]),
+                               unscaled<double>(beading->total_thickness), beading->bead_widths.size());
+            }
+
+            coord_t w = beading->bead_widths[junction_idx];
+            // Internal beads must stay wide enough to overlap with neighbors.
+            // Various code paths (interpolation, even-case contraction, transition
+            // blending) can produce sub-spacing widths. Floor at spacing here as a
+            // catch-all so no internal junction emits a bead that breaks the overlap.
+            // External beads (first/last) are exempt - thin walls legitimately need
+            // narrow beads that would be below internal spacing.
+            if (w > 0 && num_junctions > 2)
+            {
+                bool is_external = (junction_idx == 0 || junction_idx == num_junctions - 1);
+                if (!is_external)
+                {
+                    coord_t min_w = beading_strategy.getBeadSpacing();
+                    if (w < min_w)
+                        w = min_w;
+                }
+            }
+            ret.emplace_back(junction, w, junction_idx);
         }
     }
 }

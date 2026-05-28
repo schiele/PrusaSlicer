@@ -133,10 +133,11 @@ std::string PresetHints::maximum_volumetric_flow_description(const PresetBundle 
     double small_perimeter_speed = print_config.get_abs_value("small_perimeter_speed", perimeter_speed);
     double solid_infill_speed = print_config.get_abs_value("solid_infill_speed", infill_speed);
     double top_solid_infill_speed = print_config.get_abs_value("top_solid_infill_speed", solid_infill_speed);
-    // Maximum print speed when auto-speed is enabled by setting any of the above speed values to zero.
+    // Maximum print speed when auto-speed is enabled. Filament override takes precedence when set.
     double max_print_speed = print_config.opt_float("max_print_speed");
-    // Maximum volumetric speed allowed for the print profile.
-    double max_volumetric_speed = print_config.opt_float("max_volumetric_speed");
+    double filament_max_print_speed = filament_config.opt_float("filament_max_print_speed", 0);
+    if (filament_max_print_speed > 0)
+        max_print_speed = filament_max_print_speed;
 
     const auto &extrusion_width = *print_config.option<ConfigOptionFloatOrPercent>("extrusion_width");
     const auto &external_perimeter_extrusion_width = *print_config.option<ConfigOptionFloatOrPercent>(
@@ -172,7 +173,7 @@ std::string PresetHints::maximum_volumetric_flow_description(const PresetBundle 
     double filament_crossection = M_PI * 0.25 * filament_diameter * filament_diameter;
     // double extrusion_multiplier             = filament_config.opt_float("extrusion_multiplier", 0);
     // The following value will be annotated by this hint, so it does not take part in the calculation.
-    //    double filament_max_volumetric_speed    = filament_config.opt_float("filament_max_volumetric_speed", 0);
+    //    double filament_max_volumetric_flow    = filament_config.opt_float("filament_max_volumetric_flow", 0);
 
     std::string out;
     for (size_t idx_type = (first_layer_extrusion_width.value == 0) ? 1 : 0; idx_type < 3; ++idx_type)
@@ -201,11 +202,11 @@ std::string PresetHints::maximum_volumetric_flow_description(const PresetBundle 
                           pct_of_nozzle](FlowRole flow_role, const ConfigOptionFloatOrPercent &this_extrusion_width,
                                          double speed, const char *err_msg)
         {
-            Flow flow = bridging ? Flow::new_from_config_width(flow_role,
+            Flow flow = bridging ? Flow::bridging_flow(nozzle_diameter * bridge_flow_ratio, nozzle_diameter)
+                                 : Flow::new_from_config_width(flow_role,
                                                                first_positive(first_layer_extrusion_width_ptr,
                                                                               this_extrusion_width, extrusion_width),
-                                                               nozzle_diameter, lh, pct_of_nozzle)
-                                 : Flow::bridging_flow(nozzle_diameter * bridge_flow_ratio, nozzle_diameter);
+                                                               nozzle_diameter, lh, pct_of_nozzle);
             double volumetric_flow = flow.mm3_per_mm() *
                                      (bridging ? bridge_speed : limit_by_first_layer_speed(speed, max_print_speed));
             if (max_flow < volumetric_flow)
@@ -240,12 +241,7 @@ std::string PresetHints::maximum_volumetric_flow_description(const PresetBundle 
         out += (first_layer ? _u8L("First layer volumetric")
                             : (bridging ? _u8L("Bridging volumetric") : _u8L("Volumetric")));
         out += " " + _u8L("flow rate is maximized") + " ";
-        bool limited_by_max_volumetric_speed = max_volumetric_speed > 0 && max_volumetric_speed < max_flow;
-        out += (limited_by_max_volumetric_speed ? _u8L("by the print profile maximum")
-                                                : (_u8L("when printing") + " " + max_flow_extrusion_type)) +
-               " " + _u8L("with a volumetric rate") + " ";
-        if (limited_by_max_volumetric_speed)
-            max_flow = max_volumetric_speed;
+        out += (_u8L("when printing") + " " + max_flow_extrusion_type) + " " + _u8L("with a volumetric rate") + " ";
 
         out += format(_u8L("%3.2f mm³/s at filament speed %3.2f mm/s."), max_flow, (max_flow / filament_crossection));
     }

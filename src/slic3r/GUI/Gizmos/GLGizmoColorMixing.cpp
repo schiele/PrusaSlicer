@@ -467,7 +467,7 @@ void GLGizmoColorMixing::on_render_input_window(float x, float y, float bottom_l
     // color mixing icon (which lives at the bottom of the toolbar) regardless of popup
     // height. ImGui handles the "size not known yet" first-frame case because the pivot is
     // applied after auto-resize measures the window's content.
-    ImGuiPureWrap::set_next_window_pos(x, bottom_limit, ImGuiCond_Always, 1.0f, 1.0f);
+    set_side_flyout_pos(x, bottom_limit, 1.0f);
 
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize |
                                     ImGuiWindowFlags_NoCollapse;

@@ -24,8 +24,8 @@ namespace GUI
 {
 
 // These track widths that have been explicitly approved by the user to suppress validation warnings
-static std::map<std::string, double> s_approved_narrow_widths; // below 60% of nozzle
-static std::map<std::string, double> s_approved_wide_widths;   // above 150% of nozzle
+static std::map<std::string, double> s_approved_narrow_widths; // below nozzle_width_warning_min
+static std::map<std::string, double> s_approved_wide_widths;   // above nozzle_width_warning_max
 
 // Suppress all config validation dialogs during startup/GUI recreation.
 // Modal dialogs during load_current_presets() deadlock behind the splash screen.
@@ -407,10 +407,13 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig *config, con
             return;
         }
 
-        double min_width = nozzle_diam * 0.6; // 60% of nozzle
-        double max_width = nozzle_diam * 1.5; // 150% of nozzle
-
-        // Check if width is within valid range (60% - 150%)
+        // Read per-nozzle warning thresholds from printer config
+        auto *warn_min_opt = printer_config.option<ConfigOptionPercents>("nozzle_width_warning_min");
+        auto *warn_max_opt = printer_config.option<ConfigOptionPercents>("nozzle_width_warning_max");
+        double warn_min_pct = warn_min_opt ? warn_min_opt->get_at(extruder_idx) : 60.0;
+        double warn_max_pct = warn_max_opt ? warn_max_opt->get_at(extruder_idx) : 150.0;
+        double min_width = nozzle_diam * warn_min_pct / 100.0;
+        double max_width = nozzle_diam * warn_max_pct / 100.0;
         bool is_too_narrow = width_mm < min_width - 0.001;
         bool is_too_wide = width_mm > max_width + 0.001;
 
@@ -450,21 +453,23 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig *config, con
         wxString msg_text;
         if (is_too_narrow)
         {
-            msg_text = wxString::Format(_L("%s is set to %s, which is below 60%% of the nozzle diameter (%.2f mm).\n\n"
-                                           "Extrusion widths below 60%% of nozzle size may cause printing issues.\n\n"
-                                           "Do you want to keep this value?\n"
-                                           "Select YES to keep %s,\n"
-                                           "or NO to reset to %.2f mm (nozzle diameter)."),
-                                        label, width_str, nozzle_diam, width_str, nozzle_diam);
+            msg_text =
+                wxString::Format(_L("%s is set to %s, which is below %.0f%% of the nozzle diameter (%.2f mm).\n\n"
+                                    "Extrusion widths below %.0f%% of nozzle size may cause printing issues.\n\n"
+                                    "Do you want to keep this value?\n"
+                                    "Select YES to keep %s,\n"
+                                    "or NO to reset to %.2f mm (nozzle diameter)."),
+                                 label, width_str, warn_min_pct, nozzle_diam, warn_min_pct, width_str, nozzle_diam);
         }
         else
         {
-            msg_text = wxString::Format(_L("%s is set to %s, which exceeds 150%% of the nozzle diameter (%.2f mm).\n\n"
-                                           "Extrusion widths above 150%% of nozzle size may cause printing issues.\n\n"
+            msg_text = wxString::Format(_L("%s is set to %s, which exceeds %.0f%% of the nozzle diameter (%.2f mm).\n\n"
+                                           "Extrusion widths above %.0f%% of nozzle size may cause printing issues.\n\n"
                                            "Do you want to keep this value?\n"
                                            "Select YES to keep %s,\n"
                                            "or NO to reset to %.2f mm (nozzle diameter)."),
-                                        label, width_str, nozzle_diam, width_str, nozzle_diam);
+                                        label, width_str, warn_max_pct, nozzle_diam, warn_max_pct, width_str,
+                                        nozzle_diam);
         }
 
         // preFlight: Handle "to All" state from a previous iteration
@@ -788,6 +793,16 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config)
     toggle_field("bottom_solid_min_thickness",
                  !has_spiral_vase && has_bottom_solid_infill && has_ensure_vertical_shell_thickness);
 
+    // Auto speed disables most individual speed fields.
+    // Bridge, over-bridge, ironing, small perimeter, and gap fill stay active.
+    bool auto_speed = config->opt_bool("auto_speed");
+    toggle_field("max_print_speed", true);
+    for (auto el : {"perimeter_speed", "external_perimeter_speed", "infill_speed", "solid_infill_speed",
+                    "top_solid_infill_speed", "support_material_speed", "support_material_interface_speed"})
+    {
+        toggle_field(el, !auto_speed);
+    }
+
     // Gap fill is newly allowed in between perimeter lines even for empty infill (see GH #1476).
     toggle_field("gap_fill_speed", have_perimeters);
 
@@ -837,8 +852,9 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config)
     bool has_top_surface_flow_reduction = config->option<ConfigOptionPercent>("top_surface_flow_reduction")->value > 0;
     toggle_field("top_surface_visibility_detection", has_top_surface_flow_reduction);
 
-    for (auto el : {"top_infill_extrusion_width", "top_solid_infill_speed"})
-        toggle_field(el, has_top_solid_infill || (has_spiral_vase && has_bottom_solid_infill));
+    toggle_field("top_infill_extrusion_width", has_top_solid_infill || (has_spiral_vase && has_bottom_solid_infill));
+    toggle_field("top_solid_infill_speed",
+                 (has_top_solid_infill || (has_spiral_vase && has_bottom_solid_infill)) && !auto_speed);
 
     bool have_default_acceleration = config->opt_float("default_acceleration") > 0;
     for (auto el : {"perimeter_acceleration", "infill_acceleration", "top_solid_infill_acceleration",
@@ -902,14 +918,14 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config)
         toggle_field(key, has_organic_supports);
 
     for (auto el : {"support_material_bottom_interface_layers", "support_material_interface_spacing",
-                    "support_material_interface_extruder", "support_material_interface_speed",
-                    "support_material_interface_contact_loops"})
+                    "support_material_interface_extruder", "support_material_interface_contact_loops"})
         toggle_field(el, have_support_material && have_support_interface);
+    toggle_field("support_material_interface_speed", have_support_material && have_support_interface && !auto_speed);
     // toggle_field("support_material_synchronize_layers", have_support_soluble);
 
     toggle_field("perimeter_extrusion_width", have_perimeters || have_skirt || have_brim);
     toggle_field("support_material_extruder", have_support_material || have_skirt);
-    toggle_field("support_material_speed", have_support_material || have_brim || have_skirt);
+    toggle_field("support_material_speed", (have_support_material || have_brim || have_skirt) && !auto_speed);
 
     toggle_field("raft_contact_distance", have_raft && !have_support_soluble);
     for (auto el : {"raft_expansion", "first_layer_acceleration_over_raft", "first_layer_speed_over_raft"})

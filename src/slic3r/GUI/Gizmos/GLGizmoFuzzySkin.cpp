@@ -91,7 +91,7 @@ void GLGizmoFuzzySkin::on_render_input_window(float x, float y, float bottom_lim
     if (m_popup_render_count == 0 && m_popup_height <= 0.0f)
     {
         // Position just above visible area to get accurate size
-        ImGuiPureWrap::set_next_window_pos(x, -500.0f, ImGuiCond_Always, 1.0f, 0.0f);
+        set_side_flyout_pos(x, -500.0f);
     }
     else
     {
@@ -100,7 +100,7 @@ void GLGizmoFuzzySkin::on_render_input_window(float x, float y, float bottom_lim
 
         menu_y = std::max(0.0f, menu_y);
 
-        ImGuiPureWrap::set_next_window_pos(x, menu_y, ImGuiCond_Always, 1.0f, 0.0f);
+        set_side_flyout_pos(x, menu_y);
     }
 
     m_popup_render_count++;

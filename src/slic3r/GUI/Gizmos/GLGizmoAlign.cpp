@@ -900,6 +900,11 @@ bool GLGizmoAlign::on_mouse(const MouseInput &mouse)
 
     Vec2d mouse_pos(mouse.x, mouse.y);
 
+    // When the popup panel is active, consume all mouse events that ImGui wants
+    // (sliders, inputs, buttons) so they don't leak through to canvas rotation
+    if (m_align_state == EState::Aligned && ImGui::GetIO().WantCaptureMouse)
+        return true;
+
     if (mouse.type == MouseEventType::Motion &&
         (m_align_state == EState::Idle || m_align_state == EState::SourceSelected) &&
         (mouse_pos.x() != 0.0 || mouse_pos.y() != 0.0))
@@ -1003,10 +1008,6 @@ bool GLGizmoAlign::on_mouse(const MouseInput &mouse)
         }
         else if (m_align_state == EState::Aligned)
         {
-            // Let ImGui handle clicks on its windows (buttons, sliders, inputs)
-            if (ImGui::GetIO().WantCaptureMouse)
-                return false;
-
             if (mouse.shift)
             {
                 Vec3d hit;
@@ -1941,13 +1942,13 @@ void GLGizmoAlign::draw_align_panel(float toolbar_x, float icon_y, float toolbar
     if (m_popup_render_count == 0 && m_popup_height <= 0.f)
     {
         // First frame: render offscreen to measure height
-        ImGuiPureWrap::set_next_window_pos(toolbar_x, -500.f, ImGuiCond_Always, 1.0f, 0.0f);
+        set_side_flyout_pos(toolbar_x, -500.f);
     }
     else
     {
         // Always center on the gizmo icon
         float menu_y = icon_y - m_popup_height * 0.5f;
-        ImGuiPureWrap::set_next_window_pos(toolbar_x, menu_y, ImGuiCond_Always, 1.0f, 0.0f);
+        set_side_flyout_pos(toolbar_x, menu_y);
     }
 
     m_popup_render_count++;

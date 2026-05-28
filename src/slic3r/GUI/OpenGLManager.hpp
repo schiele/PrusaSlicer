@@ -80,6 +80,10 @@ public:
         std::vector<std::string> get_extensions_list() const;
 #endif // !SLIC3R_OPENGL_ES
 
+        // Returns true if the current GPU + lighting quality setting should use phong shading.
+        // Centralizes the GPU allowlist/blocklist logic for all callers.
+        bool should_use_phong(const std::string &lighting_quality) const;
+
     private:
         void detect() const;
     };
@@ -103,6 +107,7 @@ private:
     };
 
     bool m_gl_initialized{false};
+    bool m_phong_shaders_requested{false};
     wxGLContext *m_context{nullptr};
     bool m_debug_enabled{false};
     GLShadersManager m_shaders_manager;
@@ -131,6 +136,10 @@ public:
 
     GLShaderProgram *get_shader(const std::string &shader_name) { return m_shaders_manager.get_shader(shader_name); }
     GLShaderProgram *get_current_shader() { return m_shaders_manager.get_current_shader(); }
+    // Request phong shader compilation for the next render pass (safe to call without GL context)
+    void request_phong_shaders() { m_phong_shaders_requested = true; }
+    // Compile phong shaders if requested. Must be called with active GL context.
+    void compile_pending_shaders();
 
     static bool are_compressed_textures_supported() { return s_compressed_textures_supported; }
     static bool can_multisample() { return s_multisample == EMultisampleState::Enabled; }

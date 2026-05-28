@@ -92,6 +92,22 @@ bool OpenGLManager::GLInfo::is_mesa() const
     return m_version_is_mesa;
 }
 
+bool OpenGLManager::GLInfo::should_use_phong(const std::string &lighting_quality) const
+{
+    if (lighting_quality == "basic")
+        return false;
+    if (lighting_quality == "enhanced")
+        return true;
+    // "auto": only disable for software renderers. Any hardware GPU that passes
+    // the OpenGL 3.2 minimum version check can handle per-pixel lighting.
+    if (!m_detected)
+        detect();
+    const std::string &r = m_renderer;
+    if (r.find("llvmpipe") != std::string::npos || r.find("SwiftShader") != std::string::npos)
+        return false;
+    return true;
+}
+
 int OpenGLManager::GLInfo::get_max_tex_size() const
 {
     if (!m_detected)
@@ -314,6 +330,14 @@ OpenGLManager::EFramebufferType OpenGLManager::s_framebuffers_type = OpenGLManag
 OpenGLManager::OSInfo OpenGLManager::s_os_info;
 #endif // __APPLE__
 
+void OpenGLManager::compile_pending_shaders()
+{
+    if (!m_phong_shaders_requested)
+        return;
+    m_phong_shaders_requested = false;
+    m_shaders_manager.ensure_phong_shaders();
+}
+
 OpenGLManager::~OpenGLManager()
 {
     m_shaders_manager.shutdown();
@@ -501,21 +525,7 @@ bool OpenGLManager::init_gl()
             {
                 const AppConfig *config = GUI::wxGetApp().app_config;
                 if (config)
-                {
-                    const std::string quality = config->get("canvas_lighting_quality");
-                    if (quality == "basic")
-                        compile_phong = false;
-                    else if (quality != "enhanced")
-                    {
-                        const std::string &renderer = s_gl_info.get_renderer();
-                        if (renderer.find("Intel") != std::string::npos || renderer.find("Iris") != std::string::npos ||
-                            renderer.find("UHD") != std::string::npos ||
-                            renderer.find("HD Graphics") != std::string::npos ||
-                            renderer.find("llvmpipe") != std::string::npos ||
-                            renderer.find("SwiftShader") != std::string::npos)
-                            compile_phong = false;
-                    }
-                }
+                    compile_phong = s_gl_info.should_use_phong(config->get("canvas_lighting_quality"));
             }
             auto [result, error] = m_shaders_manager.init(compile_phong);
             if (!result)

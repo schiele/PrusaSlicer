@@ -207,9 +207,9 @@ enum class TopSurfaceVisibilityDetection
 
 enum PerimeterCompression
 {
-    pcOff,        // 100% of bead width (no compression)
-    pcModerate,   // 66% of bead width (moderate compression)
-    pcAggressive, // 33% of bead width (aggressive compression)
+    pcMinimal = 0,    // 75% of bead width (minimal compression)
+    pcModerate = 1,   // 50% of bead width (moderate compression)
+    pcAggressive = 2, // 25% of bead width (aggressive compression)
 };
 
 enum ThinWallPrecision
@@ -1097,6 +1097,11 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionString, machine_rrf_m203)) // Max feedrate per axis
     ((ConfigOptionString, machine_rrf_m204)) // Print/Travel acceleration (optional)
     ((ConfigOptionString, machine_rrf_m207)) // Firmware retraction settings (optional)
+    // Klipper printer.cfg fields
+    ((ConfigOptionFloat, machine_klipper_max_velocity))           // [printer] max_velocity (mm/s)
+    ((ConfigOptionFloat, machine_klipper_max_accel))              // [printer] max_accel (mm/s^2)
+    ((ConfigOptionFloat, machine_klipper_square_corner_velocity)) // [printer] square_corner_velocity (mm/s)
+    ((ConfigOptionFloat, machine_klipper_minimum_cruise_ratio))   // [printer] minimum_cruise_ratio (0-1)
     ((ConfigOptionPercent, machine_time_compensation)))
 
 PRINT_CONFIG_CLASS_DEFINE(
@@ -1112,7 +1117,8 @@ PRINT_CONFIG_CLASS_DEFINE(
         (ConfigOptionBools, filament_soluble))((ConfigOptionBools, filament_abrasive))(
         (ConfigOptionBools, filament_enable_pressure_advance))((ConfigOptionFloats, filament_pressure_advance))(
         (ConfigOptionFloats, filament_cost))((ConfigOptionFloats, filament_spool_weight))(
-        (ConfigOptionFloats, filament_max_volumetric_speed))((ConfigOptionFloats, filament_infill_max_speed))(
+        (ConfigOptionFloats, filament_max_volumetric_speed))((ConfigOptionFloats, filament_max_volumetric_flow))(
+        (ConfigOptionFloats, filament_max_print_speed))((ConfigOptionFloats, filament_infill_max_speed))(
         (ConfigOptionFloats, filament_infill_max_crossing_speed))((ConfigOptionFloats, filament_loading_speed))(
         (ConfigOptionFloats, filament_loading_speed_start))((ConfigOptionFloats, filament_load_time))(
         (ConfigOptionFloats, filament_unloading_speed))((ConfigOptionFloats, filament_unloading_speed_start))(
@@ -1133,9 +1139,9 @@ PRINT_CONFIG_CLASS_DEFINE(
     //      r - regular expression
     //      i - case insensitive
     //      w - whole word
-    ((ConfigOptionStrings, gcode_substitutions))((ConfigOptionString, layer_gcode))((ConfigOptionFloat,
-                                                                                     max_print_speed))(
-        (ConfigOptionFloat, max_volumetric_speed))((ConfigOptionFloat, max_volumetric_extrusion_rate_slope_positive))(
+    ((ConfigOptionStrings, gcode_substitutions))((ConfigOptionString, layer_gcode))((ConfigOptionBool, auto_speed))(
+        (ConfigOptionFloat, max_print_speed))((ConfigOptionFloat, max_volumetric_speed))(
+        (ConfigOptionFloat, max_volumetric_extrusion_rate_slope_positive))(
         (ConfigOptionFloat, max_volumetric_extrusion_rate_slope_negative))((ConfigOptionBools, travel_ramping_lift))(
         (ConfigOptionFloats, travel_max_lift))((ConfigOptionFloats, travel_slope))(
         (ConfigOptionBools, travel_lift_before_obstacle))((ConfigOptionBools, nozzle_high_flow))((ConfigOptionPercents,
@@ -1205,6 +1211,7 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
                                                                                     max_print_height))(
         (ConfigOptionFloats, min_print_speed))((ConfigOptionFloat, min_skirt_length))((ConfigOptionString, notes))(
         (ConfigOptionString, custom_parameters_print))((ConfigOptionFloats, nozzle_diameter))(
+        (ConfigOptionPercents, nozzle_width_warning_min))((ConfigOptionPercents, nozzle_width_warning_max))(
         (ConfigOptionFloats, print_nozzle_diameters))((ConfigOptionBools, print_high_flow_nozzle))(
         (ConfigOptionBool, only_retract_when_crossing_perimeters))((ConfigOptionBool, ooze_prevention))(
         (ConfigOptionString, output_filename_format))((ConfigOptionFloat, perimeter_acceleration))(

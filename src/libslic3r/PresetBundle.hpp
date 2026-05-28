@@ -188,9 +188,6 @@ public:
     // update size and content of filament_presets.
     void update_multi_material_filament_presets();
 
-    void update_filaments_compatible(PresetSelectCompatibleType select_other_filament_if_incompatible,
-                                     int extruder_idx = -1);
-
     // Update the is_compatible flag of all print and filament presets depending on whether they are marked
     // as compatible with the currently selected printer (and print in case of filament presets).
     // Also updates the is_visible flag of each preset.

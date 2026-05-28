@@ -261,9 +261,9 @@ private:
     mutable GLModel m_line_preview;
 
     // Z-axis snapping
-    bool m_z_snap_active = false;          // True when Z-axis snap is detected/active
-    float m_snap_threshold_degrees = 5.0f; // Snap when within this angle of vertical
-    Vec3f m_snapped_end_pos;               // The snapped position for preview
+    bool m_z_snap_active = false;           // True when Z-axis snap is detected/active
+    float m_snap_threshold_degrees = 15.0f; // Snap when within this angle of vertical
+    Vec3f m_snapped_end_pos;                // The snapped position for preview
 
     // Helper methods
     void update_line_preview(const Vec2d &mouse_position);

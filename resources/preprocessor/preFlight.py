@@ -178,6 +178,7 @@ class Settings:
     Auto-generated from PrintConfig.hpp at build time.
     """
 
+    auto_speed: str  # bool (0/1)
     autoemit_temperature_commands: str  # bool (0/1)
     automatic_extrusion_widths: str  # bool (0/1)
     automatic_infill_combination: str  # bool (0/1)
@@ -269,6 +270,8 @@ class Settings:
     filament_load_time: str  # semicolon-separated floats
     filament_loading_speed: str  # semicolon-separated floats
     filament_loading_speed_start: str  # semicolon-separated floats
+    filament_max_print_speed: str  # semicolon-separated floats
+    filament_max_volumetric_flow: str  # semicolon-separated floats
     filament_max_volumetric_speed: str  # semicolon-separated floats
     filament_minimal_purge_on_wipe_tower: str  # semicolon-separated floats
     filament_multitool_ramming: str  # semicolon-separated bools
@@ -350,6 +353,10 @@ class Settings:
     ironing_speed: str  # float
     layer_gcode: str
     layer_height: str  # float
+    machine_klipper_max_accel: str  # float
+    machine_klipper_max_velocity: str  # float
+    machine_klipper_minimum_cruise_ratio: str  # float
+    machine_klipper_square_corner_velocity: str  # float
     machine_max_acceleration_e: str  # semicolon-separated floats
     machine_max_acceleration_extruding: str  # semicolon-separated floats
     machine_max_acceleration_travel: str  # semicolon-separated floats
@@ -408,6 +415,8 @@ class Settings:
     notes: str
     nozzle_diameter: str  # semicolon-separated floats
     nozzle_high_flow: str  # semicolon-separated bools
+    nozzle_width_warning_max: str  # semicolon-separated percentages
+    nozzle_width_warning_min: str  # semicolon-separated percentages
     only_one_perimeter_first_layer: str  # bool (0/1)
     only_retract_when_crossing_perimeters: str  # bool (0/1)
     ooze_prevention: str  # bool (0/1)

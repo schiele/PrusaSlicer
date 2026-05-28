@@ -465,7 +465,10 @@ Rect GLCanvas3D::LayersEditing::get_bar_rect_screen(const GLCanvas3D &canvas)
     float w = (float) cnv_size.get_width();
     float h = (float) cnv_size.get_height();
 
-    return {0.0f, 0.0f, thickness_bar_width(canvas), h};
+    const float bar_w = thickness_bar_width(canvas);
+    if (wxGetApp().legacy_prepare_layout())
+        return {w - bar_w, 0.0f, w, h};
+    return {0.0f, 0.0f, bar_w, h};
 }
 
 std::pair<SlicingParameters, const std::vector<double>> GLCanvas3D::LayersEditing::get_layers_height_data()
@@ -557,8 +560,11 @@ void GLCanvas3D::LayersEditing::render_active_object_annotations(const GLCanvas3
         init_data.reserve_vertices(4);
         init_data.reserve_indices(6);
 
-        const float l = -1.0f; // Far left edge of viewport in normalized coordinates
-        const float r = l + 2.0f * THICKNESS_BAR_WIDTH * cnv_inv_width;
+        // In legacy layout the gizmo toolbar is on the left, so put the bar on the right edge
+        const bool legacy = wxGetApp().legacy_prepare_layout();
+        const float bar_ndc_w = 2.0f * THICKNESS_BAR_WIDTH * cnv_inv_width;
+        const float l = legacy ? 1.0f - bar_ndc_w : -1.0f;
+        const float r = l + bar_ndc_w;
         const float t = 1.0f;
         const float b = -1.0f;
         init_data.add_vertex(Vec3f(l, b, 0.0f), Vec3f::UnitZ(), Vec2f(0.0f, 0.0f));
@@ -600,7 +606,8 @@ void GLCanvas3D::LayersEditing::render_profile(const GLCanvas3D &canvas)
     const float cnv_inv_width = 1.0f / cnv_width;
     const float cnv_inv_height = 1.0f / cnv_height;
 
-    const float left = -1.0f; // Far left edge of viewport in normalized coordinates
+    const float bar_ndc_w = 2.0f * THICKNESS_BAR_WIDTH * cnv_inv_width;
+    const float left = wxGetApp().legacy_prepare_layout() ? 1.0f - bar_ndc_w : -1.0f;
 
     // Baseline
     if (!m_profile.baseline.is_initialized() || m_profile.old_layer_height_profile != m_layer_height_profile ||
@@ -1316,25 +1323,7 @@ static bool should_use_phong(const AppConfig *config)
 {
     if (!config)
         return true;
-    const std::string quality = config->get("canvas_lighting_quality");
-    if (quality == "basic")
-        return false;
-    if (quality == "enhanced")
-        return true;
-    // "auto": detect from GPU renderer string
-    const std::string &renderer = OpenGLManager::get_gl_info().get_renderer();
-    // Discrete GPUs can easily handle per-pixel lighting
-    if (renderer.find("NVIDIA") != std::string::npos || renderer.find("GeForce") != std::string::npos ||
-        renderer.find("AMD") != std::string::npos || renderer.find("Radeon") != std::string::npos)
-        return true;
-    // Integrated / software renderers: stay on Gouraud
-    if (renderer.find("Intel") != std::string::npos || renderer.find("Iris") != std::string::npos ||
-        renderer.find("UHD") != std::string::npos || renderer.find("HD Graphics") != std::string::npos ||
-        renderer.find("llvmpipe") != std::string::npos || renderer.find("Mesa") != std::string::npos ||
-        renderer.find("SwiftShader") != std::string::npos)
-        return false;
-    // Unknown GPU - default to enhanced
-    return true;
+    return OpenGLManager::get_gl_info().should_use_phong(config->get("canvas_lighting_quality"));
 }
 
 GLShaderProgram *GLCanvas3D::get_model_shader() const
@@ -1492,10 +1481,25 @@ bool GLCanvas3D::check_volumes_outside_state(GLVolumeCollection &volumes, ModelI
                                       : volume.transformed_convex_hull_bounding_box();
     };
     // Cached 3D convex hull of a volume above the print bed.
+    static const TriangleMesh s_empty_mesh;
     auto volume_convex_mesh = [this, volume_sinking](GLVolume &volume) -> const TriangleMesh &
     {
-        return volume_sinking(volume) ? m_model->objects[volume.object_idx()]->volumes[volume.volume_idx()]->mesh()
-                                      : *volume.convex_hull();
+        if (volume_sinking(volume))
+        {
+            if (m_model)
+            {
+                const int oidx = volume.object_idx();
+                const int vidx = volume.volume_idx();
+                if (oidx >= 0 && oidx < int(m_model->objects.size()))
+                {
+                    const ModelObject *obj = m_model->objects[oidx];
+                    if (vidx >= 0 && vidx < int(obj->volumes.size()))
+                        return obj->volumes[vidx]->mesh();
+                }
+            }
+            return s_empty_mesh;
+        }
+        return *volume.convex_hull();
     };
 
     auto volumes_to_process_idxs = [this, &volumes, selection_only]()
@@ -2143,6 +2147,8 @@ void GLCanvas3D::render()
 
     if (!is_initialized() && !init())
         return;
+
+    wxGetApp().compile_pending_shaders();
 
     if (!m_main_toolbar.is_enabled())
         m_gcode_viewer.init();
@@ -6092,13 +6098,8 @@ bool GLCanvas3D::_init_undoredo_toolbar()
     item.visibility_callback = GLToolbarItem::Default_Visibility_Callback;
     item.enabling_callback = [this]() -> bool
     {
-        // Match the logic from GLGizmoMeasure::on_is_activable()
         const Selection &selection = m_selection;
-        bool res = selection.is_single_full_instance() || selection.is_single_volume() ||
-                   selection.is_single_modifier();
-        if (res)
-            res &= !selection.contains_sinking_volumes();
-        return res;
+        return selection.is_single_full_instance() || selection.is_single_volume() || selection.is_single_modifier();
     };
     if (!m_undoredo_toolbar.add_item(item))
         return false;
@@ -6981,7 +6982,11 @@ void GLCanvas3D::_render_objects(GLVolumeCollection::ERenderType type)
                                             (volume.is_modifier || volume.composite_id.object_id != object_id);
                                  });
                 // Let LayersEditing handle rendering of the active object using the layer height profile shader.
+                // render_volumes() calls GLVolume::render() directly (not via GLVolumeCollection::render()),
+                // so we must provide the render context that GLVolume::render() requires.
+                GLVolumeCollection::set_render_context(&render_ctx);
                 m_layers_editing.render_volumes(*this, m_volumes);
+                GLVolumeCollection::set_render_context(nullptr);
             }
             else
             {
@@ -7579,12 +7584,15 @@ void GLCanvas3D::_render_collapse_toolbar() const
                            ? (get_imgui()->get_style_scaling() * LayersEditing::THICKNESS_BAR_WIDTH)
                            : 0.0;
     const float top = 0.5f * (float) cnv_size.get_height();
+    const bool legacy = wxGetApp().legacy_prepare_layout();
 #if ENABLE_HACK_GCODEVIEWER_SLOW_ON_MAC
     // When the application is run as GCodeViewer, render the collapse toolbar outside of the screen
     const float left = is_gcode_viewer() ? 0.5f * (float) cnv_size.get_width()
+                       : legacy          ? -0.5f * (float) cnv_size.get_width()
                                          : 0.5f * (float) cnv_size.get_width() - m_collapse_toolbar->get_width() - band;
 #else
-    const float left = 0.5f * (float) cnv_size.get_width() - m_collapse_toolbar->get_width() - band;
+    const float left = legacy ? -0.5f * (float) cnv_size.get_width()
+                              : 0.5f * (float) cnv_size.get_width() - m_collapse_toolbar->get_width() - band;
 #endif // ENABLE_HACK_GCODEVIEWER_SLOW_ON_MAC
 
     m_collapse_toolbar->set_position(top, left);
@@ -7654,9 +7662,13 @@ void GLCanvas3D::_render_sidebar_toggle_imgui()
     ImGuiWrapper &imgui = *get_imgui();
     const float scale = imgui.get_style_scaling();
 
-    // Position in top-left corner with no margin
     const Size cnv_size = get_canvas_size();
-    ImGuiPureWrap::set_next_window_pos(0.0f, 0.0f, ImGuiCond_Always);
+    const float button_size = 30.0f * scale;
+
+    if (wxGetApp().legacy_prepare_layout())
+        ImGuiPureWrap::set_next_window_pos((float) cnv_size.get_width() - button_size, 0.0f, ImGuiCond_Always);
+    else
+        ImGuiPureWrap::set_next_window_pos(0.0f, 0.0f, ImGuiCond_Always);
 
     // Create a transparent window for the button
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
@@ -7668,9 +7680,6 @@ void GLCanvas3D::_render_sidebar_toggle_imgui()
                                               ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
                                               ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize |
                                               ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoNav);
-
-    // Draw hamburger menu button with no border
-    const float button_size = 30.0f * scale;
 
     // Remove button border by setting FrameBorderSize to 0
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);

@@ -989,6 +989,16 @@ std::string OrcaConfigImporter::save_preset(DynamicPrintConfig &config, const st
 
     // Load into the collection and save to disk
     Preset &loaded = collection->load_preset(file_path.string(), profile_name, std::move(config), false);
+
+    // Filaments are independent of printers - strip any Orca printer-coupling data
+    if (preset_type == Preset::TYPE_FILAMENT)
+    {
+        if (loaded.config.has("compatible_printers"))
+            loaded.config.option<ConfigOptionStrings>("compatible_printers")->values.clear();
+        if (loaded.config.has("compatible_printers_condition"))
+            loaded.config.option<ConfigOptionString>("compatible_printers_condition")->value.clear();
+    }
+
     loaded.save();
 
     return profile_name;

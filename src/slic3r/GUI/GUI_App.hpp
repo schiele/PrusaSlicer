@@ -160,6 +160,7 @@ private:
     EAppMode m_app_mode{EAppMode::Editor};
     bool m_is_recreating_gui{false};
     bool m_opengl_initialized{false};
+    bool m_legacy_prepare_layout{false};
 
     wxColour m_color_label_modified;
     wxColour m_color_label_sys;
@@ -223,6 +224,8 @@ public:
     bool is_editor() const { return m_app_mode == EAppMode::Editor; }
     bool is_gcode_viewer() const { return m_app_mode == EAppMode::GCodeViewer; }
     bool is_recreating_gui() const { return m_is_recreating_gui; }
+    bool opengl_initialized() const { return m_opengl_initialized; }
+    bool legacy_prepare_layout() const { return m_legacy_prepare_layout; }
     std::string logo_name() const { return is_editor() ? "preFlight" : "preFlight-gcodeviewer"; }
 
     Search::OptionsSearcher &searcher() noexcept { return *m_searcher; }
@@ -418,6 +421,8 @@ public:
 
     GLShaderProgram *get_shader(const std::string &shader_name) { return m_opengl_mgr.get_shader(shader_name); }
     GLShaderProgram *get_current_shader() { return m_opengl_mgr.get_current_shader(); }
+    void request_phong_shaders() { m_opengl_mgr.request_phong_shaders(); }
+    void compile_pending_shaders() { m_opengl_mgr.compile_pending_shaders(); }
 
     // Per-pixel lit utility shader (phong_light) respecting the user preference, with gouraud_light fallback
     GLShaderProgram *get_utility_shader();

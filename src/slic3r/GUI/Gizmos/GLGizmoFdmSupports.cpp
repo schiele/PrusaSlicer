@@ -108,13 +108,13 @@ void GLGizmoFdmSupports::on_render_input_window(float x, float y, float bottom_l
     // Need to measure? Position way above screen at correct X
     if (m_popup_render_count == 0 && m_popup_height <= 0.0f)
     {
-        ImGuiPureWrap::set_next_window_pos(x, -500.0f, ImGuiCond_Always, 1.0f, 0.0f);
+        set_side_flyout_pos(x, -500.0f);
     }
     else
     {
         // Always center on button
         float menu_y = y - m_popup_height * 0.5f;
-        ImGuiPureWrap::set_next_window_pos(x, menu_y, ImGuiCond_Always, 1.0f, 0.0f);
+        set_side_flyout_pos(x, menu_y);
     }
 
     m_popup_render_count++;

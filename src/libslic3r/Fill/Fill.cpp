@@ -460,26 +460,12 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                         params.pattern = region_config.solid_fill_pattern.value;
                     }
 
-                    // Narrow surface detection via offset erosion. Each threshold gets its
-                    // own test since a binary "wider/narrower" answer at one threshold
-                    // can't be reused for a different threshold.
-                    // Ring-aware: for expolygons with holes, also check if insetting
-                    // collapses the ring wall (holes disappear even if the result isn't empty).
+                    // Narrow surface detection via offset erosion. A surface is narrow
+                    // if it completely collapses when inset by the threshold.
                     const Flow solid_flow = layerm.flow(frSolidInfill);
                     auto is_narrow_at = [&](float inset) -> bool
                     {
-                        ExPolygons result = offset_ex(surface.expolygon, -inset);
-                        if (result.empty())
-                            return true;
-                        if (!surface.expolygon.holes.empty())
-                        {
-                            size_t remaining_holes = 0;
-                            for (const ExPolygon &ep : result)
-                                remaining_holes += ep.holes.size();
-                            if (remaining_holes < surface.expolygon.holes.size())
-                                return true;
-                        }
-                        return false;
+                        return offset_ex(surface.expolygon, -inset).empty();
                     };
                     // Ring-specific: expand each hole outward by the threshold.
                     // If the expanded hole breaches the outer contour, the ring
@@ -536,16 +522,6 @@ std::vector<SurfaceFill> group_fills(const Layer &layer)
                             if (has_thin_ring_at(solid_flow.scaled_width() * threshold / 2.f))
                                 params.pattern = ipEnsuring;
                         }
-                    }
-
-                    // Unconditional fallback: if a solid surface is so thin that it would
-                    // collapse under the fill offset (narrower than ~1.5x extrusion width),
-                    // force Ensuring regardless of the Narrow to Athena setting.
-                    if (is_narrow_1_5x && params.pattern != ipEnsuring &&
-                        (surface.surface_type == stInternalSolid || surface.surface_type == stTop ||
-                         surface.surface_type == stBottom))
-                    {
-                        params.pattern = ipEnsuring;
                     }
                 }
                 else if (params.density <= 0)
@@ -1452,11 +1428,51 @@ void export_group_fills_to_svg(const char *path, const std::vector<SurfaceFill> 
 }
 #endif
 
-// Infill is now generated and assigned directly to islands in make_fills().
-// This function is no longer called and remains only for backward compatibility.
+// Regular infill is assigned directly to islands in make_fills().
+// This function is used by make_ironing() which runs after make_fills() and needs to
+// assign ironing fills to islands so the G-code exporter can find them.
 static void insert_fills_into_islands(Layer &layer, uint32_t fill_region_id, uint32_t fill_begin, uint32_t fill_end)
 {
-    // No-op: Infill assignment now happens during per-island generation
+    if (fill_begin >= fill_end)
+        return;
+
+    const LayerRegion &layerm = *layer.get_region(fill_region_id);
+
+    for (uint32_t fill_idx = fill_begin; fill_idx < fill_end; ++fill_idx)
+    {
+        const ExtrusionEntity *ee = layerm.fills().entities[fill_idx];
+        Point rep_point = ee->first_point();
+
+        // Find the island whose boundary contains this fill's representative point
+        for (LayerSlice &lslice : layer.lslices_ex)
+            for (LayerIsland &island : lslice.islands)
+                if (island.boundary.contains(rep_point))
+                {
+                    island.add_fill_range(LayerExtrusionRange{fill_region_id, {fill_idx, fill_idx + 1}});
+                    goto next_fill;
+                }
+
+        // Fallback: if no island contains the point (e.g. due to trimming), assign to the nearest island
+        {
+            double best_dist_sq = std::numeric_limits<double>::max();
+            LayerIsland *best_island = nullptr;
+            for (LayerSlice &lslice : layer.lslices_ex)
+                for (LayerIsland &island : lslice.islands)
+                {
+                    Point centroid = island.boundary.contour.centroid();
+                    double d = (centroid - rep_point).cast<double>().squaredNorm();
+                    if (d < best_dist_sq)
+                    {
+                        best_dist_sq = d;
+                        best_island = &island;
+                    }
+                }
+            if (best_island)
+                best_island->add_fill_range(LayerExtrusionRange{fill_region_id, {fill_idx, fill_idx + 1}});
+        }
+
+    next_fill:;
+    }
 }
 
 void Layer::clear_fills()
@@ -2367,7 +2383,6 @@ void Layer::make_ironing()
         size_t j = i;
         for (++j; j < by_extruder.size() && ironing_params == by_extruder[j]; ++j)
             ;
-
         // Create the ironing extrusions for regions <i, j)
         ExPolygons ironing_areas;
         double nozzle_dmr = this->object()->print()->config().nozzle_diameter.values[ironing_params.extruder - 1];
@@ -2439,6 +2454,7 @@ void Layer::make_ironing()
 
         // Create the filler object.
         fill.spacing = ironing_params.line_spacing;
+        fill.bounding_width = ironing_params.line_spacing;
         fill.angle = float(ironing_params.angle + 0.25 * M_PI);
         fill.link_max_length = (coord_t) scale_(3. * fill.spacing);
         double extrusion_height = ironing_params.height * fill.spacing / nozzle_dmr;

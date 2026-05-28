@@ -1691,6 +1691,7 @@ wxPanel *PrintSettingsPanel::BuildInfillContent()
         CreateSettingRow(content, ironing_group, "ironing", _L("Enable ironing"));
         CreateSettingRow(content, ironing_group, "ironing_type", _L("Ironing type"));
         CreateSettingRow(content, ironing_group, "ironing_flowrate", _L("Flow rate"));
+        CreateSettingRow(content, ironing_group, "ironing_speed", _L("Speed"));
         CreateSettingRow(content, ironing_group, "ironing_spacing", _L("Spacing"));
         sizer->Add(ironing_group, 0, wxEXPAND | wxALL, em / 4);
     }
@@ -1852,9 +1853,17 @@ wxPanel *PrintSettingsPanel::BuildSpeedContent()
     auto *sizer = new wxBoxSizer(wxVERTICAL);
     int em = wxGetApp().em_unit();
 
-    // Print speeds group
+    // Auto speed group
     {
-        auto *speed_group = CreateFlatStaticBoxSizer(content, _L("Print speed"));
+        auto *auto_group = CreateFlatStaticBoxSizer(content, _L("Speed for print moves"));
+        CreateSettingRow(content, auto_group, "auto_speed", _L("Auto speed"));
+        CreateSettingRow(content, auto_group, "max_print_speed", _L("Max print speed"));
+        sizer->Add(auto_group, 0, wxEXPAND | wxALL, em / 4);
+    }
+
+    // Print move speeds group
+    {
+        auto *speed_group = CreateFlatStaticBoxSizer(content, _L("Print move speeds"));
         CreateSettingRow(content, speed_group, "perimeter_speed", _L("Perimeters"));
         CreateSettingRow(content, speed_group, "external_perimeter_speed", _L("External perimeters"));
         CreateSettingRow(content, speed_group, "small_perimeter_speed", _L("Small perimeters"));
@@ -1866,7 +1875,6 @@ wxPanel *PrintSettingsPanel::BuildSpeedContent()
         CreateSettingRow(content, speed_group, "bridge_speed", _L("Bridges"));
         CreateSettingRow(content, speed_group, "over_bridge_speed", _L("Over bridge speed"));
         CreateSettingRow(content, speed_group, "gap_fill_speed", _L("Gap fill"));
-        CreateSettingRow(content, speed_group, "ironing_speed", _L("Ironing"));
         sizer->Add(speed_group, 0, wxEXPAND | wxALL, em / 4);
     }
 
@@ -1916,14 +1924,6 @@ wxPanel *PrintSettingsPanel::BuildSpeedContent()
         CreateSettingRow(content, accel_group, "travel_acceleration", _L("Travel"));
         CreateSettingRow(content, accel_group, "travel_short_distance_acceleration", _L("Short distance travel"));
         sizer->Add(accel_group, 0, wxEXPAND | wxALL, em / 4);
-    }
-
-    // Autospeed group
-    {
-        auto *auto_group = CreateFlatStaticBoxSizer(content, _L("Autospeed"));
-        CreateSettingRow(content, auto_group, "max_print_speed", _L("Max print speed"));
-        CreateSettingRow(content, auto_group, "max_volumetric_speed", _L("Max volumetric speed"));
-        sizer->Add(auto_group, 0, wxEXPAND | wxALL, em / 4);
     }
 
     // Pressure equalizer group
@@ -2810,6 +2810,16 @@ void PrintSettingsPanel::RefreshFromConfig()
     ApplyToggleLogic();
 }
 
+void PrintSettingsPanel::ResetOriginalValues()
+{
+    const DynamicPrintConfig &config = wxGetApp().preset_bundle->prints.get_edited_preset().config;
+    for (auto &[opt_key, ui_elem] : m_setting_controls)
+    {
+        if (config.has(opt_key))
+            ui_elem.original_value = config.opt_serialize(opt_key);
+    }
+}
+
 void PrintSettingsPanel::ToggleOption(const std::string &opt_key, bool enable)
 {
     auto it = m_setting_controls.find(opt_key);
@@ -2878,6 +2888,14 @@ void PrintSettingsPanel::ApplyToggleLogic()
     ToggleOption("bottom_solid_min_thickness",
                  !has_spiral_vase && has_bottom_solid_infill && has_ensure_vertical_shell_thickness);
 
+    // Auto speed toggles
+    bool auto_speed = config.opt_bool("auto_speed");
+    ToggleOption("max_print_speed", true);
+    for (const char *el : {"perimeter_speed", "external_perimeter_speed", "infill_speed", "solid_infill_speed",
+                           "top_solid_infill_speed", "support_material_speed", "support_material_interface_speed"})
+    {
+        ToggleOption(el, !auto_speed);
+    }
     ToggleOption("gap_fill_speed", have_perimeters);
 
     // Fuzzy skin dependencies
@@ -2903,8 +2921,9 @@ void PrintSettingsPanel::ApplyToggleLogic()
     bool has_top_surface_flow_reduction = config.option<ConfigOptionPercent>("top_surface_flow_reduction")->value > 0;
     ToggleOption("top_surface_visibility_detection", has_top_surface_flow_reduction);
 
-    for (const char *el : {"top_infill_extrusion_width", "top_solid_infill_speed"})
-        ToggleOption(el, has_top_solid_infill || (has_spiral_vase && has_bottom_solid_infill));
+    ToggleOption("top_infill_extrusion_width", has_top_solid_infill || (has_spiral_vase && has_bottom_solid_infill));
+    ToggleOption("top_solid_infill_speed",
+                 (has_top_solid_infill || (has_spiral_vase && has_bottom_solid_infill)) && !auto_speed);
 
     // Acceleration dependencies
     bool have_default_acceleration = config.opt_float("default_acceleration") > 0;
@@ -2964,13 +2983,13 @@ void PrintSettingsPanel::ApplyToggleLogic()
         ToggleOption(key, has_organic_supports);
 
     for (const char *el : {"support_material_bottom_interface_layers", "support_material_interface_spacing",
-                           "support_material_interface_extruder", "support_material_interface_speed",
-                           "support_material_interface_contact_loops"})
+                           "support_material_interface_extruder", "support_material_interface_contact_loops"})
         ToggleOption(el, have_support_material && have_support_interface);
+    ToggleOption("support_material_interface_speed", have_support_material && have_support_interface && !auto_speed);
 
     ToggleOption("perimeter_extrusion_width", have_perimeters || have_skirt || have_brim);
     ToggleOption("support_material_extruder", have_support_material || have_skirt);
-    ToggleOption("support_material_speed", have_support_material || have_brim || have_skirt);
+    ToggleOption("support_material_speed", (have_support_material || have_brim || have_skirt) && !auto_speed);
 
     // Raft dependencies
     ToggleOption("raft_contact_distance", have_raft && !have_support_soluble);
@@ -3578,8 +3597,6 @@ wxPanel *PrinterSettingsPanel::BuildGeneralContent()
 
                        // Update filament presets for the new extruder count (expands extruders_filaments vector)
                        wxGetApp().preset_bundle->update_multi_material_filament_presets();
-                       wxGetApp().preset_bundle->update_filaments_compatible(
-                           PresetSelectCompatibleType::OnlyIfWasCompatible);
 
                        // Sync with Printer Settings tab - must call extruders_count_changed
                        // to properly rebuild extruder pages
@@ -6138,6 +6155,84 @@ void PrinterSettingsPanel::RefreshFromConfig()
     // Note: m_disable_update is reset by DisableUpdateGuard destructor
 }
 
+void PrinterSettingsPanel::ResetOriginalValues()
+{
+    const DynamicPrintConfig &config = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+    for (auto &[opt_key, ui_elem] : m_setting_controls)
+    {
+        size_t hash_pos = opt_key.find('#');
+        if (hash_pos != std::string::npos)
+        {
+            // Extruder-specific key - recompute original from the vector option
+            std::string base_key = opt_key.substr(0, hash_pos);
+            size_t extruder_idx = std::stoul(opt_key.substr(hash_pos + 1));
+
+            const ConfigOptionDef *opt_def = print_config_def.get(base_key);
+            if (!opt_def || !config.has(base_key))
+                continue;
+
+            switch (opt_def->type)
+            {
+            case coFloats:
+            case coPercents:
+                if (auto *opt = config.option<ConfigOptionFloats>(base_key))
+                {
+                    if (extruder_idx < opt->values.size())
+                        ui_elem.original_value = into_u8(wxString::Format("%g", opt->values[extruder_idx]));
+                }
+                break;
+            case coBools:
+                if (auto *opt = config.option<ConfigOptionBools>(base_key))
+                {
+                    if (extruder_idx < opt->values.size())
+                        ui_elem.original_value = opt->values[extruder_idx] ? "1" : "0";
+                }
+                break;
+            case coInts:
+                if (auto *opt = config.option<ConfigOptionInts>(base_key))
+                {
+                    if (extruder_idx < opt->values.size())
+                        ui_elem.original_value = std::to_string(opt->values[extruder_idx]);
+                }
+                break;
+            case coStrings:
+                if (auto *opt = config.option<ConfigOptionStrings>(base_key))
+                {
+                    if (extruder_idx < opt->values.size())
+                        ui_elem.original_value = opt->values[extruder_idx];
+                }
+                break;
+            case coEnums:
+                if (auto *opt = dynamic_cast<const ConfigOptionVectorBase *>(config.option(base_key)))
+                {
+                    auto serialized = opt->vserialize();
+                    if (extruder_idx < serialized.size())
+                        ui_elem.original_value = serialized[extruder_idx];
+                }
+                break;
+            case coPoints:
+                if (auto *opt = config.option<ConfigOptionPoints>(base_key))
+                {
+                    if (extruder_idx < opt->values.size())
+                    {
+                        ui_elem.original_value = std::to_string(opt->values[extruder_idx].x()) + "x" +
+                                                 std::to_string(opt->values[extruder_idx].y());
+                    }
+                }
+                break;
+            default:
+                break;
+            }
+        }
+        else
+        {
+            if (config.has(opt_key))
+                ui_elem.original_value = config.opt_serialize(opt_key);
+        }
+    }
+    m_preserved_original_values.clear();
+}
+
 void PrinterSettingsPanel::ToggleOption(const std::string &opt_key, bool enable)
 {
     auto it = m_setting_controls.find(opt_key);
@@ -6462,7 +6557,7 @@ bool FilamentSettingsPanel::IsTabVisible(int tab_index) const
         return has_any_visible_setting({"filament_type",
                                         "filament_soluble",
                                         "filament_abrasive",
-                                        "filament_max_volumetric_speed",
+                                        "filament_max_volumetric_flow",
                                         "filament_infill_max_speed",
                                         "filament_infill_max_crossing_speed",
                                         "filament_shrinkage_compensation_x",
@@ -6553,6 +6648,16 @@ wxPanel *FilamentSettingsPanel::BuildFilamentContent()
         CreateSettingRow(content, props_group, "filament_cost", _L("Cost"));
         CreateSettingRow(content, props_group, "filament_spool_weight", _L("Spool weight"));
         sizer->Add(props_group, 0, wxEXPAND | wxALL, em / 4);
+    }
+
+    // Print speed override group
+    {
+        auto *speed_group = CreateFlatStaticBoxSizer(content, _L("Print speed override"));
+        CreateSettingRow(content, speed_group, "filament_max_volumetric_flow", _L("Max volumetric flow"));
+        CreateSettingRow(content, speed_group, "filament_max_print_speed", _L("Max print speed"));
+        CreateSettingRow(content, speed_group, "filament_infill_max_speed", _L("Max infill speed"));
+        CreateSettingRow(content, speed_group, "filament_infill_max_crossing_speed", _L("Max crossing infill speed"));
+        sizer->Add(speed_group, 0, wxEXPAND | wxALL, em / 4);
     }
 
     // Pressure advance group
@@ -6678,15 +6783,6 @@ wxPanel *FilamentSettingsPanel::BuildAdvancedContent()
     content->SetForegroundColour(SidebarColors::Foreground());
     auto *sizer = new wxBoxSizer(wxVERTICAL);
     int em = wxGetApp().em_unit();
-
-    // Print speed override group
-    {
-        auto *speed_group = CreateFlatStaticBoxSizer(content, _L("Print speed override"));
-        CreateSettingRow(content, speed_group, "filament_max_volumetric_speed", _L("Max volumetric speed"));
-        CreateSettingRow(content, speed_group, "filament_infill_max_speed", _L("Max infill speed"));
-        CreateSettingRow(content, speed_group, "filament_infill_max_crossing_speed", _L("Max crossing infill speed"));
-        sizer->Add(speed_group, 0, wxEXPAND | wxALL, em / 4);
-    }
 
     // Shrinkage compensation group
     {
@@ -8268,6 +8364,15 @@ void FilamentSettingsPanel::OnSettingChanged(const std::string &opt_key)
         }
     }
 
+    // Keep legacy MVS alias in sync when MVF changes
+    if (opt_key == "filament_max_volumetric_flow")
+    {
+        auto *flow = config.option<ConfigOptionFloats>("filament_max_volumetric_flow");
+        auto *speed = config.option<ConfigOptionFloats>("filament_max_volumetric_speed");
+        if (flow && speed)
+            speed->values = flow->values;
+    }
+
     // Update SlicedInfo when spool weight changes - mirrors TabFilament::on_value_change() behavior
     if (opt_key == "filament_spool_weight")
     {
@@ -8570,6 +8675,16 @@ void FilamentSettingsPanel::RefreshFromConfig()
     // Note: m_disable_update is reset by DisableUpdateGuard destructor
 }
 
+void FilamentSettingsPanel::ResetOriginalValues()
+{
+    const DynamicPrintConfig &config = wxGetApp().preset_bundle->filaments.get_edited_preset().config;
+    for (auto &[opt_key, ui_elem] : m_setting_controls)
+    {
+        if (config.has(opt_key))
+            ui_elem.original_value = config.opt_serialize(opt_key);
+    }
+}
+
 void FilamentSettingsPanel::ToggleOption(const std::string &opt_key, bool enable)
 {
     auto it = m_setting_controls.find(opt_key);
@@ -8795,6 +8910,12 @@ void ProcessSection::UpdateFromConfig()
     {
         m_settings_panel->RefreshFromConfig();
     }
+}
+
+void ProcessSection::ResetOriginalValues()
+{
+    if (m_settings_panel)
+        m_settings_panel->ResetOriginalValues();
 }
 
 void ProcessSection::RebuildContent()
@@ -10031,13 +10152,19 @@ void Sidebar::update_presets(Preset::Type preset_type)
             }
         }
         if (m_printer_settings_panel)
+        {
+            m_printer_settings_panel->ResetOriginalValues();
             m_printer_settings_panel->RefreshFromConfig();
+        }
         break;
     case Preset::TYPE_PRINT:
         if (m_combo_print)
             m_combo_print->update();
         if (m_process_content)
+        {
+            m_process_content->ResetOriginalValues();
             m_process_content->UpdateFromConfig();
+        }
         break;
     case Preset::TYPE_FILAMENT:
         for (auto *combo : m_combos_filament)
@@ -10052,7 +10179,10 @@ void Sidebar::update_presets(Preset::Type preset_type)
                 combo->update();
         }
         if (m_filament_settings_panel)
+        {
+            m_filament_settings_panel->ResetOriginalValues();
             m_filament_settings_panel->RefreshFromConfig();
+        }
         break;
     default:
         break;
@@ -10627,21 +10757,33 @@ void Sidebar::update_sidebar_visibility()
 
 // preFlight: Tab -> Sidebar sync. When a value changes in the main Tab,
 // refresh the corresponding sidebar panel so controls and undo buttons stay in sync.
-void Sidebar::refresh_settings_panel(Preset::Type type)
+void Sidebar::refresh_settings_panel(Preset::Type type, bool reset_original_values)
 {
     switch (type)
     {
     case Preset::TYPE_PRINT:
         if (m_process_content)
+        {
+            if (reset_original_values)
+                m_process_content->ResetOriginalValues();
             m_process_content->UpdateFromConfig();
+        }
         break;
     case Preset::TYPE_PRINTER:
         if (m_printer_settings_panel)
+        {
+            if (reset_original_values)
+                m_printer_settings_panel->ResetOriginalValues();
             m_printer_settings_panel->RefreshFromConfig();
+        }
         break;
     case Preset::TYPE_FILAMENT:
         if (m_filament_settings_panel)
+        {
+            if (reset_original_values)
+                m_filament_settings_panel->ResetOriginalValues();
             m_filament_settings_panel->RefreshFromConfig();
+        }
         break;
     default:
         break;

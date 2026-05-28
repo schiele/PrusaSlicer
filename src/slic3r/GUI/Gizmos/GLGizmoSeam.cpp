@@ -94,7 +94,7 @@ void GLGizmoSeam::on_render_input_window(float x, float y, float bottom_limit)
     // Need to measure? Position way above screen at correct X
     if (m_popup_render_count == 0 && m_popup_height <= 0.0f)
     {
-        ImGuiPureWrap::set_next_window_pos(x, -500.0f, ImGuiCond_Always, 1.0f, 0.0f);
+        set_side_flyout_pos(x, -500.0f);
     }
     else
     {
@@ -103,7 +103,7 @@ void GLGizmoSeam::on_render_input_window(float x, float y, float bottom_limit)
 
         menu_y = std::max(0.0f, menu_y);
 
-        ImGuiPureWrap::set_next_window_pos(x, menu_y, ImGuiCond_Always, 1.0f, 0.0f);
+        set_side_flyout_pos(x, menu_y);
     }
 
     m_popup_render_count++;

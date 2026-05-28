@@ -167,6 +167,34 @@ GLShaderProgram *GLShadersManager::get_shader(const std::string &shader_name)
     return nullptr;
 }
 
+bool GLShadersManager::ensure_phong_shaders()
+{
+    // Already compiled - nothing to do
+    if (m_fallback_map.find("phong") == m_fallback_map.end())
+        return get_shader("phong") != nullptr;
+
+#if SLIC3R_OPENGL_ES
+    const std::string prefix = "ES/";
+#else
+    const std::string prefix = GUI::wxGetApp().is_gl_version_greater_or_equal_to(3, 1) ? "140/" : "110/";
+#endif
+
+    // Remove fallback mappings so try_compile_with_fallback can re-register them on failure
+    m_fallback_map.erase("phong");
+    m_fallback_map.erase("phong_light");
+
+    try_compile_with_fallback("phong", {prefix + "phong.vs", prefix + "phong.fs"}, "gouraud"
+#if ENABLE_ENVIRONMENT_MAP
+                              ,
+                              {"ENABLE_ENVIRONMENT_MAP"sv}
+#endif
+    );
+    try_compile_with_fallback("phong_light", {prefix + "phong_light.vs", prefix + "phong_light.fs"}, "gouraud_light");
+
+    // Return true if phong is now a real shader, not a fallback
+    return m_fallback_map.find("phong") == m_fallback_map.end();
+}
+
 bool GLShadersManager::try_compile_with_fallback(const std::string &name,
                                                  const GLShaderProgram::ShaderFilenames &filenames,
                                                  const std::string &fallback_name,

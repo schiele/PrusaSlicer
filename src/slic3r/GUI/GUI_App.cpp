@@ -135,6 +135,9 @@
 #ifdef _WIN32
 #include <boost/dll/runtime_symbol_info.hpp>
 #endif
+#ifdef __APPLE__
+#include <unistd.h>
+#endif
 
 #if ENABLE_THUMBNAIL_GENERATOR_DEBUG
 #include <boost/beast/core/detail/base64.hpp>
@@ -972,7 +975,12 @@ wxGLContext *GUI_App::init_glcontext(wxGLCanvas &canvas)
 bool GUI_App::init_opengl()
 {
     bool status = m_opengl_mgr.init_gl();
-    m_opengl_initialized = true;
+    if (!m_opengl_initialized)
+    {
+        m_opengl_initialized = true;
+        if (mainframe)
+            mainframe->update_title();
+    }
     return status;
 }
 
@@ -980,21 +988,7 @@ static bool s_use_phong_lighting(const AppConfig *config)
 {
     if (!config)
         return true;
-    const std::string quality = config->get("canvas_lighting_quality");
-    if (quality == "basic")
-        return false;
-    if (quality == "enhanced")
-        return true;
-    // "auto": detect from GPU renderer string
-    const std::string &renderer = OpenGLManager::get_gl_info().get_renderer();
-    if (renderer.find("NVIDIA") != std::string::npos || renderer.find("GeForce") != std::string::npos ||
-        renderer.find("AMD") != std::string::npos || renderer.find("Radeon") != std::string::npos)
-        return true;
-    if (renderer.find("Intel") != std::string::npos || renderer.find("Iris") != std::string::npos ||
-        renderer.find("UHD") != std::string::npos || renderer.find("HD Graphics") != std::string::npos ||
-        renderer.find("llvmpipe") != std::string::npos || renderer.find("SwiftShader") != std::string::npos)
-        return false;
-    return true;
+    return OpenGLManager::get_gl_info().should_use_phong(config->get("canvas_lighting_quality"));
 }
 
 GLShaderProgram *GUI_App::get_utility_shader()
@@ -1476,6 +1470,9 @@ bool GUI_App::on_init_inner()
         if (app_config->get_bool("cpu_pcores_only"))
             Slic3r::apply_pcore_only_affinity();
     }
+    // Cache layout preference (requires restart to change)
+    m_legacy_prepare_layout = app_config->get_bool("legacy_prepare_layout");
+
     // initialize label colors and fonts
     init_ui_colours();
     init_fonts();
@@ -2756,7 +2753,22 @@ void GUI_App::check_printer_presets()
 
 void GUI_App::recreate_GUI(const wxString &msg_name)
 {
+#ifdef __APPLE__
+    // On macOS, in-process GUI recreation crashes due to wxWidgets' Cocoa
+    // backend throwing NSException during NSView teardown. Restart the
+    // entire process instead - this is standard macOS behavior for settings
+    // changes that require a restart.
+    app_config->save();
+    auto exe_path = boost::dll::program_location();
+    BOOST_LOG_TRIVIAL(info) << "Restarting application: " << exe_path;
+    const char *argv[] = {exe_path.string().c_str(), nullptr};
+    execv(argv[0], const_cast<char *const *>(argv));
+    // execv only returns on failure
+    BOOST_LOG_TRIVIAL(error) << "execv failed, falling through to in-process recreation";
+#endif
+
     m_is_recreating_gui = true;
+    m_legacy_prepare_layout = app_config->get_bool("legacy_prepare_layout");
 
     mainframe->shutdown();
 

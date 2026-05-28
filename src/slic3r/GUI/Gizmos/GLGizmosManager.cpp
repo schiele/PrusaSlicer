@@ -84,8 +84,10 @@ GLGizmosManager::EType GLGizmosManager::get_gizmo_from_mouse(const Vec2d &mouse_
 
     // is mouse horizontally in the area?
     float cnv_w = (float) m_parent.get_canvas_size().get_width();
-    float left_edge = cnv_w - (border + gap_x + icons_size);
-    if (left_edge <= (float) mouse_pos(0) && (float) mouse_pos(0) <= cnv_w - border)
+    const bool legacy = wxGetApp().legacy_prepare_layout();
+    float left_edge = legacy ? border : cnv_w - (border + gap_x + icons_size);
+    float right_edge = legacy ? border + gap_x + icons_size : cnv_w - border;
+    if (left_edge <= (float) mouse_pos(0) && (float) mouse_pos(0) <= right_edge)
     {
         // which icon is it on?
         size_t from_top = (size_t) ((float) mouse_pos(1) - top_y) / stride_y;
@@ -741,71 +743,65 @@ void GLGizmosManager::render_background(float left, float top, float right, floa
         const float internal_top_uv = 1.0f - float(m_background_texture.metadata.top) * inv_tex_height;
         const float internal_bottom_uv = float(m_background_texture.metadata.bottom) * inv_tex_height;
 
-        // Since the toolbar is positioned on the right side of the window, we want square corners on the right
-        // and rounded corners on the left (inside)
+        // The edge-flush side gets square corners, the interior side gets rounded corners.
+        // Default layout: toolbar on right - right square, left rounded.
+        // Legacy layout: toolbar on left - left square, right rounded.
+        const bool legacy = wxGetApp().legacy_prepare_layout();
 
-        // top-left corner - now needs to be ROUNDED (was square when on left side)
-        GLTexture::render_sub_texture(tex_id, left, internal_left, internal_top, top,
-                                      {{left_uv, internal_top_uv},
-                                       {internal_left_uv, internal_top_uv},
-                                       {internal_left_uv, top_uv},
-                                       {left_uv, top_uv}});
+        // Square corner UVs: map interior (flat) texture region to produce no visible rounding
+        const GLTexture::Quad_UVs square_uvs = {{internal_left_uv, internal_bottom_uv},
+                                                {internal_right_uv, internal_bottom_uv},
+                                                {internal_right_uv, internal_top_uv},
+                                                {internal_left_uv, internal_top_uv}};
 
+        // Rounded corner UVs for each position
+        const GLTexture::Quad_UVs tl_round = {{left_uv, internal_top_uv},
+                                              {internal_left_uv, internal_top_uv},
+                                              {internal_left_uv, top_uv},
+                                              {left_uv, top_uv}};
+        const GLTexture::Quad_UVs tr_round = {{internal_right_uv, internal_top_uv},
+                                              {right_uv, internal_top_uv},
+                                              {right_uv, top_uv},
+                                              {internal_right_uv, top_uv}};
+        const GLTexture::Quad_UVs bl_round = {{left_uv, bottom_uv},
+                                              {internal_left_uv, bottom_uv},
+                                              {internal_left_uv, internal_bottom_uv},
+                                              {left_uv, internal_bottom_uv}};
+        const GLTexture::Quad_UVs br_round = {{internal_right_uv, bottom_uv},
+                                              {right_uv, bottom_uv},
+                                              {right_uv, internal_bottom_uv},
+                                              {internal_right_uv, internal_bottom_uv}};
+
+        // top-left corner
+        GLTexture::render_sub_texture(tex_id, left, internal_left, internal_top, top, legacy ? square_uvs : tl_round);
         // top edge
         GLTexture::render_sub_texture(tex_id, internal_left, internal_right, internal_top, top,
                                       {{internal_left_uv, internal_top_uv},
                                        {internal_right_uv, internal_top_uv},
                                        {internal_right_uv, top_uv},
                                        {internal_left_uv, top_uv}});
-
-        // top-right corner - now needs to be SQUARE (was rounded when on left side)
-        GLTexture::render_sub_texture(tex_id, internal_right, right, internal_top, top,
-                                      {{internal_right_uv, internal_bottom_uv},
-                                       {right_uv, internal_bottom_uv},
-                                       {right_uv, internal_top_uv},
-                                       {internal_right_uv, internal_top_uv}});
+        // top-right corner
+        GLTexture::render_sub_texture(tex_id, internal_right, right, internal_top, top, legacy ? tr_round : square_uvs);
 
         // center-left edge
-        GLTexture::render_sub_texture(tex_id, left, internal_left, internal_bottom, internal_top,
-                                      {{internal_left_uv, internal_bottom_uv},
-                                       {internal_right_uv, internal_bottom_uv},
-                                       {internal_right_uv, internal_top_uv},
-                                       {internal_left_uv, internal_top_uv}});
-
+        GLTexture::render_sub_texture(tex_id, left, internal_left, internal_bottom, internal_top, square_uvs);
         // center
-        GLTexture::render_sub_texture(tex_id, internal_left, internal_right, internal_bottom, internal_top,
-                                      {{internal_left_uv, internal_bottom_uv},
-                                       {internal_right_uv, internal_bottom_uv},
-                                       {internal_right_uv, internal_top_uv},
-                                       {internal_left_uv, internal_top_uv}});
-
+        GLTexture::render_sub_texture(tex_id, internal_left, internal_right, internal_bottom, internal_top, square_uvs);
         // center-right edge
-        GLTexture::render_sub_texture(tex_id, internal_right, right, internal_bottom, internal_top,
-                                      {{internal_right_uv, internal_bottom_uv},
-                                       {right_uv, internal_bottom_uv},
-                                       {right_uv, internal_top_uv},
-                                       {internal_right_uv, internal_top_uv}});
+        GLTexture::render_sub_texture(tex_id, internal_right, right, internal_bottom, internal_top, square_uvs);
 
-        // bottom-left corner - now needs to be ROUNDED (was square when on left side)
+        // bottom-left corner
         GLTexture::render_sub_texture(tex_id, left, internal_left, bottom, internal_bottom,
-                                      {{left_uv, bottom_uv},
-                                       {internal_left_uv, bottom_uv},
-                                       {internal_left_uv, internal_bottom_uv},
-                                       {left_uv, internal_bottom_uv}});
-
+                                      legacy ? square_uvs : bl_round);
         // bottom edge
         GLTexture::render_sub_texture(tex_id, internal_left, internal_right, bottom, internal_bottom,
                                       {{internal_left_uv, bottom_uv},
                                        {internal_right_uv, bottom_uv},
                                        {internal_right_uv, internal_bottom_uv},
                                        {internal_left_uv, internal_bottom_uv}});
-
-        // bottom-right corner - now needs to be SQUARE (was rounded when on left side)
+        // bottom-right corner
         GLTexture::render_sub_texture(tex_id, internal_right, right, bottom, internal_bottom,
-                                      {{internal_right_uv, internal_bottom_uv},
-                                       {right_uv, internal_bottom_uv},
-                                       {right_uv, internal_top_uv},
-                                       {internal_right_uv, internal_top_uv}});
+                                      legacy ? br_round : square_uvs);
     }
 }
 
@@ -884,7 +880,8 @@ void GLGizmosManager::do_render_overlay() const
     const float border_w = 2.0f * m_layout.scaled_border() * inv_cnv_w;
     const float margin_w = border_w + m_layout.scaled_gap_x() * inv_cnv_w;
 
-    float top_x = 1.0f - width;
+    const bool legacy = wxGetApp().legacy_prepare_layout();
+    float top_x = legacy ? -1.0f : 1.0f - width;
     float top_y = 0.5f * height;
 
     // Render background with normal bounds
@@ -1006,8 +1003,8 @@ void GLGizmosManager::do_render_overlay() const
             float gizmo_y = top_y - (current_idx * stride_y + 0.5f * icons_size_y);
             current_y = 0.5f * cnv_h - gizmo_y;
             current_y = std::round(current_y); // Round to prevent sub-pixel jumping
-            // Position to left of side toolbar
-            window_x = cnv_w - toolbar_width - GAP;
+            // Position flyout adjacent to side toolbar
+            window_x = legacy ? toolbar_width + GAP : cnv_w - toolbar_width - GAP;
         }
 
         // Calculate the bottom of the gizmo toolbar (where the last icon is)

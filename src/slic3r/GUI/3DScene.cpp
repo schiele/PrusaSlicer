@@ -150,7 +150,11 @@ void GLVolume::SinkingContours::update()
     m_old_box = box;
     m_shift = Vec3d::Zero();
 
-    const TriangleMesh &mesh = model.objects[object_idx]->volumes[m_parent.volume_idx()]->mesh();
+    const int vidx = m_parent.volume_idx();
+    const ModelObject *obj = model.objects[object_idx];
+    if (vidx < 0 || vidx >= int(obj->volumes.size()))
+        return;
+    const TriangleMesh &mesh = obj->volumes[vidx]->mesh();
 
     m_model.reset();
     GUI::GLModel::Geometry init_data;
@@ -221,6 +225,8 @@ void GLVolume::NonManifoldEdges::update()
     if (!m_update_needed)
         return;
 
+    if (!s_render_ctx || !s_render_ctx->model)
+        return;
     m_model.reset();
     const int object_idx = m_parent.object_idx();
     const Model &model = *s_render_ctx->model;
@@ -413,8 +419,15 @@ BoundingBoxf3 GLVolume::transformed_non_sinking_bounding_box(const Transform3d &
 {
     if (!s_render_ctx || !s_render_ctx->model)
         return bounding_box().transformed(trafo);
-    return s_render_ctx->model->objects[object_idx()]->volumes[volume_idx()]->mesh().transformed_bounding_box(trafo,
-                                                                                                              0.0);
+    const Model &model = *s_render_ctx->model;
+    const int oidx = object_idx();
+    const int vidx = volume_idx();
+    if (oidx < 0 || oidx >= int(model.objects.size()))
+        return bounding_box().transformed(trafo);
+    const ModelObject *obj = model.objects[oidx];
+    if (vidx < 0 || vidx >= int(obj->volumes.size()))
+        return bounding_box().transformed(trafo);
+    return obj->volumes[vidx]->mesh().transformed_bounding_box(trafo, 0.0);
 }
 
 const BoundingBoxf3 &GLVolume::transformed_non_sinking_bounding_box() const
@@ -800,7 +813,8 @@ void GLVolumeCollection::render(GLVolumeCollection::ERenderType type, bool disab
     // each ModelVolume. The cache is invalidated based on changes in extruder_colors,
     // default extruder idx and timestamp of the painted data. The data belonging to objects
     // // which no longer exist are removed from the cache periodically.
-    const ModelObjectPtrs &model_objects = ctx.model->objects;
+    static const ModelObjectPtrs s_empty_model_objects;
+    const ModelObjectPtrs &model_objects = ctx.model ? ctx.model->objects : s_empty_model_objects;
     const std::vector<ColorRGBA> extruders_colors = ctx.extruder_colors;
     const bool is_render_as_mmu_painted_enabled = !model_objects.empty() && !extruders_colors.empty();
 

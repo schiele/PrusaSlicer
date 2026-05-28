@@ -1086,6 +1086,13 @@ struct MyContext : public ConfigOptionResolver
             this->config_local.set_key_value(opt_key, opt.release());
     }
 
+    // preFlight: whitelist of nullable variables that safely default to 0 when nil,
+    // instead of throwing an error that blocks G-code export.
+    static bool is_nil_safe_default(const std::string &key)
+    {
+        return key == "idle_temperature" || boost::starts_with(key, "idle_temperature_");
+    }
+
     static void legacy_variable_expansion(const MyContext *ctx, IteratorRange &opt_key, std::string &output)
     {
         if (ctx->skipping())
@@ -1123,8 +1130,14 @@ struct MyContext : public ConfigOptionResolver
         if (opt->is_scalar())
         {
             if (opt->is_nil())
-                ctx->throw_exception("Trying to reference an undefined (nil) optional variable", opt_key);
-            output = opt->serialize();
+            {
+                if (is_nil_safe_default(opt_key_str))
+                    output = "0";
+                else
+                    ctx->throw_exception("Trying to reference an undefined (nil) optional variable", opt_key);
+            }
+            else
+                output = opt->serialize();
         }
         else
         {
@@ -1134,9 +1147,15 @@ struct MyContext : public ConfigOptionResolver
             if (idx >= vec->size())
                 idx = 0;
             if (vec->is_nil(idx))
-                ctx->throw_exception("Trying to reference an undefined (nil) element of vector of optional values",
-                                     opt_key);
-            output = vec->vserialize()[idx];
+            {
+                if (is_nil_safe_default(opt_key_str))
+                    output = "0";
+                else
+                    ctx->throw_exception("Trying to reference an undefined (nil) element of vector of optional values",
+                                         opt_key);
+            }
+            else
+                output = vec->vserialize()[idx];
         }
     }
 
@@ -1181,9 +1200,15 @@ struct MyContext : public ConfigOptionResolver
         if (idx >= (int) vec->size())
             idx = 0;
         if (vec->is_nil(idx))
-            ctx->throw_exception("Trying to reference an undefined (nil) element of vector of optional values",
-                                 opt_key);
-        output = vec->vserialize()[idx];
+        {
+            if (is_nil_safe_default(opt_key_str))
+                output = "0";
+            else
+                ctx->throw_exception("Trying to reference an undefined (nil) element of vector of optional values",
+                                     opt_key);
+        }
+        else
+            output = vec->vserialize()[idx];
     }
 
     static void resolve_variable(const MyContext *ctx, IteratorRange &opt_key, OptWithPos &output)
@@ -1238,7 +1263,15 @@ struct MyContext : public ConfigOptionResolver
         assert(opt.opt->is_scalar());
 
         if (opt.opt->is_nil())
+        {
+            if (is_nil_safe_default(opt.key_name()))
+            {
+                output.set_i(0);
+                output.it_range = opt.it_range;
+                return;
+            }
             ctx->throw_exception("Trying to reference an undefined (nil) optional variable", opt.it_range);
+        }
 
         switch (opt.opt->type())
         {
@@ -1333,8 +1366,16 @@ struct MyContext : public ConfigOptionResolver
             ctx->throw_exception("Indexing an empty vector variable", opt.it_range);
         size_t idx = (opt.index < 0) ? 0 : (opt.index >= int(vec->size())) ? 0 : size_t(opt.index);
         if (vec->is_nil(idx))
+        {
+            if (is_nil_safe_default(opt.key_name()))
+            {
+                output.set_i(0);
+                output.it_range = opt.it_range;
+                return;
+            }
             ctx->throw_exception("Trying to reference an undefined (nil) element of vector of optional values",
                                  opt.it_range);
+        }
         switch (opt.opt->type())
         {
         case coFloats:

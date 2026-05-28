@@ -223,6 +223,7 @@ public:
     PrintSettingsPanel(wxWindow *parent, Plater *plater);
 
     void RefreshFromConfig();
+    void ResetOriginalValues();
 
     // Override base class
     void msw_rescale() override;
@@ -310,6 +311,7 @@ public:
     ~PrinterSettingsPanel();
 
     void RefreshFromConfig();
+    void ResetOriginalValues();
 
     // Override base class
     void msw_rescale() override;
@@ -412,6 +414,7 @@ public:
     FilamentSettingsPanel(wxWindow *parent, Plater *plater);
 
     void RefreshFromConfig();
+    void ResetOriginalValues();
 
     // Override base class
     void msw_rescale() override;
@@ -504,6 +507,7 @@ public:
 
     void SetPresetComboBox(PlaterPresetComboBox *combo);
     void UpdateFromConfig();
+    void ResetOriginalValues();
     void RebuildContent();
     void UpdateSidebarVisibility();
 
@@ -614,7 +618,7 @@ public:
     void update_sidebar_visibility();
 
     // Refresh the sidebar settings panel for the given preset type (Tab -> Sidebar sync)
-    void refresh_settings_panel(Preset::Type type);
+    void refresh_settings_panel(Preset::Type type, bool reset_original_values = false);
 
     // Section access
     CollapsibleSection *GetPrinterSection() { return m_printer_section; }

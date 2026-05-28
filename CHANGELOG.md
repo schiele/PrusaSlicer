@@ -1,5 +1,47 @@
 # preFlight Changelog
 
+## v1.0.1-beta2
+
+### We listened
+- Added "Legacy layout for Prepare" preference that mirrors the Prepare view horizontally - sidebar moves to the right, gizmo toolbar to the left
+- Every option in the sidebar has a visibility checkbox in the main settings - if the sidebar feels cluttered, you can hide anything you don't use
+
+### Auto Speed
+- Added Auto speed checkbox that calculates print move speeds from each filament's max volumetric flow (MVF), capped at an effective max print speed (MPS)
+  - Setting individual speeds to 0 still triggers volumetric speed calculation for that feature
+- Added filament_max_volumetric_flow as the primary max volumetric flow setting, replacing the legacy filament_max_volumetric_speed (kept as a synced alias)
+- Added filament_max_print_speed to override the print profile's max print speed on a per-filament basis
+
+Note: MVF caps all print speeds regardless of whether Auto speed is enabled - if your speeds seem lower than expected, check that the active filament's MVF is set correctly. MPS only applies to Auto speed and does not affect manually set speeds.
+
+### Klipper
+- Added native Klipper machine limits for accurate time estimation - max_velocity, max_accel, square_corner_velocity, and minimum_cruise_ratio fields matching printer.cfg (#183)
+- Time estimator handles SET_VELOCITY_LIMIT G-code commands for mid-print parameter changes
+
+### GPU / Rendering
+- Active GPU renderer now displayed in the title bar for easy identification and support
+- Improved GPU detection - removed Intel GPU blocklist that forced basic lighting on capable cards like Arc A770
+- Enabled Enhanced (Blinn-Phong) lighting on all hardware GPUs passing the OpenGL 3.2 minimum
+- Lighting quality changes in Preferences now take effect without restart via deferred shader compilation
+
+### Athena Perimeter Generation
+- Perimeter compression no longer allows "Disabled" - minimal bead compression is required to prevent unfilled gaps. The new floor is "Minimal" (75%), and legacy profiles migrate automatically (#195)
+
+### UI
+- Added configurable extrusion width warning thresholds per nozzle (33-500%), replacing hardcoded 60%/150% warning limits (#146)
+- Enabled right-click context menu in WebView printer UIs
+- Widened seam line snap threshold from 5 to 15 degrees for more reliable activation on curved surfaces
+- Rewrote interlocking overlap tooltip and added tuning guidance note that Interlocking must be tuned for your print settings
+
+### Bug Fixes
+- Fixed concentric top fill incorrectly overridden to Ensuring on complex multi-hole geometry
+- Fixed crash when slicing sunken objects due to dangling render context pointer (#168)
+- Fixed Custom G-code error when idle_temperature is nil (#186)
+- Fixed Variable Layer Height gizmo hiding the selected object
+- Fixed Align to Face sliders rotating the canvas when interacting with the popup panel
+- Fixed bed temperature set to 0 when "Other layers" was set to 0 - now keeps the first layer temperature
+- Enabled measure gizmo on sunk objects
+
 ## v1.0.1-beta1
 
 ### Orca Import

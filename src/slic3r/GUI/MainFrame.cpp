@@ -808,8 +808,13 @@ void MainFrame::update_title()
     }
 
     title += wxString(build_id);
-    // if (wxGetApp().is_editor())
-    //     title += (" " + _L("based on Slic3r"));
+
+    if (wxGetApp().opengl_initialized())
+    {
+        const std::string &gpu = OpenGLManager::get_gl_info().get_renderer();
+        if (!gpu.empty())
+            title += " [" + gpu + "]";
+    }
 
     SetTitle(title);
 }

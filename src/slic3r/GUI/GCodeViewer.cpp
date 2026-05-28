@@ -2614,7 +2614,15 @@ void GCodeViewer::load_shells(const Print &print)
         {
             if (!m_get_model)
                 continue;
-            TriangleMesh mesh(m_get_model().objects[v->object_idx()]->volumes[v->volume_idx()]->mesh());
+            const Model &model = m_get_model();
+            const int oidx = v->object_idx();
+            const int vidx = v->volume_idx();
+            if (oidx < 0 || oidx >= int(model.objects.size()))
+                continue;
+            const ModelObject *obj = model.objects[oidx];
+            if (vidx < 0 || vidx >= int(obj->volumes.size()))
+                continue;
+            TriangleMesh mesh(obj->volumes[vidx]->mesh());
             mesh.transform(v->world_matrix(), true);
             indexed_triangle_set upper_its;
             cut_mesh(mesh.its, 0.0f, &upper_its, nullptr);
@@ -2939,6 +2947,7 @@ void GCodeViewer::render_shells()
         glsafe(::glDepthMask(true));
         shader->set_uniform("emission_factor", 0.0f);
         shader->stop_using();
+        GLVolumeCollection::set_render_context(nullptr);
         return;
     }
 
@@ -2954,7 +2963,8 @@ void GCodeViewer::render_shells()
     }
 
     const bool use_progressive_clip = (max_z > 0.0);
-    const bool use_phong = m_app_config && m_app_config->get("canvas_lighting_quality") != "basic";
+    const bool use_phong = m_app_config &&
+                           OpenGLManager::get_gl_info().should_use_phong(m_app_config->get("canvas_lighting_quality"));
     GLShaderProgram *shader = get_shader(use_progressive_clip ? "gouraud_light_clip"
                                                               : (use_phong ? "phong_light" : "gouraud_light"));
 
@@ -3057,6 +3067,7 @@ void GCodeViewer::render_shells()
 
     shader->set_uniform("emission_factor", 0.0f);
     shader->stop_using();
+    GLVolumeCollection::set_render_context(nullptr);
 }
 
 void GCodeViewer::render_legend(float &legend_height)

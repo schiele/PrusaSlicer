@@ -247,6 +247,10 @@ protected:
     virtual void on_render() = 0;
     virtual void on_render_input_window(float x, float y, float bottom_limit) {}
 
+    // Positions a flyout window adjacent to the side toolbar, honoring the layout preference.
+    // pivot_y defaults to 0.0 (top-anchored); ColorMixing uses 1.0 (bottom-anchored).
+    void set_side_flyout_pos(float x, float y, float pivot_y = 0.0f) const;
+
     // Called for inactive gizmos to render overlay elements (e.g., "always visible" features)
     virtual void on_render_when_inactive() {}
 

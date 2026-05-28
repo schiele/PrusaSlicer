@@ -449,8 +449,8 @@ private:
 
         void calculate_time(GCodeProcessorResult &result, PrintEstimatedStatistics::ETimeMode mode,
                             size_t keep_last_n_blocks = 0, float additional_time = 0.0f, float time_compensation = 0.0f,
-                            std::function<void(int)> progress_callback = nullptr,
-                            bool skip_speed_interpolation = false);
+                            std::function<void(int)> progress_callback = nullptr, bool skip_speed_interpolation = false,
+                            float minimum_cruise_ratio = 0.0f);
     };
 
     struct TimeProcessor
@@ -589,8 +589,10 @@ private:
     EPositioningType m_e_local_positioning_type;
     std::vector<Vec3f> m_extruder_offsets;
     GCodeFlavor m_flavor;
-    bool m_rrf_jerk_policy{true};         // true = P0 (RRF default), false = P1 (Marlin emulation)
-    size_t m_rrf_jerk_affected_blocks{0}; // Debug counter for blocks affected by jerk policy
+    bool m_rrf_jerk_policy{true};               // true = P0 (RRF default), false = P1 (Marlin emulation)
+    size_t m_rrf_jerk_affected_blocks{0};       // Debug counter for blocks affected by jerk policy
+    float m_klipper_scv{5.0f};                  // Current square_corner_velocity for JD recalculation
+    float m_klipper_minimum_cruise_ratio{0.5f}; // Current minimum_cruise_ratio
 
     float m_time_compensation{0.0f}; // 0% default (16ms min segment time handles most correction)
 
@@ -892,6 +894,11 @@ private:
     void parse_rrf_mcode_field(const std::string &mcode_line);
     // Parse all RRF M-code fields from PrintConfig
     void parse_rrf_limits_from_config(const PrintConfig &config);
+
+    // Parse Klipper printer.cfg values from PrintConfig and convert to internal limits
+    void parse_klipper_limits_from_config(const PrintConfig &config);
+    // Process Klipper SET_VELOCITY_LIMIT command encountered mid-G-code
+    void process_SET_VELOCITY_LIMIT(const std::string &line);
 
     // Unload the current filament into the MK3 MMU2 unit at the end of print.
     void process_M702(const GCodeReader::GCodeLine &line);

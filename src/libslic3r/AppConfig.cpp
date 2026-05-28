@@ -133,6 +133,9 @@ void AppConfig::set_defaults()
         if (get("use_tabbed_sidebar").empty())
             set("use_tabbed_sidebar", "1");
 
+        if (get("legacy_prepare_layout").empty())
+            set("legacy_prepare_layout", "0");
+
         if (get("use_custom_toolbar_size").empty())
             set("use_custom_toolbar_size", "0");
 

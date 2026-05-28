@@ -1909,6 +1909,22 @@ void TabPrint::build()
     optgroup->append_single_option_line("interlock_perimeter_overlap", category_path + "interlock-overlap");
     optgroup->append_single_option_line("interlock_flow_detection", category_path + "interlock-flow-detection");
 
+    line = Line{"", ""};
+    line.full_width = 1;
+    line.widget = [this](wxWindow *parent)
+    {
+        ogStaticText *stat_text;
+        wxSizer *sizer = description_line_widget(parent, &stat_text);
+        stat_text->SetText(_L("IMPORTANT! The default Interlocking overlap of 10.73% is a safe starting point "
+                              "that works across a wide range of print settings.\n"
+                              "Interlocking can tolerate higher overlap values which compresses more material "
+                              "into the interlocking pattern, resulting in a stronger bond.\n"
+                              "Start with a test print at 10.73% and increase gradually until over-extrusion "
+                              "is reached, then dial it back to the last safe value."));
+        return sizer;
+    };
+    optgroup->append_line(line);
+
     optgroup = page->new_optgroup_for_sidebar(L("Quality (slower slicing)"));
     optgroup->append_single_option_line("extra_perimeters", category_path + "extra-perimeters-if-needed");
     optgroup->append_single_option_line("extra_perimeters_on_overhangs",
@@ -1994,6 +2010,7 @@ void TabPrint::build()
     optgroup->append_single_option_line("ironing", category_path);
     optgroup->append_single_option_line("ironing_type", category_path + "ironing-type");
     optgroup->append_single_option_line("ironing_flowrate", category_path + "flow-rate");
+    optgroup->append_single_option_line("ironing_speed");
     optgroup->append_single_option_line("ironing_spacing", category_path + "spacing-between-ironing-passes");
 
     optgroup = page->new_optgroup_for_sidebar(L("Reducing printing time"));
@@ -2093,6 +2110,27 @@ void TabPrint::build()
 
     page = add_options_page(L("Speed"), "time");
     optgroup = page->new_optgroup_for_sidebar(L("Speed for print moves"));
+    optgroup->append_single_option_line("auto_speed");
+    optgroup->append_single_option_line("max_print_speed");
+
+    {
+        Line line{"", ""};
+        line.full_width = 1;
+        line.widget = [this](wxWindow *parent)
+        {
+            ogStaticText *stat_text;
+            wxSizer *sizer = description_line_widget(parent, &stat_text);
+            stat_text->SetText(
+                _L("Calculates print speeds from each filament's max volumetric flow, "
+                   "capped at Max print speed.\n"
+                   "Bridge and small perimeter speeds remain manual. Set to 0 to include in auto speed.\n"
+                   "Over-bridge set to 0 uses solid infill speed. Gap fill set to 0 disables it."));
+            return sizer;
+        };
+        optgroup->append_line(line);
+    }
+
+    optgroup = page->new_optgroup_for_sidebar(L("Print move speeds"));
     optgroup->append_single_option_line("perimeter_speed");
     optgroup->append_single_option_line("external_perimeter_speed");
     optgroup->append_single_option_line("small_perimeter_speed");
@@ -2104,7 +2142,6 @@ void TabPrint::build()
     optgroup->append_single_option_line("bridge_speed");
     optgroup->append_single_option_line("over_bridge_speed");
     optgroup->append_single_option_line("gap_fill_speed");
-    optgroup->append_single_option_line("ironing_speed");
 
     optgroup = page->new_optgroup_for_sidebar(L("Dynamic overhang speed"));
     optgroup->append_single_option_line("enable_dynamic_overhang_speeds");
@@ -2136,10 +2173,6 @@ void TabPrint::build()
     optgroup->append_single_option_line("wipe_tower_acceleration");
     optgroup->append_single_option_line("travel_acceleration");
     optgroup->append_single_option_line("travel_short_distance_acceleration");
-
-    optgroup = page->new_optgroup_for_sidebar(L("Autospeed (advanced)"));
-    optgroup->append_single_option_line("max_print_speed", "max-volumetric-speed_127176");
-    optgroup->append_single_option_line("max_volumetric_speed", "max-volumetric-speed_127176");
 
     optgroup = page->new_optgroup_for_sidebar(L("Pressure equalizer (experimental)"));
     optgroup->append_single_option_line("max_volumetric_extrusion_rate_slope_positive", "pressure-equlizer_331504");
@@ -3109,6 +3142,37 @@ void TabFilament::build()
             on_value_change(opt_key, value);
     };
 
+    optgroup = page->new_optgroup_for_sidebar(L("Print speed override"));
+    optgroup->append_single_option_line("filament_max_volumetric_flow", "max-volumetric-speed_127176");
+
+    {
+        Line line{"", ""};
+        line.full_width = 1;
+        line.widget = [this](wxWindow *parent)
+        {
+            return description_line_widget(parent, &m_volumetric_speed_description_line);
+        };
+        optgroup->append_line(line);
+    }
+
+    optgroup->append_single_option_line("filament_max_print_speed");
+    optgroup->append_single_option_line("filament_infill_max_speed", "max-simple-infill-speed");
+    optgroup->append_single_option_line("filament_infill_max_crossing_speed", "max-crossing-infill-speed");
+
+    optgroup->on_change = [this](t_config_option_key opt_key, boost::any value)
+    {
+        if (opt_key == "filament_max_volumetric_flow")
+        {
+            // Keep legacy alias in sync for pre/post-processing scripts
+            auto *flow = m_config->option<ConfigOptionFloats>("filament_max_volumetric_flow");
+            auto *speed = m_config->option<ConfigOptionFloats>("filament_max_volumetric_speed");
+            if (flow && speed)
+                speed->values = flow->values;
+        }
+        update_dirty();
+        on_value_change(opt_key, value);
+    };
+
     optgroup = page->new_optgroup_for_sidebar(L("Pressure advance"));
     optgroup->append_single_option_line("filament_enable_pressure_advance");
     optgroup->append_single_option_line("filament_pressure_advance");
@@ -3194,20 +3258,6 @@ void TabFilament::build()
     optgroup->append_single_option_line("min_print_speed", category_path + "cooling-thresholds");
 
     page = add_options_page(L("Advanced"), "wrench");
-    optgroup = page->new_optgroup_for_sidebar(L("Print speed override"));
-    optgroup->append_single_option_line("filament_max_volumetric_speed", "max-volumetric-speed_127176");
-
-    line = {"", ""};
-    line.full_width = 1;
-    line.widget = [this](wxWindow *parent)
-    {
-        return description_line_widget(parent, &m_volumetric_speed_description_line);
-    };
-    optgroup->append_line(line);
-
-    optgroup->append_single_option_line("filament_infill_max_speed", "max-simple-infill-speed");
-    optgroup->append_single_option_line("filament_infill_max_crossing_speed", "max-crossing-infill-speed");
-
     optgroup = page->new_optgroup_for_sidebar(L("Shrinkage compensation"));
     optgroup->append_single_option_line("filament_shrinkage_compensation_x");
     optgroup->append_single_option_line("filament_shrinkage_compensation_y");
@@ -3372,7 +3422,7 @@ void TabFilament::update_description_lines()
 
     if (m_active_page->title() == "Cooling" && m_cooling_description_line)
         m_cooling_description_line->SetText(from_u8(PresetHints::cooling_description(m_presets->get_edited_preset())));
-    if (m_active_page->title() == "Advanced" && m_volumetric_speed_description_line)
+    if (m_active_page->title() == "Filament" && m_volumetric_speed_description_line)
         this->update_volumetric_flow_preset_hints();
 }
 
@@ -3844,11 +3894,13 @@ void TabPrinter::build_fff()
                     bool supports_travel_acceleration = GCodeWriter::supports_separate_travel_acceleration(flavor);
                     bool supports_min_feedrates = (flavor == gcfMarlinFirmware || flavor == gcfMarlinLegacy);
                     bool is_rrf = (flavor == gcfRepRapFirmware || flavor == gcfRapid);
-                    bool was_rrf = (static_cast<GCodeFlavor>(m_config->option("gcode_flavor")->getInt()) ==
-                                        gcfRepRapFirmware ||
-                                    static_cast<GCodeFlavor>(m_config->option("gcode_flavor")->getInt()) == gcfRapid);
+                    bool is_klipper = (flavor == gcfKlipper);
+                    auto old_flavor = static_cast<GCodeFlavor>(m_config->option("gcode_flavor")->getInt());
+                    bool was_rrf = (old_flavor == gcfRepRapFirmware || old_flavor == gcfRapid);
+                    bool was_klipper = (old_flavor == gcfKlipper);
                     if (supports_travel_acceleration != m_supports_travel_acceleration ||
-                        supports_min_feedrates != m_supports_min_feedrates || is_rrf != was_rrf)
+                        supports_min_feedrates != m_supports_min_feedrates || is_rrf != was_rrf ||
+                        is_klipper != was_klipper)
                     {
                         m_rebuild_kinematics_page = true;
                         m_supports_travel_acceleration = supports_travel_acceleration;
@@ -4187,10 +4239,7 @@ void TabPrinter::extruders_count_changed(size_t extruders_count)
     }
 
     if (is_updated_mm_filament_presets)
-    {
         m_preset_bundle->update_multi_material_filament_presets();
-        m_preset_bundle->update_filaments_compatible(PresetSelectCompatibleType::OnlyIfWasCompatible);
-    }
 
     /* This function should be call in any case because of correct updating/rebuilding
      * of unregular pages of a Printer Settings
@@ -4266,6 +4315,7 @@ PageShp TabPrinter::build_kinematics_page()
 
     auto flavor = static_cast<GCodeFlavor>(m_config->option("gcode_flavor")->getInt());
     bool is_rrf = (flavor == gcfRepRapFirmware || flavor == gcfRapid);
+    bool is_klipper = (flavor == gcfKlipper);
 
     bool flavor_supports_silent_mode = (flavor == gcfMarlinFirmware || flavor == gcfMarlinLegacy);
     if (m_use_silent_mode && flavor_supports_silent_mode)
@@ -4432,9 +4482,33 @@ PageShp TabPrinter::build_kinematics_page()
         append_wide_option("machine_rrf_m204");
         append_wide_option("machine_rrf_m207");
     }
+    else if (is_klipper)
+    {
+        // Klipper: Show fields matching printer.cfg [printer] section
+        optgroup = page->new_optgroup_for_sidebar(L("Klipper machine limits"));
+
+        Line line{"", ""};
+        line.full_width = 1;
+        line.widget = [this](wxWindow *parent)
+        {
+            auto *sizer = new wxBoxSizer(wxHORIZONTAL);
+            auto *desc_text = new wxStaticText(parent, wxID_ANY,
+                                               _L("Enter values from your Klipper printer.cfg [printer] section.\n"
+                                                  "These are used for time estimation only."));
+            desc_text->SetFont(wxGetApp().normal_font());
+            sizer->Add(desc_text, 1, wxALIGN_CENTER_VERTICAL);
+            return sizer;
+        };
+        optgroup->append_line(line);
+
+        optgroup->append_single_option_line("machine_klipper_max_velocity");
+        optgroup->append_single_option_line("machine_klipper_max_accel");
+        optgroup->append_single_option_line("machine_klipper_square_corner_velocity");
+        optgroup->append_single_option_line("machine_klipper_minimum_cruise_ratio");
+    }
     else
     {
-        // Non-RRF: Show traditional Marlin-style fields
+        // Marlin: Show traditional per-axis fields
         const std::vector<std::string> axes{"x", "y", "z", "e"};
         optgroup = page->new_optgroup_for_sidebar(L("Maximum feedrates"));
         for (const std::string &axis : axes)
@@ -4515,6 +4589,8 @@ void TabPrinter::build_extruder_pages(size_t n_before_extruders)
         // Nozzle section - NOT available in sidebar (nozzle is permanently shown in sidebar header)
         auto optgroup = page->new_optgroup(L("Nozzle"));
         optgroup->append_single_option_line("nozzle_diameter", "", extruder_idx);
+        optgroup->append_single_option_line("nozzle_width_warning_min", "", extruder_idx);
+        optgroup->append_single_option_line("nozzle_width_warning_max", "", extruder_idx);
         optgroup->on_change = [this, extruder_idx](const t_config_option_key &opt_key, boost::any value)
         {
             // Static guard to prevent recursive updates between tabs
@@ -4575,6 +4651,29 @@ void TabPrinter::build_extruder_pages(size_t n_before_extruders)
                 }
 
                 s_updating_nozzle_from_printer = false;
+            }
+
+            // Validate min < max for width warning thresholds
+            if (opt_key.find("nozzle_width_warning_min") == 0 || opt_key.find("nozzle_width_warning_max") == 0)
+            {
+                auto *min_opt = m_config->option<ConfigOptionPercents>("nozzle_width_warning_min");
+                auto *max_opt = m_config->option<ConfigOptionPercents>("nozzle_width_warning_max");
+                if (min_opt && max_opt && extruder_idx < min_opt->values.size() &&
+                    extruder_idx < max_opt->values.size())
+                {
+                    double min_val = min_opt->values[extruder_idx];
+                    double max_val = max_opt->values[extruder_idx];
+                    if (min_val >= max_val)
+                    {
+                        if (opt_key.find("nozzle_width_warning_min") == 0)
+                            max_opt->values[extruder_idx] = std::min(min_val + 1, 500.0);
+                        else
+                            min_opt->values[extruder_idx] = std::max(max_val - 1, 33.0);
+                        update_dirty();
+                        reload_config();
+                    }
+                }
+                ConfigManipulation::clear_approved_widths();
             }
 
             // Update dirty/undo tracking and propagate the change
@@ -4870,7 +4969,6 @@ void TabPrinter::update_pages()
             if (m_extruders_count > 1)
             {
                 m_preset_bundle->update_multi_material_filament_presets();
-                m_preset_bundle->update_filaments_compatible(PresetSelectCompatibleType::OnlyIfWasCompatible);
                 on_value_change("extruders_count", m_extruders_count);
             }
         }
@@ -5010,35 +5108,36 @@ void TabPrinter::toggle_options()
 
         // These firmwares use their own config files for machine limits
         bool emit_to_gcode_available = (flavor != gcfKlipper && flavor != gcfRepRapFirmware && flavor != gcfRapid);
+
+        // If "Emit to G-code" was selected but isn't valid for this firmware, force to TimeEstimateOnly
+        const auto *machine_limits_usage_opt = m_config->option<ConfigOptionEnum<MachineLimitsUsage>>(
+            "machine_limits_usage");
+        if (!emit_to_gcode_available && machine_limits_usage_opt->value == MachineLimitsUsage::EmitToGCode)
+        {
+            DynamicPrintConfig new_conf = *m_config;
+            new_conf.set_key_value("machine_limits_usage",
+                                   new ConfigOptionEnum<MachineLimitsUsage>(MachineLimitsUsage::TimeEstimateOnly));
+            load_config(new_conf);
+        }
+
+        // Rebuild combo to show only valid options for this firmware flavor.
+        // When "Emit to G-code" is removed, combo indices are offset by -1 from enum values.
+        // The auto-correction above ensures the config never holds EmitToGCode for these flavors,
+        // so the offset mapping is always: combo idx 0 = TimeEstimateOnly (enum 1), idx 1 = Ignore (enum 2).
         if (Field *field = get_field("machine_limits_usage"))
         {
             if (Choice *choice = dynamic_cast<Choice *>(field))
             {
                 if (ComboBox *combo = dynamic_cast<ComboBox *>(choice->getWindow()))
                 {
-                    wxString current_value = combo->GetValue();
+                    int current_enum_val = m_config->option("machine_limits_usage")->getInt();
                     combo->Clear();
                     if (emit_to_gcode_available)
-                    {
                         combo->Append(_L("Emit to G-code"));
-                    }
                     combo->Append(_L("Use for time estimate"));
                     combo->Append(_L("Ignore"));
-                    // Find matching selection or default to "Use for time estimate"
-                    int sel = wxNOT_FOUND;
-                    for (unsigned int i = 0; i < combo->GetCount(); ++i)
-                    {
-                        if (combo->GetString(i) == current_value)
-                        {
-                            sel = static_cast<int>(i);
-                            break;
-                        }
-                    }
-                    if (sel == wxNOT_FOUND)
-                    {
-                        sel = emit_to_gcode_available ? 1 : 0; // "Use for time estimate"
-                    }
-                    combo->SetSelection(sel);
+                    int sel = emit_to_gcode_available ? current_enum_val : (current_enum_val - 1);
+                    combo->SetSelection(std::max(0, sel));
                 }
             }
         }
@@ -5081,13 +5180,16 @@ void TabPrinter::update_fff()
                                          flavor == gcfRapid);
     bool supports_min_feedrates = (flavor == gcfMarlinFirmware || flavor == gcfMarlinLegacy);
     bool is_rrf = (flavor == gcfRepRapFirmware || flavor == gcfRapid);
+    bool is_klipper = (flavor == gcfKlipper);
     if (supports_travel_acceleration != m_supports_travel_acceleration ||
-        supports_min_feedrates != m_supports_min_feedrates || is_rrf != m_is_rrf_flavor)
+        supports_min_feedrates != m_supports_min_feedrates || is_rrf != m_is_rrf_flavor ||
+        is_klipper != m_is_klipper_flavor)
     {
         m_rebuild_kinematics_page = true;
         m_supports_travel_acceleration = supports_travel_acceleration;
         m_supports_min_feedrates = supports_min_feedrates;
         m_is_rrf_flavor = is_rrf;
+        m_is_klipper_flavor = is_klipper;
     }
 
     // Check if Single Extruder MM page visibility needs to change
@@ -5527,9 +5629,10 @@ bool Tab::select_preset(std::string preset_name, bool delete_current /*=false*/,
                 bool old_preset_dirty;
                 bool new_preset_compatible;
             };
+            // Filaments are independent of printers - skip them from compatibility checks
+            // to prevent the unsaved-changes dialog and unwanted auto-switching
             std::vector<PresetUpdate> updates = {{Preset::Type::TYPE_PRINT, &m_preset_bundle->prints, ptFFF},
                                                  {Preset::Type::TYPE_SLA_PRINT, &m_preset_bundle->sla_prints, ptSLA},
-                                                 {Preset::Type::TYPE_FILAMENT, &m_preset_bundle->filaments, ptFFF},
                                                  {Preset::Type::TYPE_SLA_MATERIAL, &m_preset_bundle->sla_materials,
                                                   ptSLA}};
             for (PresetUpdate &pu : updates)
@@ -5539,34 +5642,22 @@ bool Tab::select_preset(std::string preset_name, bool delete_current /*=false*/,
                     (new_printer_technology == pu.technology) &&
                     is_compatible_with_printer(pu.presets->get_edited_preset_with_vendor_profile(),
                                                new_printer_preset_with_vendor_profile);
-                bool force_update_edited_preset = false;
-                if (pu.tab_type == Preset::TYPE_FILAMENT && pu.new_preset_compatible)
-                {
-                    // check if edited preset will be still correct after selection new printer
-                    const int active_extruder = dynamic_cast<const TabFilament *>(
-                                                    wxGetApp().get_tab(Preset::TYPE_FILAMENT))
-                                                    ->get_active_extruder();
-                    const int extruder_count_new = int(
-                        dynamic_cast<const ConfigOptionFloats *>(new_printer_preset.config.option("nozzle_diameter"))
-                            ->size());
-                    // if active_extruder is bigger than extruders_count,
-                    // then it means that edited filament preset will be changed and we have to check this changes
-                    force_update_edited_preset = active_extruder >= extruder_count_new;
-                }
                 if (!canceled)
-                    canceled = pu.old_preset_dirty && (!pu.new_preset_compatible || force_update_edited_preset) &&
+                    canceled = pu.old_preset_dirty && !pu.new_preset_compatible &&
                                !may_discard_current_dirty_preset(pu.presets, preset_name);
             }
             if (!canceled)
             {
                 for (PresetUpdate &pu : updates)
                 {
-                    // The preset will be switched to a different, compatible preset, or the '-- default --'.
                     if (pu.technology == new_printer_technology)
                         m_dependent_tabs.emplace_back(pu.tab_type);
                     if (pu.old_preset_dirty && !pu.new_preset_compatible)
                         pu.presets->discard_current_changes();
                 }
+                // Filament tab still needs to refresh (e.g. extruder count changes)
+                if (new_printer_technology == ptFFF)
+                    m_dependent_tabs.emplace_back(Preset::Type::TYPE_FILAMENT);
             }
         }
         if (!canceled)
@@ -6163,12 +6254,7 @@ void Tab::rename_preset()
     std::sort(m_presets->begin(), m_presets->end());
 
     if (was_renamed && m_type == Preset::TYPE_FILAMENT)
-    {
-        // Reset extruder_filaments only if preset was renamed
         m_preset_bundle->reset_extruder_filaments();
-        // and update compatibility for extruders after reset
-        m_preset_bundle->update_filaments_compatible(PresetSelectCompatibleType::OnlyIfWasCompatible);
-    }
     // update selection
     select_preset_by_name(new_name, true);
 
@@ -7273,14 +7359,13 @@ void TabPrinter::update_machine_limits_description(const MachineLimitsUsage usag
     switch (usage)
     {
     case MachineLimitsUsage::EmitToGCode:
-        text = _L("Machine limits will be emitted to G-code and used to estimate print time.");
+        text = _L("Machine limits will be written to G-code and used for time estimation.");
         break;
     case MachineLimitsUsage::TimeEstimateOnly:
-        text = _L("Machine limits will NOT be emitted to G-code, however they will be used to estimate print time, "
-                  "which may therefore not be accurate as the printer may apply a different set of machine limits.");
+        text = _L("Machine limits will be used for time estimation only. They will not be written to G-code.");
         break;
     case MachineLimitsUsage::Ignore:
-        text = _L("Machine limits are not set, therefore the print time estimate may not be accurate.");
+        text = _L("Machine limits will not be used. Time estimates may be less accurate.");
         break;
     default:
         assert(false);

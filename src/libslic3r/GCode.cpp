@@ -672,7 +672,6 @@ GCodeGenerator::GCodeGenerator(const Print *print)
     , m_layer_index(-1)
     , m_layer(nullptr)
     , m_object_layer_over_raft(false)
-    , m_volumetric_speed(0)
     , m_last_extrusion_role(GCodeExtrusionRole::None)
     , m_last_width(0.0f)
     , m_brim_done(false)
@@ -856,70 +855,6 @@ static void init_gcode_processor(const PrintConfig &config, GCodeProcessor &proc
     processor.set_preview_detail_threshold(preview_detail_threshold);
 }
 
-static double autospeed_volumetric_limit(const Print &print)
-{
-    // get the minimum cross-section used in the print
-    std::vector<double> mm3_per_mm;
-    for (auto object : print.objects())
-    {
-        for (size_t region_id = 0; region_id < object->num_printing_regions(); ++region_id)
-        {
-            const PrintRegion &region = object->printing_region(region_id);
-            for (auto layer : object->layers())
-            {
-                const LayerRegion *layerm = layer->regions()[region_id];
-                if (region.config().get_abs_value("perimeter_speed") == 0 ||
-                    region.config().get_abs_value("small_perimeter_speed") == 0 ||
-                    region.config().get_abs_value("external_perimeter_speed") == 0 ||
-                    region.config().get_abs_value("bridge_speed") == 0)
-                    mm3_per_mm.push_back(layerm->perimeters().min_mm3_per_mm());
-                if (region.config().get_abs_value("infill_speed") == 0 ||
-                    region.config().get_abs_value("solid_infill_speed") == 0 ||
-                    region.config().get_abs_value("top_solid_infill_speed") == 0 ||
-                    region.config().get_abs_value("bridge_speed") == 0 ||
-                    region.config().get_abs_value("over_bridge_speed") == 0)
-                {
-                    // Minimal volumetric flow should not be calculated over ironing extrusions.
-                    // Use following lambda instead of the built-it method.
-                    // Fix for crash when generating perimeter extrusion
-                    auto min_mm3_per_mm_no_ironing = [](const ExtrusionEntityCollection &eec) -> double
-                    {
-                        double min = std::numeric_limits<double>::max();
-                        for (const ExtrusionEntity *ee : eec.entities)
-                            if (ee->role() != ExtrusionRole::Ironing)
-                                min = std::min(min, ee->min_mm3_per_mm());
-                        return min;
-                    };
-
-                    mm3_per_mm.push_back(min_mm3_per_mm_no_ironing(layerm->fills()));
-                }
-            }
-        }
-        if (object->config().get_abs_value("support_material_speed") == 0 ||
-            object->config().get_abs_value("support_material_interface_speed") == 0)
-            for (auto layer : object->support_layers())
-                mm3_per_mm.push_back(layer->support_fills.min_mm3_per_mm());
-    }
-    // filter out 0-width segments
-    mm3_per_mm.erase(std::remove_if(mm3_per_mm.begin(), mm3_per_mm.end(), [](double v) { return v < 0.000001; }),
-                     mm3_per_mm.end());
-    double volumetric_speed = 0.;
-    if (!mm3_per_mm.empty())
-    {
-        // In order to honor max_print_speed we need to find a target volumetric
-        // speed that we can use throughout the print. So we define this target
-        // volumetric speed as the volumetric speed produced by printing the
-        // smallest cross-section at the maximum speed: any larger cross-section
-        // will need slower feedrates.
-        volumetric_speed = *std::min_element(mm3_per_mm.begin(), mm3_per_mm.end()) *
-                           print.config().max_print_speed.value;
-        // limit such volumetric speed with max_volumetric_speed if set
-        if (print.config().max_volumetric_speed.value > 0)
-            volumetric_speed = std::min(volumetric_speed, print.config().max_volumetric_speed.value);
-    }
-    return volumetric_speed;
-}
-
 static void init_ooze_prevention(const Print &print, OozePrevention &ooze_prevention)
 {
     ooze_prevention.enable = print.config().ooze_prevention.value && !print.config().single_extruder_multi_material;
@@ -1027,6 +962,8 @@ static std::string update_print_stats_and_format_filament_stats(
     return filament_stats_string_out;
 }
 } // namespace DoExport
+
+static double effective_max_print_speed(const FullPrintConfig &config, int extruder_id);
 
 #if 0
 // Sort the PrintObjects by their increasing Z, likely useful for avoiding colisions on Deltas during sequential prints.
@@ -1250,7 +1187,6 @@ void GCodeGenerator::_do_export(Print &print, GCodeOutputStream &file, Thumbnail
     m_enable_cooling_markers = true;
     this->apply_print_config(print.config());
 
-    m_volumetric_speed = DoExport::autospeed_volumetric_limit(print);
     print.throw_if_canceled();
 
     if (print.config().spiral_vase.value)
@@ -3260,9 +3196,11 @@ LayerResult GCodeGenerator::process_layer(
         const int num_extruders = print.config().nozzle_diameter.values.size();
         const int bed_temperature_extruder = print.config().bed_temperature_extruder;
         const bool use_first_extruder = bed_temperature_extruder <= 0 || bed_temperature_extruder > num_extruders;
-        const int bed_temperature = print.config().bed_temperature.get_at(
-            use_first_extruder ? first_extruder_id : bed_temperature_extruder - 1);
-        gcode += m_writer.set_bed_temperature(bed_temperature);
+        const int bed_ext_id = use_first_extruder ? first_extruder_id : bed_temperature_extruder - 1;
+        const int bed_temperature = print.config().bed_temperature.get_at(bed_ext_id);
+        // 0 means "don't change" - keep first layer temp (matches nozzle behavior)
+        if (bed_temperature > 0 && bed_temperature != print.config().first_layer_bed_temperature.get_at(bed_ext_id))
+            gcode += m_writer.set_bed_temperature(bed_temperature);
 
         // Mark the temperature transition from 1st to 2nd layer to be finished.
         m_second_layer_things_done = true;
@@ -4901,10 +4839,21 @@ std::string GCodeGenerator::extrude_perimeters(const PrintRegion &region,
 
         if (!is_interlocking && perimeter.extrusion_entity->length() <= SMALL_PERIMETER_LENGTH)
         {
-            // Resolve percentage against the correct base speed for this perimeter type
-            double base_speed = perimeter.extrusion_entity->role().is_external_perimeter()
-                                    ? m_config.external_perimeter_speed.get_abs_value(m_config.perimeter_speed)
-                                    : m_config.perimeter_speed;
+            double base_speed;
+            if (m_config.auto_speed.value)
+            {
+                int ext_id = m_writer.extruder()->id();
+                double vol = m_config.filament_max_volumetric_flow.get_at(ext_id);
+                double mm3 = perimeter.smooth_path.front().path_attributes.mm3_per_mm;
+                double max_speed = effective_max_print_speed(m_config, ext_id);
+                base_speed = (vol > 0) ? std::min(vol / mm3, max_speed) : max_speed;
+            }
+            else
+            {
+                base_speed = perimeter.extrusion_entity->role().is_external_perimeter()
+                                 ? m_config.external_perimeter_speed.get_abs_value(m_config.perimeter_speed)
+                                 : m_config.perimeter_speed;
+            }
             speed = m_config.small_perimeter_speed.get_abs_value(base_speed);
         }
         // Split inner perimeters share the original loop's extrusion_entity but aren't loops.
@@ -4948,7 +4897,8 @@ std::string GCodeGenerator::extrude_support(const std::vector<GCode::ExtrusionOr
     if (!support_extrusions.empty())
     {
         const double support_speed = m_config.support_material_speed.value;
-        const double support_interface_speed = m_config.support_material_interface_speed.get_abs_value(support_speed);
+        const double support_interface_speed = m_config.support_material_interface_speed.get_abs_value(
+            m_config.support_material_speed.value);
         for (const GCode::ExtrusionOrder::SupportPath &path : support_extrusions)
         {
             const auto label = path.is_interface ? support_interface_label : support_label;
@@ -5114,18 +5064,27 @@ std::string GCodeGenerator::travel_to_first_position(const Vec3crd &point, const
     return gcode;
 }
 
-double cap_speed(double speed, const FullPrintConfig &config, int extruder_id, const ExtrusionAttributes &path_attr)
+// Effective max print speed: filament overrides print profile when set
+static double effective_max_print_speed(const FullPrintConfig &config, int extruder_id)
 {
+    double filament_max = config.filament_max_print_speed.get_at(extruder_id);
+    return (filament_max > 0) ? filament_max : config.max_print_speed.value;
+}
+
+double cap_speed(double speed, const FullPrintConfig &config, int extruder_id, const ExtrusionAttributes &path_attr,
+                 bool auto_calculated = false)
+{
+    // Print-level volumetric cap (removed from UI but still honored from presets)
     const double general_volumetric_cap{config.max_volumetric_speed.value};
     if (general_volumetric_cap > 0)
-    {
         speed = std::min(speed, general_volumetric_cap / path_attr.mm3_per_mm);
-    }
-    const double filament_volumetric_cap{config.filament_max_volumetric_speed.get_at(extruder_id)};
+    // Filament volumetric flow cap
+    const double filament_volumetric_cap{config.filament_max_volumetric_flow.get_at(extruder_id)};
     if (filament_volumetric_cap > 0)
-    {
         speed = std::min(speed, filament_volumetric_cap / path_attr.mm3_per_mm);
-    }
+    // Max print speed ceiling for auto-calculated speeds (checkbox or individual speed=0).
+    if (auto_calculated)
+        speed = std::min(speed, effective_max_print_speed(config, extruder_id));
     if (path_attr.role == ExtrusionRole::InternalInfill)
     {
         const double infill_cap{path_attr.maybe_self_crossing
@@ -5628,6 +5587,7 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
     }
 
     // set speed
+    const bool speed_was_default = (speed == -1);
     if (speed == -1)
     {
         if (path_attr.role == ExtrusionRole::Perimeter)
@@ -5655,14 +5615,7 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
         {
             const double solid_infill_speed = m_config.get_abs_value("solid_infill_speed");
             const double over_bridge_speed{m_config.get_abs_value("over_bridge_speed", solid_infill_speed)};
-            if (over_bridge_speed > 0)
-            {
-                speed = over_bridge_speed;
-            }
-            else
-            {
-                speed = solid_infill_speed;
-            }
+            speed = (over_bridge_speed > 0) ? over_bridge_speed : solid_infill_speed;
         }
         else if (path_attr.role == ExtrusionRole::TopSolidInfill)
         {
@@ -5678,8 +5631,6 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
         }
         else if (path_attr.role == ExtrusionRole::InterlockingPerimeter)
         {
-            // Use regular perimeter speed for interlocking perimeters
-            // Per-segment speed adjustment is handled in the extrusion loop to maintain constant volumetric flow
             speed = m_config.get_abs_value("perimeter_speed");
         }
         else
@@ -5687,9 +5638,32 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
             throw std::runtime_error("Invalid speed");
         }
     }
-    if (m_volumetric_speed != 0. && speed == 0)
+    // Auto speed: calculate from filament MVF when auto_speed manages this role, or when speed=0.
+    // Small perimeters pass pre-computed speed (speed_was_default=false) - respect that.
+    // Ironing is fully independent - never auto-calculated.
+    bool auto_calculated = false;
+    if (m_config.auto_speed.value && (speed_was_default || !path_attr.role.is_perimeter()) &&
+        !path_attr.role.is_bridge() && path_attr.role != ExtrusionRole::Ironing &&
+        path_attr.role != ExtrusionRole::InfillOverBridge && path_attr.role != ExtrusionRole::GapFill)
+        auto_calculated = true;
+    else if (speed == 0 && path_attr.role != ExtrusionRole::Ironing)
+        auto_calculated = true;
+
+    if (auto_calculated)
     {
-        speed = m_volumetric_speed / path_attr.mm3_per_mm;
+        int ext_id = m_writer.extruder()->id();
+        double vol = m_config.filament_max_volumetric_flow.get_at(ext_id);
+        double max_speed = effective_max_print_speed(m_config, ext_id);
+        if (vol > 0)
+        {
+            // InterlockingPerimeter: path_attr.mm3_per_mm is inflated by the over-extrusion multiplier.
+            // Use the base cross-section (width * height) so per-segment flow adjustment maintains MVF.
+            double mm3 = (path_attr.role == ExtrusionRole::InterlockingPerimeter)
+                             ? double(path_attr.width) * double(path_attr.height)
+                             : path_attr.mm3_per_mm;
+            speed = std::min(vol / mm3, max_speed);
+        }
+        assert(speed > 0 && "auto_calculated but MVF not set - validator should have caught this");
     }
     if (this->on_first_layer())
     {
@@ -5712,13 +5686,18 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
     if (path_attr.overhang_attributes.has_value())
     {
         double external_perimeter_reference_speed = m_config.get_abs_value("external_perimeter_speed");
-        if (external_perimeter_reference_speed == 0)
+        bool overhang_auto = m_config.auto_speed.value || external_perimeter_reference_speed == 0;
+        if (overhang_auto)
         {
-            external_perimeter_reference_speed = m_volumetric_speed / path_attr.mm3_per_mm;
+            int ext_id = m_writer.extruder()->id();
+            double vol = m_config.filament_max_volumetric_flow.get_at(ext_id);
+            if (vol > 0)
+                external_perimeter_reference_speed = std::min(vol / path_attr.mm3_per_mm,
+                                                              effective_max_print_speed(m_config, ext_id));
         }
 
         external_perimeter_reference_speed = cap_speed(external_perimeter_reference_speed, m_config,
-                                                       m_writer.extruder()->id(), path_attr);
+                                                       m_writer.extruder()->id(), path_attr, overhang_auto);
         dynamic_print_and_fan_speeds = ExtrusionProcessor::calculate_overhang_speed(
             path_attr, this->m_config, m_writer.extruder()->id(), float(external_perimeter_reference_speed),
             float(speed), m_current_dynamic_fan_speed);
@@ -5732,13 +5711,13 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
         }
     }
 
-    // cap speed with max_volumetric_speed anyway (even if user is not using autospeed)
+    // Cap speed with filament volumetric limit.
     // For interlocking perimeters, we skip the early cap_speed() call because path_attr.mm3_per_mm
     // contains the over-extruded volumetric flow which would incorrectly limit the base speed.
     // Instead, we call cap_speed() per-segment in the extrusion loop with the actual segment flow.
     if (path_attr.role != ExtrusionRole::InterlockingPerimeter)
     {
-        speed = cap_speed(speed, m_config, m_writer.extruder()->id(), path_attr);
+        speed = cap_speed(speed, m_config, m_writer.extruder()->id(), path_attr, auto_calculated);
     }
 
     double F = speed * 60; // convert mm/sec to mm/min
@@ -6039,7 +6018,8 @@ std::string GCodeGenerator::_extrude(const ExtrusionAttributes &path_attr, const
                         // Calculate actual mm3_per_mm from segment's width and height
                         segment_attr.mm3_per_mm = segment_attr.width * segment_attr.height;
 
-                        // Cap the segment speed based on actual volumetric flow
+                        // Cap the segment speed based on actual volumetric flow.
+                        // auto_calculated not passed: base speed already has max_print_speed ceiling applied.
                         segment_speed = cap_speed(segment_speed, m_config, m_writer.extruder()->id(), segment_attr);
 
                         // Convert to mm/min for F parameter and round to avoid decimal feedrates

@@ -785,10 +785,16 @@ void Plater::priv::init()
     panel_sizer->Add(preview, 1, wxEXPAND | wxALL, 0);
     panels = {view3D, preview};
 
-    // Add sidebar with resize handle
-    hsizer->Add(sidebar, 0, wxEXPAND | wxLEFT, 0);
-
-    hsizer->Add(panel_sizer, 1, wxEXPAND | wxALL, 0);
+    if (wxGetApp().legacy_prepare_layout())
+    {
+        hsizer->Add(panel_sizer, 1, wxEXPAND | wxALL, 0);
+        hsizer->Add(sidebar, 0, wxEXPAND | wxRIGHT, 0);
+    }
+    else
+    {
+        hsizer->Add(sidebar, 0, wxEXPAND | wxLEFT, 0);
+        hsizer->Add(panel_sizer, 1, wxEXPAND | wxALL, 0);
+    }
     q->SetSizer(hsizer);
 
     if (wxGetApp().is_editor())

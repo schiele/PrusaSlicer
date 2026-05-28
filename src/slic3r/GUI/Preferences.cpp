@@ -592,6 +592,12 @@ void PreferencesDialog::build()
     };
 
     append_bool_option(
+        m_optgroup_gui, "legacy_prepare_layout", L("Legacy layout for Prepare"),
+        L("If enabled, the sidebar moves to the right and the gizmo toolbar moves to the left in the Prepare view. "
+          "This matches the traditional slicer layout. Requires application restart."),
+        app_config->get_bool("legacy_prepare_layout"));
+
+    append_bool_option(
         m_optgroup_gui, "use_tabbed_sidebar", L("Use tabbed sidebar layout"),
         L("If enabled, the sidebar shows a tab bar to switch between Print, Filament, Printer, and Object settings. "
           "If disabled, all settings sections are shown stacked in a single scrollable view."),
@@ -725,7 +731,16 @@ void PreferencesDialog::build()
                 };
                 auto it = lighting_keys.find(val_int);
                 if (it != lighting_keys.end())
+                {
                     app_config->set(opt_key, it->second);
+                    // Request phong shader compilation for the next render pass (needs GL context)
+                    if (it->second == "enhanced" || it->second == "auto")
+                    {
+                        wxGetApp().request_phong_shaders();
+                        if (auto *canvas = wxGetApp().plater() ? wxGetApp().plater()->get_current_canvas3D() : nullptr)
+                            canvas->request_extra_frame();
+                    }
+                }
                 return;
             }
             if (opt_key == "canvas_msaa")
@@ -1485,7 +1500,7 @@ void PreferencesDialog::accept(wxEvent &)
     // }
 
     std::vector<std::string> options_to_recreate_GUI = {"no_defaults", "sys_menu_enabled", "font_pt_size",
-                                                        "suppress_round_corners"};
+                                                        "suppress_round_corners", "legacy_prepare_layout"};
 
     for (const std::string &option : options_to_recreate_GUI)
     {

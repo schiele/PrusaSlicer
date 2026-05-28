@@ -86,7 +86,8 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
 
     // Cache the plenty of parameters, which influence the G-code generator only,
     // or they are only notes not influencing the generated G-code.
-    static std::unordered_set<std::string> steps_gcode = {"autoemit_temperature_commands",
+    static std::unordered_set<std::string> steps_gcode = {"auto_speed",
+                                                          "autoemit_temperature_commands",
                                                           "avoid_crossing_perimeters",
                                                           "avoid_crossing_perimeters_max_detour",
                                                           "bed_shape",
@@ -241,9 +242,9 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
                  opt_key == "filament_cooling_final_speed" || opt_key == "filament_purge_multiplier" ||
                  opt_key == "filament_ramming_parameters" || opt_key == "filament_multitool_ramming" ||
                  opt_key == "filament_multitool_ramming_volume" || opt_key == "filament_multitool_ramming_flow" ||
-                 opt_key == "filament_max_volumetric_speed" || opt_key == "filament_infill_max_speed" ||
-                 opt_key == "filament_infill_max_crossing_speed" || opt_key == "gcode_flavor" ||
-                 opt_key == "high_current_on_filament_swap" || opt_key == "infill_first" ||
+                 opt_key == "filament_max_volumetric_flow" || opt_key == "filament_max_print_speed" ||
+                 opt_key == "filament_infill_max_speed" || opt_key == "filament_infill_max_crossing_speed" ||
+                 opt_key == "gcode_flavor" || opt_key == "high_current_on_filament_swap" || opt_key == "infill_first" ||
                  opt_key == "single_extruder_multi_material" || opt_key == "temperature" ||
                  opt_key == "idle_temperature" || opt_key == "wipe_tower" || opt_key == "wipe_tower_width" ||
                  opt_key == "wipe_tower_brim_width" || opt_key == "wipe_tower_cone_angle" ||
@@ -561,6 +562,58 @@ std::string Print::validate(std::vector<std::string> *warnings) const
 
     if (extruders.empty())
         return _u8L("The supplied settings will cause an empty print.");
+
+    {
+        // Check if any speed triggers auto-calculation (auto_speed enabled, or any individual speed set to 0)
+        bool needs_volumetric = m_config.auto_speed.value;
+        if (!needs_volumetric)
+        {
+            for (const PrintObject *object : m_objects)
+            {
+                if (object->config().get_abs_value("support_material_speed") == 0 ||
+                    object->config().get_abs_value("support_material_interface_speed") == 0)
+                {
+                    needs_volumetric = true;
+                    break;
+                }
+                for (size_t region_id = 0; !needs_volumetric && region_id < object->num_printing_regions(); ++region_id)
+                {
+                    const PrintRegion &region = object->printing_region(region_id);
+                    for (const char *opt :
+                         {"perimeter_speed", "external_perimeter_speed", "small_perimeter_speed", "infill_speed",
+                          "solid_infill_speed", "top_solid_infill_speed", "bridge_speed"})
+                    {
+                        if (region.config().get_abs_value(opt) == 0)
+                        {
+                            needs_volumetric = true;
+                            break;
+                        }
+                    }
+                }
+                if (needs_volumetric)
+                    break;
+            }
+        }
+        if (needs_volumetric)
+        {
+            for (unsigned int id : extruders)
+            {
+                if (m_config.filament_max_volumetric_flow.get_at(id) <= 0)
+                    return _u8L("Auto speed requires every filament to have a Max volumetric flow set. "
+                                "Check your Filament Settings.");
+            }
+        }
+    }
+
+    for (const PrintObject *object : m_objects)
+    {
+        for (size_t region_id = 0; region_id < object->num_printing_regions(); ++region_id)
+        {
+            const PrintRegion &region = object->printing_region(region_id);
+            if (region.config().ironing.value && region.config().ironing_speed.value <= 0)
+                return _u8L("Ironing speed cannot be 0. Set an explicit speed or disable ironing.");
+        }
+    }
 
     if (m_config.avoid_crossing_perimeters && m_config.avoid_crossing_curled_overhangs)
     {

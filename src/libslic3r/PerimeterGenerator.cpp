@@ -3025,22 +3025,22 @@ void PerimeterGenerator::process_athena(
     Polygons last_p = to_polygons(last);
 
     // Perimeter compression allows narrower beads where loops converge:
-    //   Off = 100%, Moderate = 66%, Aggressive = 33% of bead width
+    //   Minimal = 75%, Moderate = 50%, Aggressive = 25% of bead width
     //   Floor = 33% of nozzle diameter (nozzle/3) for printability
-    double min_bead_width_factor = 1.0; // Default: no compression
+    double min_bead_width_factor = 0.25;
     switch (params.config.perimeter_compression.value)
     {
-    case PerimeterCompression::pcOff:
-        min_bead_width_factor = 1.0;
+    case PerimeterCompression::pcMinimal:
+        min_bead_width_factor = 0.75;
         break;
     case PerimeterCompression::pcModerate:
-        min_bead_width_factor = 0.66;
+        min_bead_width_factor = 0.50;
         break;
     case PerimeterCompression::pcAggressive:
-        min_bead_width_factor = 0.33;
+        min_bead_width_factor = 0.25;
         break;
     default:
-        min_bead_width_factor = 1.0;
+        min_bead_width_factor = 0.25;
         break;
     }
 

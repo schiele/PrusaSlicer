@@ -583,11 +583,6 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
     // Insert deferred VendorProfiles now that reset() has already run
     this->vendors.insert(deferred_vendors.begin(), deferred_vendors.end());
 
-    // preFlight: clear compatible_printers_condition on all filaments so they work with any printer
-    for (auto &filament : this->filaments)
-        if (filament.config.has("compatible_printers_condition"))
-            filament.config.option<ConfigOptionString>("compatible_printers_condition")->value.clear();
-
     // preFlight: make all presets editable (no locked system presets)
     for (auto &preset : this->prints)
         preset.is_system = false;
@@ -2260,139 +2255,6 @@ void PresetBundle::update_multi_material_filament_presets()
     }
 }
 
-void PresetBundle::update_filaments_compatible(PresetSelectCompatibleType select_other_filament_if_incompatible,
-                                               int extruder_idx /* = -1*/)
-{
-    const Preset &printer_preset = this->printers.get_edited_preset();
-    const PresetWithVendorProfile printer_preset_with_vendor_profile = this->printers.get_preset_with_vendor_profile(
-        printer_preset);
-    const PresetWithVendorProfile print_preset_with_vendor_profile =
-        this->prints.get_edited_preset_with_vendor_profile();
-    const std::vector<std::string> &prefered_filament_profiles =
-        printer_preset.config.option<ConfigOptionStrings>("default_filament_profile")->values;
-
-    class PreferedFilamentsProfileMatch
-    {
-    public:
-        PreferedFilamentsProfileMatch(const Preset *preset, const std::vector<std::string> &prefered_names,
-                                      int extruder_id = 0)
-            : m_extruder_id(extruder_id)
-            , m_prefered_alias(preset ? preset->alias : std::string())
-            , m_prefered_filament_type(preset ? preset->config.opt_string("filament_type", extruder_id) : std::string())
-            , m_prefered_names(prefered_names)
-        {
-        }
-
-        int operator()(const Preset &preset) const
-        {
-            // Don't match any properties of the "-- default --" profile or the external profiles when switching printer profile.
-            if (preset.is_default || preset.is_external)
-                return 0;
-            if (!m_prefered_alias.empty() && m_prefered_alias == preset.alias)
-                // Matching an alias, always take this preset with priority.
-                return std::numeric_limits<int>::max();
-            int match_quality = (std::find(m_prefered_names.begin(), m_prefered_names.end(), preset.name) !=
-                                 m_prefered_names.end()) +
-                                1;
-            if (!m_prefered_filament_type.empty() &&
-                m_prefered_filament_type == preset.config.opt_string("filament_type", m_extruder_id))
-                match_quality *= 10;
-            return match_quality;
-        }
-
-    private:
-        int m_extruder_id;
-        const std::string m_prefered_alias;
-        const std::string m_prefered_filament_type;
-        const std::vector<std::string> &m_prefered_names;
-    };
-
-    //! ysFIXME - delete after testing
-    //!// First select a first compatible profile for the preset editor.
-    //!this->filaments.update_compatible(printer_preset_with_vendor_profile, &print_preset_with_vendor_profile, select_other_filament_if_incompatible,
-    //!    PreferedFilamentsProfileMatch(this->filaments.get_selected_idx() == size_t(-1) ? nullptr : &this->filaments.get_edited_preset(), prefered_filament_profiles));
-
-    // Update compatible for extruder filaments
-
-    auto update_filament_compatible = [this, select_other_filament_if_incompatible, printer_preset_with_vendor_profile,
-                                       print_preset_with_vendor_profile, prefered_filament_profiles](int idx)
-    {
-        ExtruderFilaments &extr_filaments = extruders_filaments[idx];
-
-        // Remember whether the filament profiles were compatible before updating the filament compatibility.
-        bool filament_preset_was_compatible = false;
-        const Filament *filament_old = extr_filaments.get_selected_filament();
-        if (select_other_filament_if_incompatible != PresetSelectCompatibleType::Never)
-            filament_preset_was_compatible = filament_old && filament_old->is_compatible;
-
-        extr_filaments.update_compatible(printer_preset_with_vendor_profile, &print_preset_with_vendor_profile,
-                                         select_other_filament_if_incompatible,
-                                         PreferedFilamentsProfileMatch(filament_old ? filament_old->preset : nullptr,
-                                                                       prefered_filament_profiles, idx));
-
-        const Filament *filament = extr_filaments.get_selected_filament();
-        const bool is_compatible = filament && filament->is_compatible;
-
-        if (is_compatible || select_other_filament_if_incompatible == PresetSelectCompatibleType::Never)
-            return;
-
-        // Verify validity of the current filament presets.
-        if (this->extruders_filaments.size() == 1)
-        {
-            // The compatible profile should have been already selected for the preset editor. Just use it.
-            if (select_other_filament_if_incompatible == PresetSelectCompatibleType::Always ||
-                filament_preset_was_compatible)
-                extr_filaments.select_filament(this->filaments.get_edited_preset().name);
-        }
-        else
-        {
-            const std::string filament_name = extr_filaments.get_selected_preset_name();
-            if (!filament ||
-                (!is_compatible && (select_other_filament_if_incompatible == PresetSelectCompatibleType::Always ||
-                                    filament_preset_was_compatible)))
-            {
-                // Pick a compatible profile. If there are prefered_filament_profiles, use them.
-                std::string compat_filament_name = extr_filaments
-                                                       .first_compatible(PreferedFilamentsProfileMatch(
-                                                           filament->preset, prefered_filament_profiles, idx))
-                                                       ->name;
-                if (filament_name != compat_filament_name)
-                    extr_filaments.select_filament(compat_filament_name);
-            }
-        }
-    };
-
-    if (extruder_idx < 0)
-    {
-        // update compatibility for all extruders
-        const size_t num_extruders =
-            static_cast<const ConfigOptionFloats *>(printer_preset.config.option("nozzle_diameter"))->values.size();
-        for (size_t idx = 0; idx < std::min(this->extruders_filaments.size(), num_extruders); idx++)
-            update_filament_compatible(idx);
-    }
-    else
-        update_filament_compatible(extruder_idx);
-
-    // validate selection in filaments
-    bool invalid_selection = this->filaments.get_idx_selected() == size_t(-1);
-    if (!invalid_selection)
-    {
-        invalid_selection = true;
-        const std::string selected_filament_name = this->filaments.get_selected_preset_name();
-        for (const auto &extruder : extruders_filaments)
-            if (const std::string &selected_extr_filament_name = extruder.get_selected_preset_name();
-                selected_extr_filament_name == selected_filament_name)
-            {
-                invalid_selection = false;
-                break;
-            }
-    }
-
-    // select valid filament from first extruder
-    if (invalid_selection)
-        this->filaments.select_preset(extruders_filaments[0].get_selected_idx());
-}
-
 void PresetBundle::update_compatible(PresetSelectCompatibleType select_other_print_if_incompatible,
                                      PresetSelectCompatibleType select_other_filament_if_incompatible)
 {
@@ -2471,8 +2333,7 @@ void PresetBundle::update_compatible(PresetSelectCompatibleType select_other_pri
                                                                                     : &this->prints.get_edited_preset(),
                                       printer_preset.config.opt_string("default_print_profile")));
 
-        // Update compatibility for all currently existent extruder_filaments.
-        update_filaments_compatible(select_other_filament_if_incompatible);
+        // Filaments are independent of printers - no compatibility update needed
 
         break;
     }

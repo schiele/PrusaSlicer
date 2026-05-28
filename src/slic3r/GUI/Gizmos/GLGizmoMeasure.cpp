@@ -717,9 +717,6 @@ bool GLGizmoMeasure::on_is_activable() const
                    ? selection.is_single_full_instance()
                    : selection.is_single_full_instance() || selection.is_single_volume() ||
                          selection.is_single_modifier();
-    if (res)
-        res &= !selection.contains_sinking_volumes();
-
     return res;
 }
 
