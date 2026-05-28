@@ -424,4 +424,4 @@ SUCCESS
 BUILD: v1.0.0-15-gc5bf411019
 system: rolling
 date: Thu May 28 11:11:15 AM CEST 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
