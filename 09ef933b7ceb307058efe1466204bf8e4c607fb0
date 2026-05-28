@@ -381,4 +381,4 @@ make: *** [Makefile:146: all] Error 2
 BUILD: v1.0.0-12-g8b1aa0483b
 system: rolling
 date: Thu May 28 10:38:21 AM CEST 2026
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
