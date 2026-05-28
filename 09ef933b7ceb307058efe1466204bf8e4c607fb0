@@ -129,3 +129,5 @@ FAILED:
       |          ^~~~~~~~~
 make[1]: *** [CMakeFiles/Makefile2:1347: src/libslic3r/CMakeFiles/libslic3r.dir/all] Error 2
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: v1.0.0-4-g21ae492e65
