@@ -461,4 +461,4 @@ SUCCESS
 BUILD: v1.0.0-6-g674f9b79b8
 system: rolling
 date: Thu May 28 11:19:47 AM CEST 2026
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
