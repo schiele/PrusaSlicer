@@ -23,6 +23,8 @@
 // - Total weight doesn't matter - it's the RATIO that counts
 //
 
+#include <string>
+
 namespace Slic3r
 {
 

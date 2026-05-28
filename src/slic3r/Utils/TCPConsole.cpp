@@ -10,6 +10,7 @@
 #include <boost/asio/read_until.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include <boost/asio/write.hpp>
+#include <boost/asio/connect.hpp>
 #include <boost/bind/bind.hpp>
 #include <boost/format.hpp>
 #include <boost/log/trivial.hpp>

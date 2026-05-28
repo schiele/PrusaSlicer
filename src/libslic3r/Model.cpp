@@ -34,6 +34,7 @@
 #include <boost/nowide/iostream.hpp>
 
 #include <tbb/concurrent_vector.h>
+#include <oneapi/tbb/parallel_for.h>
 
 #include "SVG.hpp"
 #include <Eigen/Dense>

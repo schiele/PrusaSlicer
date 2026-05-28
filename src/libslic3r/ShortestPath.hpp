@@ -16,6 +16,7 @@
 #include "Point.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Polyline.hpp"
+#include "libslic3r/ClipperUtils.hpp"
 
 namespace Slic3r
 {

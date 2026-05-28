@@ -35,6 +35,7 @@
 #include <wx/checkbox.h>
 #include <wx/spinctrl.h>
 #include <wx/choice.h>
+#include <wx/wupdlock.h>
 #include "Widgets/SpinInput.hpp"
 #include "Widgets/ComboBox.hpp"
 #include "Widgets/TextInput.hpp"
@@ -69,6 +70,7 @@
 #include "slic3r/GUI/GLCanvas3D.hpp"
 
 #include <boost/algorithm/string.hpp>
+#include <boost/log/trivial.hpp>
 
 using Slic3r::GUI::format_wxstr;
 

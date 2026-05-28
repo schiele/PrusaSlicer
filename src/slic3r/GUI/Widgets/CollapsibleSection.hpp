@@ -11,6 +11,7 @@
 #include <wx/panel.h>
 #include <wx/sizer.h>
 #include <wx/bitmap.h>
+#include <wx/stattext.h>
 #include <functional>
 
 namespace Slic3r

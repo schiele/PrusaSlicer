@@ -8,6 +8,8 @@
 #ifndef slic3r_GLGizmoBrimEars_hpp_
 #define slic3r_GLGizmoBrimEars_hpp_
 
+#include <wx/event.h>
+
 #include "GLGizmoBase.hpp"
 #include "slic3r/GUI/GLSelectionRectangle.hpp"
 #include "slic3r/GUI/3DScene.hpp"

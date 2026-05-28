@@ -47,6 +47,7 @@
 #include <wx/filefn.h>
 #include <wx/wupdlock.h>
 #include <wx/debug.h>
+#include <wx/progdlg.h>
 
 #ifdef WIN32
 #include <wx/msw/registry.h>

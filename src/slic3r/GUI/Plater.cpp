@@ -60,6 +60,7 @@
 #if wxUSE_SECRETSTORE
 #include <wx/secretstore.h>
 #endif
+#include <wx/display.h>
 
 #include <LibBGCode/convert/convert.hpp>
 
