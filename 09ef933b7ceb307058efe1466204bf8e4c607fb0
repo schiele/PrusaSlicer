@@ -451,3 +451,5 @@ FAILED:
       |          ^~~~~~~~~
 make[1]: *** [CMakeFiles/Makefile2:1283: src/CMakeFiles/preFlight.dir/all] Error 2
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: v1.0.0-15-g8cf071fac7
