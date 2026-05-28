@@ -41,4 +41,4 @@ Call Stack (most recent call first):
 BUILD: v1.0.0-1-g11e1c5182a
 system: rolling
 date: Thu May 28 09:42:11 AM CEST 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
