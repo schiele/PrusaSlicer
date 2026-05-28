@@ -21,6 +21,8 @@
 
 #include <unordered_map>
 
+#include <boost/log/trivial.hpp>
+
 #include <imgui/imgui.h>
 
 #if SLIC3R_OPENGL_ES

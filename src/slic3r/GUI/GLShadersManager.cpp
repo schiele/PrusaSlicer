@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <string_view>
 using namespace std::literals;
+#include <boost/log/trivial.hpp>
 
 #if SLIC3R_OPENGL_ES
 #include <glad/gles2.h>

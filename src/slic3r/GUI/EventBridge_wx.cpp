@@ -2,6 +2,9 @@
 ///|/
 ///|/ Released under AGPLv3 or higher
 ///|/
+
+#include <wx/app.h>
+
 #include "EventBridge_wx.hpp"
 #include "Event.hpp"
 #include "BackgroundSlicingProcess.hpp"
