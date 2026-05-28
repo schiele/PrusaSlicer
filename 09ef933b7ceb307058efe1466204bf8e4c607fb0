@@ -37,3 +37,5 @@ Call Stack (most recent call first):
   CMakeLists.txt:421 (find_package)
 
 -- Configuring incomplete, errors occurred!
+======================================================================
+BUILD: v1.0.0-1-g11e1c5182a
