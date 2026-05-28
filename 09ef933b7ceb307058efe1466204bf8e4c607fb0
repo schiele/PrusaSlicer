@@ -72,4 +72,4 @@ This warning is for project developers.  Use -Wno-dev to suppress it.
 BUILD: v1.0.0-2-g963130d7e7
 system: rolling
 date: Thu May 28 09:46:24 AM CEST 2026
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure[failed]
