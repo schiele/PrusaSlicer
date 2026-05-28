@@ -350,4 +350,4 @@ make: *** [Makefile:146: all] Error 2
 BUILD: v1.0.0-11-g25f4308b00
 system: rolling
 date: Thu May 28 10:33:54 AM CEST 2026
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
