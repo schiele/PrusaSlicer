@@ -418,4 +418,4 @@ SUCCESS
 BUILD: v1.0.0-14-g880106a126
 system: rolling
 date: Thu May 28 10:59:19 AM CEST 2026
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
