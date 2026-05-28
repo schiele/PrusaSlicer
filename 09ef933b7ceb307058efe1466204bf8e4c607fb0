@@ -133,4 +133,4 @@ make: *** [Makefile:146: all] Error 2
 BUILD: v1.0.0-4-g21ae492e65
 system: rolling
 date: Thu May 28 09:54:43 AM CEST 2026
-tasks:[incomplete]
+tasks: configure_deps[incomplete]
