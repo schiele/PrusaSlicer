@@ -319,4 +319,4 @@ make: *** [Makefile:146: all] Error 2
 BUILD: v1.0.0-10-ga2823fb578
 system: rolling
 date: Thu May 28 10:23:51 AM CEST 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
