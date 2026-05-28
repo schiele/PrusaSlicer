@@ -164,4 +164,4 @@ make: *** [Makefile:146: all] Error 2
 BUILD: v1.0.0-5-gf3c062315b
 system: rolling
 date: Thu May 28 09:59:29 AM CEST 2026
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
