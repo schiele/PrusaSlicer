@@ -1,4 +1,4 @@
 BUILD: v1.0.1-beta1-4-g95ac1a1605
 system: rolling
 date: Thu May 28 11:31:41 AM CEST 2026
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
