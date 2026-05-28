@@ -98,3 +98,5 @@ Call Stack (most recent call first):
 
 -- Generating done (0.1s)
 CMake Generate step failed.  Build files cannot be regenerated correctly.
+======================================================================
+BUILD: v1.0.0-3-g3cadc23566
