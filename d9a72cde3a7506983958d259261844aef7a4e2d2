@@ -58,3 +58,5 @@ FAILED:
 [ 92%] Linking CXX static library liblibslic3r_gui.a
 [ 92%] Built target libslic3r_gui
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: v0.1.0-alpha.8-13-g6ba562df2d
