@@ -89,3 +89,5 @@ FAILED:
       |                                      ^~~~~~~~~
 make[1]: *** [CMakeFiles/Makefile2:2149: tests/fff_print/CMakeFiles/fff_print_tests.dir/all] Error 2
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: v0.1.0-alpha.8-14-ga4f09848b9
