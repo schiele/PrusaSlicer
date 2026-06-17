@@ -13,6 +13,7 @@
 #include <wx/bookctrl.h>
 #include <wx/panel.h>
 #include <wx/bmpbndl.h>
+#include <wx/sizer.h>
 
 class ScalableButton;
 
