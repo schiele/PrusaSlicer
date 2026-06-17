@@ -1,4 +1,4 @@
 BUILD: v1.0.1-beta2-5-ga60552355a
 system: rolling
 date: Wed Jun 17 08:34:39 AM CEST 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
