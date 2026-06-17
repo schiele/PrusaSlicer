@@ -32,4 +32,4 @@ make: *** [Makefile:146: all] Error 2
 BUILD: v1.0.1-beta2-6-gfb7ba0a763
 system: rolling
 date: Wed Jun 17 08:48:39 AM CEST 2026
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
