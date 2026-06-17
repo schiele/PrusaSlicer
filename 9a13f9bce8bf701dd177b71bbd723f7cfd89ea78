@@ -28,3 +28,5 @@ FAILED:
       |          ^~~~~~~~~
 make[1]: *** [CMakeFiles/Makefile2:1733: src/slic3r/CMakeFiles/libslic3r_gui.dir/all] Error 2
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: v1.0.1-beta2-6-gfb7ba0a763
