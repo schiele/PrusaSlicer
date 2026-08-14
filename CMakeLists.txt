@@ -373,7 +373,7 @@ set(MINIMUM_BOOST_VERSION "1.83.0")
 set(_boost_components "filesystem;thread;log;locale;regex;chrono;atomic;date_time;iostreams;nowide")
 find_package(Boost ${MINIMUM_BOOST_VERSION} REQUIRED COMPONENTS ${_boost_components})
 
-find_package(Eigen3 3.3.7 REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 add_library(boost_libs INTERFACE)
 add_library(boost_headeronly INTERFACE)
