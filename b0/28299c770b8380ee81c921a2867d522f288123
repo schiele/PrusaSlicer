@@ -69,4 +69,4 @@ make: *** [Makefile:146: all] Error 2
 BUILD: version_2.9.6-14-gf2af4ffe0e
 system: rolling
 date: Fri Aug 14 11:47:44 AM CEST 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
