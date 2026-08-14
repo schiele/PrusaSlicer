@@ -22,7 +22,7 @@ TriangleSelectorWrapper::TriangleSelectorWrapper(const TriangleMesh &mesh, const
 }
 
 void TriangleSelectorWrapper::enforce_spot(const Vec3f &point, const Vec3f &origin, float radius) {
-    std::vector<igl::Hit> hits;
+    std::vector<igl::Hit<float>> hits;
     Vec3f dir = (point - origin).normalized();
     static constexpr const auto eps_angle = 89.99f;
     Transform3d trafo_no_translate = mesh_transform;
@@ -32,7 +32,7 @@ void TriangleSelectorWrapper::enforce_spot(const Vec3f &point, const Vec3f &orig
             Vec3d(dir.cast<double>()),
             hits)) {
         for (int hit_idx = hits.size() - 1; hit_idx >= 0; --hit_idx) {
-            const igl::Hit &hit = hits[hit_idx];
+            const igl::Hit<float> &hit = hits[hit_idx];
             Vec3f pos = origin + dir * hit.t;
             Vec3f face_normal = its_face_normal(mesh.its, hit.id);
             if ((point - pos).norm() < radius && face_normal.dot(dir) < 0) {

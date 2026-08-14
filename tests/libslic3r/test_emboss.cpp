@@ -76,7 +76,7 @@ Vec2d get_intersection(const Vec2d &               point,
     return point + dir * (*t);
 }
 
-Vec3d calc_hit_point(const igl::Hit &          h,
+Vec3d calc_hit_point(const igl::Hit<float> &          h,
                      const Vec3i &             triangle,
                      const std::vector<Vec3f> &vertices)
 {
@@ -89,7 +89,7 @@ Vec3d calc_hit_point(const igl::Hit &          h,
     return v0 * c0 + v1 * c1 + v2 * c2;
 }
 
-Vec3d calc_hit_point(const igl::Hit &h, indexed_triangle_set &its)
+Vec3d calc_hit_point(const igl::Hit<float> &h, indexed_triangle_set &its)
 {
     return calc_hit_point(h, its.indices[h.id], its.vertices);
 }
@@ -376,7 +376,7 @@ TEST_CASE("Test hit point", "[AABBTreeIndirect]")
 
     Vec3d    ray_point(8, 1, 0);
     Vec3d    ray_dir(0, 0, 1);
-    igl::Hit hit;
+    igl::Hit<float> hit;
     AABBTreeIndirect::intersect_ray_first_hit(its.vertices, its.indices, tree,
                                               ray_point, ray_dir, hit);
     Vec3d hp = Private::calc_hit_point(hit, its);
