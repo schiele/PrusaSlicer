@@ -58,3 +58,6 @@ CMake Error at src/libslic3r/CMakeLists.txt:21 (message):
 -- Configuring incomplete, errors occurred!
 ======================================================================
 BUILD: version_3.0.0-alpha11-5-g849fdbec93
+system: rolling
+date: Tue Sep  8 06:28:22 AM CEST 2026
+tasks:[incomplete]
