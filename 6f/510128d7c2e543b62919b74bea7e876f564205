@@ -26,3 +26,5 @@ CMake Error at bundled_deps/slic3r-domain-types/CMakeLists.txt:1 (find_package):
       The version found is not compatible with the version requested.
 
 -- Configuring incomplete, errors occurred!
+======================================================================
+BUILD: version_3.0.0-alpha11-4-gf830ecefc0
