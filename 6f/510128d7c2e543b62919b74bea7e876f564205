@@ -2,3 +2,27 @@ BUILD: version_3.0.0-alpha11-3-g3b76836ee5
 system: rolling
 date: Tue Sep  8 06:16:49 AM CEST 2026
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+-- SLIC3R_ENABLE_WIN10_MESH_REPAIR: OFF
+-- SLIC3R_FHS: OFF
+-- SLIC3R_GTK: 3
+-- SLIC3R_GUI: ON
+-- SLIC3R_OPENGL_ES: OFF
+-- SLIC3R_PCH: OFF
+-- SLIC3R_RELEASE_DEBUG_SYMBOLS: ON
+-- SLIC3R_REPO_URL: OFF
+-- SLIC3R_SENTRY_DSN:
+-- SLIC3R_STATIC: ON
+-- SLIC3R_UBSAN: OFF
+-- SLIC3R_YAML: ryml
+-- CMAKE_PREFIX_PATH: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr (from cache or command line)
+CMake Error at bundled_deps/slic3r-domain-types/CMakeLists.txt:1 (find_package):
+  Could not find a configuration file for package "Eigen3" that is compatible
+  with requested version "3.4.0".
+
+  The following configuration files were considered but not accepted:
+
+    /usr/share/eigen3/cmake/Eigen3Config.cmake, version: 5.0.1
+      The version found is not compatible with the version requested.
+
+-- Configuring incomplete, errors occurred!
