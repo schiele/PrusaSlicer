@@ -62,3 +62,28 @@ BUILD: version_3.0.0-alpha12-6-g18b5a53b1a
 system: rolling
 date: Fri Oct 16 04:40:31 PM CEST 2026
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+This warning is for project developers.  Use -Wno-author or -Wno-deprecated
+to suppress it.
+
+-- IGL found, using system version...
+-- Imgui include dir: /home/rschiele/git/PrusaSlicer/bundled_deps/imgui
+-- No doxygen found, doxygen related targets wont be defined
+-- Targeting Unix Makefiles
+-- Using /usr/bin/c++ compiler.
+-- Boost include dirs: /usr/include
+-- Boost libraries:
+-- Using gcc version 4 or later. Adding -frounding-math
+COMPONENT = openvdb
+-- Could NOT find OpenVDB (missing: OpenVDB_LIB_COMPONENTS openvdb) (found suitable version "13.0.0", minimum required is "5.0")
+-- OpenVDB ABI Version: 13
+-- Found Blosc: /usr/lib/libblosc.so (found version "1.21.6")
+CMake Error at src/libslic3r/CMakeLists.txt:21 (message):
+  OpenVDB could not be found with the bundled find module.  You can try to
+  specify the find module location of your OpenVDB installation with the
+  OPENVDB_FIND_MODULE_PATH cache variable.
+
+-- Configuring incomplete, errors occurred!
