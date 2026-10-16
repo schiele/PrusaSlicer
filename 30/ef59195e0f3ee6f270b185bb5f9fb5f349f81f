@@ -57,3 +57,5 @@ CMake Error at src/libslic3r/CMakeLists.txt:21 (message):
   OPENVDB_FIND_MODULE_PATH cache variable.
 
 -- Configuring incomplete, errors occurred!
+======================================================================
+BUILD: version_3.0.0-alpha12-6-g18b5a53b1a
