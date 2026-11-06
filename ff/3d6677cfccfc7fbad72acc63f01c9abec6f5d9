@@ -2,3 +2,29 @@ BUILD: version_3.0.0-alpha13
 system: rolling
 date: Fri Nov  6 09:21:22 PM CET 2026
 tasks: configure_deps build_deps[failed]
+FAILED:
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/SDL_test_harness.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/SDL_test_images.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/SDL_test_log.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/SDL_test_md5.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/SDL_test_memory.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/SDL_test_random.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/SDL_thread.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/SDL_timer.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/SDL_touch.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/SDL_types.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/SDL_version.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/SDL_video.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/SDL_vulkan.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/begin_code.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/close_code.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/SDL_revision.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/SDL2/SDL_config.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/share/licenses/SDL2/LICENSE.txt
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/pkgconfig/sdl2.pc
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libSDL2.so
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/bin/sdl2-config
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/share/aclocal/sdl2.m4
+[ 30%] Completed 'dep_SDL'
+[ 30%] Built target dep_SDL
+make: *** [Makefile:136: all] Error 2
