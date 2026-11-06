@@ -296,4 +296,4 @@ CMake Error at src/slic3r-platform-wx/CMakeLists.txt:30 (find_package):
 BUILD: version_3.0.0-alpha13-3-gd42a0f3dab
 system: rolling
 date: Fri Nov  6 09:43:06 PM CET 2026
-tasks: configure_deps build_deps configure build[incomplete]
+tasks: configure_deps build_deps configure build[failed]
