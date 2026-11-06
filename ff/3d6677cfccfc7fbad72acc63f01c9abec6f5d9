@@ -297,3 +297,29 @@ BUILD: version_3.0.0-alpha13-3-gd42a0f3dab
 system: rolling
 date: Fri Nov  6 09:43:06 PM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+                 from /home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/copyleft/cgal/closest_facet.h:17,
+                 from /home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/copyleft/cgal/extract_cells.cpp:10,
+                 from /home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/copyleft/cgal/extract_cells.h:114,
+                 from /home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/copyleft/cgal/mesh_boolean.cpp:12,
+                 from /home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/copyleft/cgal/mesh_boolean.h:226,
+                 from /home/rschiele/git/PrusaSlicer/src/slic3r-biz-cgal-algorithms/src/Slic3r/Biz/CGAL/Algorithms/MeshBoolean.cpp:10:
+/usr/include/CGAL/Installation/internal/deprecation_warning.h:80:6: warning: #warning "A deprecated header has been included." [-Wcpp]
+   80 | #    warning "A deprecated header has been included."
+      |      ^~~~~~~
+In file included from /usr/include/CGAL/AABB_triangle_primitive.h:21,
+                 from /home/rschiele/git/PrusaSlicer/bundled_deps/libigl/igl/copyleft/cgal/closest_facet.h:18:
+/usr/include/CGAL/Installation/internal/deprecation_warning.h:80:6: warning: #warning "A deprecated header has been included." [-Wcpp]
+   80 | #    warning "A deprecated header has been included."
+      |      ^~~~~~~
+/usr/include/CGAL/Installation/internal/deprecation_warning.h:81:54: note: ‘#pragma message: Warning: The header `<CGAL/AABB_traits.h>` is deprecated. Please use `<CGAL/AABB_traits_3.h>` instead. ’
+   81 | #    pragma message (CGAL_INTERNAL_DEPRECATED_MESSAGE)
+      |                                                      ^
+/usr/include/CGAL/Installation/internal/deprecation_warning.h:81:54: note: ‘#pragma message: Warning: The header `<CGAL/AABB_triangle_primitive.h>` is deprecated. Please use `<CGAL/AABB_triangle_primitive_3.h>` instead. ’
+   81 | #    pragma message (CGAL_INTERNAL_DEPRECATED_MESSAGE)
+      |                                                      ^
+make[1]: *** [CMakeFiles/Makefile2:1849: src/slic3r-biz-cgal-algorithms/CMakeFiles/slic3r-biz-cgal-algorithms.dir/all] Error 2
+make[1]: *** Waiting for unfinished jobs....
+[ 20%] Linking CXX executable slic3r-platform-tests
+[ 20%] Built target slic3r-platform-tests
+make: *** [Makefile:146: all] Error 2
