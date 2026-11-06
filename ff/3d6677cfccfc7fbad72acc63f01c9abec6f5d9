@@ -32,4 +32,4 @@ make: *** [Makefile:136: all] Error 2
 BUILD: version_3.0.0-alpha13
 system: rolling
 date: Fri Nov  6 09:23:04 PM CET 2026
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure[failed]
