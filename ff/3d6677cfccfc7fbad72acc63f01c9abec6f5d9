@@ -323,3 +323,5 @@ make[1]: *** Waiting for unfinished jobs....
 [ 20%] Linking CXX executable slic3r-platform-tests
 [ 20%] Built target slic3r-platform-tests
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha13-4-ga2657aeca1
