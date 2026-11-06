@@ -328,3 +328,29 @@ BUILD: version_3.0.0-alpha13-4-ga2657aeca1
 system: rolling
 date: Fri Nov  6 09:47:40 PM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/home/rschiele/git/PrusaSlicer/src/slic3r-biz-cgal-algorithms/src/Slic3r/Biz/CGAL/Algorithms/CutSurface.cpp: In function ‘Slic3r::Biz::CGAL::Algorithms::priv::SurfacePatches Slic3r::Biz::CGAL::Algorithms::priv::diff_models(VCutAOIs&, CutMeshes&, CutMeshes&, const Project3d&)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-biz-cgal-algorithms/src/Slic3r/Biz/CGAL/Algorithms/CutSurface.cpp:3444:5: error: ‘Trees’ was not declared in this scope
+ 3444 |     Trees trees(models.size());
+      |     ^~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-biz-cgal-algorithms/src/Slic3r/Biz/CGAL/Algorithms/CutSurface.cpp:3489:25: error: ‘Tree’ was not declared in this scope; did you mean ‘Slic3r::Biz::Algorithms::AABBTreeIndirect::Tree’?
+ 3489 |                         Tree& tree = trees[model_index2];
+      |                         ^~~~
+      |                         Slic3r::Biz::Algorithms::AABBTreeIndirect::Tree
+/home/rschiele/git/PrusaSlicer/src/slic3r-biz-algorithms/include/Slic3r/Biz/Algorithms/AABBTreeIndirect.hpp:38:7: note: ‘Slic3r::Biz::Algorithms::AABBTreeIndirect::Tree’ declared here
+   38 | class Tree
+      |       ^~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-biz-cgal-algorithms/src/Slic3r/Biz/CGAL/Algorithms/CutSurface.cpp:3489:31: error: ‘tree’ was not declared in this scope; did you mean ‘free’?
+ 3489 |                         Tree& tree = trees[model_index2];
+      |                               ^~~~
+      |                               free
+/home/rschiele/git/PrusaSlicer/src/slic3r-biz-cgal-algorithms/src/Slic3r/Biz/CGAL/Algorithms/CutSurface.cpp:3489:38: error: ‘trees’ was not declared in this scope
+ 3489 |                         Tree& tree = trees[model_index2];
+      |                                      ^~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-biz-cgal-algorithms/src/Slic3r/Biz/CGAL/Algorithms/CutSurface.cpp: In function ‘bool Slic3r::Biz::CGAL::Algorithms::priv::is_over_whole_expoly(const CutAOI&, const Slic3r::Domain::ExPolygon&, const CutMesh&)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-biz-cgal-algorithms/src/Slic3r/Biz/CGAL/Algorithms/CutSurface.cpp:3555:49: error: ‘class std::optional<CGAL::Surface_mesh<CGAL::Point_3<CGAL::Epick> >::Property_map<CGAL::SM_Vertex_index, const Slic3r::Biz::CGAL::Algorithms::priv::IntersectingElement*> >’ has no member named ‘first’
+ 3555 |                                                .first;
+      |                                                 ^~~~~
+make[2]: *** [src/slic3r-biz-cgal-algorithms/CMakeFiles/slic3r-biz-cgal-algorithms.dir/build.make:79: src/slic3r-biz-cgal-algorithms/CMakeFiles/slic3r-biz-cgal-algorithms.dir/src/Slic3r/Biz/CGAL/Algorithms/CutSurface.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:1849: src/slic3r-biz-cgal-algorithms/CMakeFiles/slic3r-biz-cgal-algorithms.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
