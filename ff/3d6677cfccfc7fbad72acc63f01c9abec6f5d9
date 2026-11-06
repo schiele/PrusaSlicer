@@ -28,3 +28,5 @@ FAILED:
 [ 30%] Completed 'dep_SDL'
 [ 30%] Built target dep_SDL
 make: *** [Makefile:136: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha13
