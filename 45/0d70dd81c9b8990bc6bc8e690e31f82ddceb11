@@ -31,3 +31,27 @@ BUILD: version_2.9.7-12-g71fffa65dc
 system: rolling
 date: Fri Nov  6 08:28:50 PM CET 2026
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+This warning is for project developers.  Use -Wno-author or -Wno-deprecated
+to suppress it.
+
+-- Configuring done (2.0s)
+CMake Error at bundled_deps/libigl/CMakeLists.txt:10 (target_link_libraries):
+  The link interface of target "libigl" contains:
+
+    igl::core
+
+  but the target was not found.  Possible reasons include:
+
+    * There is a typo in the target name.
+    * A find_package call is missing for an IMPORTED target.
+    * An ALIAS target is missing.
+
+-- Generating done (0.2s)
+CMake Generate step failed.  Build files cannot be regenerated correctly.
