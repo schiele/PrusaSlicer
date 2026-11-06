@@ -60,3 +60,29 @@ BUILD: version_2.9.7-13-g068288b4ac
 system: rolling
 date: Fri Nov  6 08:29:56 PM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/AABBTreeIndirect.hpp:750:78: error: ‘hit’ was not declared in this scope [-Wtemplate-body]
+  750 |         ray_intersector, size_t(0), std::numeric_limits<Scalar>::infinity(), hit);
+      |                                                                              ^~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/AABBTreeIndirect.hpp: At global scope:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/AABBTreeIndirect.hpp:771:29: error: type/value mismatch at argument 1 in template parameter list for ‘template<class _Tp, class _Alloc> class std::vector’
+  771 |         std::vector<igl::Hit>                           &hits,
+      |                             ^
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/AABBTreeIndirect.hpp:771:29: note:   expected a type, got ‘Hit’
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/AABBTreeIndirect.hpp:771:29: error: template argument 2 is invalid
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/AABBTreeIndirect.hpp: In function ‘bool Slic3r::AABBTreeIndirect::intersect_ray_all_hits(const std::vector<_Tp>&, const std::vector<_ValT>&, const TreeType&, const VectorType&, const VectorType&, int&, double)’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/AABBTreeIndirect.hpp:781:22: error: request for member ‘clear’ in ‘hits’, which is of non-class type ‘int’ [-Wtemplate-body]
+  781 |                 hits.clear();
+      |                      ^~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/AABBTreeIndirect.hpp:789:28: error: request for member ‘begin’ in ‘hits’, which is of non-class type ‘int’ [-Wtemplate-body]
+  789 |             std::sort(hits.begin(), hits.end(), [](const auto &l, const auto &r) { return l.t < r.t; });
+      |                            ^~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/AABBTreeIndirect.hpp:789:42: error: request for member ‘end’ in ‘hits’, which is of non-class type ‘int’ [-Wtemplate-body]
+  789 |             std::sort(hits.begin(), hits.end(), [](const auto &l, const auto &r) { return l.t < r.t; });
+      |                                          ^~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/../libslic3r/AABBTreeIndirect.hpp:791:23: error: request for member ‘empty’ in ‘hits’, which is of non-class type ‘int’ [-Wtemplate-body]
+  791 |         return ! hits.empty();
+      |                       ^~~~~
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r_cgal.dir/build.make:79: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/CutSurface.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:1722: src/libslic3r/CMakeFiles/libslic3r_cgal.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
