@@ -125,3 +125,29 @@ BUILD: version_3.0.0-alpha14-3-ga896f9a718
 system: rolling
 date: Thu Nov 12 06:26:53 PM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+  266 |                 , std::shared_ptr< boost::asio::io_service > io_service)
+      |                                                            ^
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/include/Slic3r/Biz/Network/Bonjour.hpp:266:19: error: ‘std::io_service’ has not been declared; did you mean ‘std::io_errc’?
+  266 |                 , std::shared_ptr< boost::asio::io_service > io_service)
+      |                   ^~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/include/Slic3r/Biz/Network/Bonjour.hpp: In constructor ‘Slic3r::Biz::PrintHost::ResolveSocket::ResolveSocket(const std::string&, Slic3r::Biz::PrintHost::Bonjour::ReplyFn, const boost::asio::ip::address&, const boost::asio::ip::address&, int)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/include/Slic3r/Biz/Network/Bonjour.hpp:255:76: error: ‘io_service’ was not declared in this scope
+  255 |                 : UdpSocket(replyfn, multicast_address, interface_address, io_service)
+      |                                                                            ^~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/include/Slic3r/Biz/Network/Bonjour.hpp: In constructor ‘Slic3r::Biz::PrintHost::ResolveSocket::ResolveSocket(const std::string&, Slic3r::Biz::PrintHost::Bonjour::ReplyFn, const boost::asio::ip::address&, int)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/include/Slic3r/Biz/Network/Bonjour.hpp:267:57: error: ‘io_service’ was not declared in this scope
+  267 |                 : UdpSocket(replyfn, multicast_address, io_service)
+      |                                                         ^~~~~~~~~~
+make[2]: *** [src/slic3r-shared/CMakeFiles/slic3r-shared.dir/build.make:6225: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/PrintHost/PrintHostPrusaLink.cpp.o] Error 1
+[ 66%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/PrintHost/PrintHostPrusaLinkStorage.cpp.o
+[ 67%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/PrintHost/PrintHostSL1Host.cpp.o
+[ 67%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/PrintHost/PrintHostPrusaConnect.cpp.o
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/PrintHost/PrintHostPrusaConnect.cpp:69:13: warning: ‘std::string Slic3r::Biz::PrintHost::{anonymous}::replace_placeholders(const std::string&, const std::string&, const std::string&)’ defined but not used [-Wunused-function]
+   69 | std::string replace_placeholders(const std::string& text, const std::string& v1, const std::string& v2)
+      |             ^~~~~~~~~~~~~~~~~~~~
+[ 67%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/PrintHost/PrintHostFlashAir.cpp.o
+[ 67%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/PrintHost/PrintHostMoonraker.cpp.o
+[ 67%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/PrintHost/PrintHostDuet.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:2724: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
