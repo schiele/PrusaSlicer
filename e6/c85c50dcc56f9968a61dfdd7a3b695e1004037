@@ -94,3 +94,29 @@ BUILD: version_3.0.0-alpha14-2-gb3cf971d73
 system: rolling
 date: Thu Nov 12 06:15:41 PM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+      |              ^~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/GCode/PostProcessor.cpp:184:14: error: ‘child’ is not a member of ‘process’
+  184 |     process::child child(shell, "-c", command, process::std_err > istd_err);
+      |              ^~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/GCode/PostProcessor.cpp:189:12: error: ‘child’ was not declared in this scope
+  189 |     while (child.running() && std::getline(istd_err, line)) {
+      |            ^~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/GCode/PostProcessor.cpp:189:44: error: ‘istd_err’ was not declared in this scope; did you mean ‘std_err’?
+  189 |     while (child.running() && std::getline(istd_err, line)) {
+      |                                            ^~~~~~~~
+      |                                            std_err
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/GCode/PostProcessor.cpp:194:5: error: ‘child’ was not declared in this scope
+  194 |     child.wait();
+      |     ^~~~~
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r.dir/build.make:1073: src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/GCode/PostProcessor.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+[ 26%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/GCode/LabelObjects.cpp.o
+[ 27%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/GCode/SeamAligned.cpp.o
+[ 27%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/GCode/SeamChoice.cpp.o
+[ 27%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/GCode/PrintExtents.cpp.o
+[ 27%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/GCode/PressureEqualizer.cpp.o
+[ 27%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/GCode/SeamGeometry.cpp.o
+[ 27%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/GCode/SeamPainting.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:2164: src/libslic3r/CMakeFiles/libslic3r.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
