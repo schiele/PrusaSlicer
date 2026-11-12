@@ -120,3 +120,5 @@ make[2]: *** Waiting for unfinished jobs....
 [ 27%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/GCode/SeamPainting.cpp.o
 make[1]: *** [CMakeFiles/Makefile2:2164: src/libslic3r/CMakeFiles/libslic3r.dir/all] Error 2
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-3-ga896f9a718
