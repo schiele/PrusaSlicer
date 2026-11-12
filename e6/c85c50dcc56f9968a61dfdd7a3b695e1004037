@@ -89,3 +89,5 @@ In file included from /usr/include/CGAL/AABB_triangle_primitive.h:21,
       |                                                      ^
 make[1]: *** [CMakeFiles/Makefile2:1849: src/slic3r-biz-cgal-algorithms/CMakeFiles/slic3r-biz-cgal-algorithms.dir/all] Error 2
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-2-gb3cf971d73
