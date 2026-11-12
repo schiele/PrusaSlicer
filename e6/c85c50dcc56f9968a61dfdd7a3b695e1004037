@@ -26,3 +26,29 @@ BUILD: version_3.0.0-alpha14-1-gb3f54439aa
 system: rolling
 date: Thu Nov 12 12:45:10 PM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+[ 19%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform.dir/src/Slic3r/App/Platform/CommandRegistry.cpp.o
+[ 19%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform.dir/src/Slic3r/App/Platform/KeyCode.cpp.o
+[ 19%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform.dir/src/Slic3r/App/Platform/ICommand.cpp.o
+[ 19%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform.dir/src/Slic3r/App/Platform/StdMainThreadDispatcher.cpp.o
+[ 19%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform.dir/src/Slic3r/App/Platform/AnimationManager.cpp.o
+[ 19%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform.dir/src/Slic3r/Biz/Platform/TimerQueue.cpp.o
+[ 19%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform.dir/src/Slic3r/Biz/Platform/Termination.cpp.o
+[ 19%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform.dir/src/Slic3r/App/Platform/AbstractAnimation.cpp.o
+[ 20%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform.dir/src/Slic3r/Biz/Platform/JobManager/ProgressTracker.cpp.o
+[ 20%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform.dir/src/Slic3r/App/Platform/CommandExecutionNotifier.cpp.o
+[ 20%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform.dir/src/Slic3r/Biz/Platform/BlacklistedLibraryCheck.cpp.o
+[ 20%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform.dir/src/Slic3r/Biz/Platform/SecretStoreLinux.cpp.o
+[ 19%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform.dir/src/Slic3r/App/Platform/AbstractRenderModule.cpp.o
+[ 19%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform.dir/src/Slic3r/Biz/Platform/PlatformServices.cpp.o
+[ 19%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform.dir/src/Slic3r/App/Platform/AbstractRenderCanvas.cpp.o
+[ 20%] Linking CXX static library libslic3r-platform.a
+[ 20%] Built target slic3r-platform
+[ 20%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform-tests.dir/test/Slic3r/Biz/Platform/ListenerListTests.cpp.o
+[ 20%] Building CXX object src/slic3r-platform/CMakeFiles/slic3r-platform-tests.dir/test/Slic3r/Biz/Platform/JobManager/JobManagerTests.cpp.o
+[ 13%] Building CXX object src/slic3r-biz-cgal-algorithms/CMakeFiles/slic3r-biz-cgal-algorithms.dir/src/Slic3r/Biz/CGAL/Algorithms/CutSurface.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:1849: src/slic3r-biz-cgal-algorithms/CMakeFiles/slic3r-biz-cgal-algorithms.dir/all] Error 2
+make[1]: *** Waiting for unfinished jobs....
+[ 20%] Linking CXX executable slic3r-platform-tests
+[ 20%] Built target slic3r-platform-tests
+make: *** [Makefile:146: all] Error 2
