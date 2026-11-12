@@ -124,4 +124,4 @@ make: *** [Makefile:146: all] Error 2
 BUILD: version_3.0.0-alpha14-3-ga896f9a718
 system: rolling
 date: Thu Nov 12 06:26:53 PM CET 2026
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
