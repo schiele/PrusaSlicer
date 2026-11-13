@@ -440,4 +440,4 @@ SUCCESS
 BUILD: version_3.0.0-alpha14-12-gf24333adf0
 system: rolling
 date: Fri Nov 13 12:47:45 PM CET 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
