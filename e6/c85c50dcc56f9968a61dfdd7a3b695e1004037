@@ -259,3 +259,29 @@ BUILD: version_3.0.0-alpha14-7-ga0ee8e6705
 system: rolling
 date: Fri Nov 13 08:58:47 AM CET 2026
 tasks: configure_deps build_deps[failed]
+FAILED:
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKBool.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKBO.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKXCAF.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKService.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKV3d.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKCDF.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKLCAF.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKCAF.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKVCAF.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKMesh.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKHLR.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKXDEIGES.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKXDESTEP.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKSTL.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKVRML.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKXmlXCAF.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKXmlL.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKXml.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKBinXCAF.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKBinL.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKBin.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libTKRWMesh.a
+[ 26%] Completed 'dep_OCCT'
+[ 26%] Built target dep_OCCT
+make: *** [Makefile:136: all] Error 2
