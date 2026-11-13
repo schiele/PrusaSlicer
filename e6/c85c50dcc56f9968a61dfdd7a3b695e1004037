@@ -386,3 +386,29 @@ BUILD: version_3.0.0-alpha14-8-g566c8851a4
 system: rolling
 date: Fri Nov 13 10:26:28 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+[ 89%] Linking CXX executable libslic3r_tests
+In member function ‘enable_unguarded’,
+    inlined from ‘enable_step_unguarded’ at /home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/PrintBase.hpp:376:108,
+    inlined from ‘set_task_impl’ at /home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/PrintBase.hpp:249:52,
+    inlined from ‘set_task_until_object_step_impl’ at /home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/PrintBase.hpp:296:28,
+    inlined from ‘slice’ at /home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/Print.cpp:1640:51:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/PrintState.hpp:57:30: warning: ‘__builtin_memset’ writing 9 bytes into a region of size 0 overflows the destination [-Wstringop-overflow=]
+   57 |         m_step_enabled[step] = enable;
+      |                              ^
+In member function ‘slice’:
+lto1: note: destination object is likely at address zero
+[ 92%] Built target libslic3r_tests
+[ 92%] Linking CXX executable fff_print_tests
+In member function ‘enable_unguarded’,
+    inlined from ‘enable_step_unguarded’ at /home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/PrintBase.hpp:376:108,
+    inlined from ‘set_task_impl’ at /home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/PrintBase.hpp:249:52,
+    inlined from ‘set_task_until_object_step_impl’ at /home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/PrintBase.hpp:296:28,
+    inlined from ‘slice’ at /home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/SLAPrint.cpp:1280:51:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/PrintState.hpp:57:30: warning: ‘__builtin_memset’ writing 8 bytes into a region of size 0 overflows the destination [-Wstringop-overflow=]
+   57 |         m_step_enabled[step] = enable;
+      |                              ^
+In member function ‘slice’:
+lto1: note: destination object is likely at address zero
+[ 92%] Built target fff_print_tests
+make: *** [Makefile:146: all] Error 2
