@@ -345,3 +345,5 @@ make[2]: *** [src/slic3r-shared/CMakeFiles/slic3r-shared.dir/build.make:7065: sr
 [ 70%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Config/Legacy/3mf_legacy.cpp.o
 make[1]: *** [CMakeFiles/Makefile2:2724: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/all] Error 2
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-7-ga0ee8e6705
