@@ -151,3 +151,5 @@ make[2]: *** [src/slic3r-shared/CMakeFiles/slic3r-shared.dir/build.make:6225: sr
 [ 67%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/PrintHost/PrintHostDuet.cpp.o
 make[1]: *** [CMakeFiles/Makefile2:2724: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/all] Error 2
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-4-g30002bb9db
