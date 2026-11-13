@@ -187,3 +187,29 @@ BUILD: version_3.0.0-alpha14-5-g71a5bd74b3
 system: rolling
 date: Fri Nov 13 07:36:17 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+      |                     ^~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/RemovableDrive/RemovableDriveServiceLinux.cpp:22:21: error: ‘child’ is not a member of ‘boost::process’
+   22 |     boost::process::child child(boost::process::search_path("umount"), path.string().c_str(), (boost::process::std_out & boost::process::std_err) > istd_err);
+      |                     ^~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/RemovableDrive/RemovableDriveServiceLinux.cpp:24:12: error: ‘child’ was not declared in this scope
+   24 |     while (child.running() && std::getline(istd_err, line)) {
+      |            ^~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/RemovableDrive/RemovableDriveServiceLinux.cpp:24:44: error: ‘istd_err’ was not declared in this scope; did you mean ‘stderr’?
+   24 |     while (child.running() && std::getline(istd_err, line)) {
+      |                                            ^~~~~~~~
+      |                                            stderr
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/RemovableDrive/RemovableDriveServiceLinux.cpp:28:5: error: ‘child’ was not declared in this scope
+   28 |     child.wait(ec);
+      |     ^~~~~
+make[2]: *** [src/slic3r-shared/CMakeFiles/slic3r-shared.dir/build.make:8395: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/RemovableDrive/RemovableDriveServiceLinux.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+[ 78%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/RemovableDrive/RemovableDriveMonitorLinux.cpp.o
+[ 78%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/test/Slic3r/Biz/Network/MockHttpFactory.cpp.o
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/MatDb/MatDbInteractor.cpp.o
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Config/ToolToFeatureDialog.cpp.o
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Config/ToolToFeatureDialogHeader.cpp.o
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Config/ToolToFeatureExtruderButton.cpp.o
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Config/ExtruderIdButtonGroup.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:2724: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
