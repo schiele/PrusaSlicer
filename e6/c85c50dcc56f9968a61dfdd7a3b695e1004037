@@ -347,3 +347,6 @@ make[1]: *** [CMakeFiles/Makefile2:2724: src/slic3r-shared/CMakeFiles/slic3r-sha
 make: *** [Makefile:146: all] Error 2
 ======================================================================
 BUILD: version_3.0.0-alpha14-7-ga0ee8e6705
+system: rolling
+date: Fri Nov 13 09:59:25 AM CET 2026
+tasks:[incomplete]
