@@ -380,9 +380,9 @@ make: *** [Makefile:146: all] Error 2
 BUILD: version_3.0.0-alpha14-7-ga0ee8e6705
 system: rolling
 date: Fri Nov 13 10:09:33 AM CET 2026
-tasks: configure_deps build_deps configure build[incomplete]
+tasks: configure_deps build_deps configure build configure_deps[incomplete]
 ======================================================================
 BUILD: version_3.0.0-alpha14-8-g566c8851a4
 system: rolling
 date: Fri Nov 13 10:26:28 AM CET 2026
-tasks:[incomplete]
+tasks: configure_deps[incomplete]
