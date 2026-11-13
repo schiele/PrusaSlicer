@@ -12,6 +12,7 @@
 #include <boost/format.hpp>
 #include <Slic3r/Log.hpp>
 #include <boost/bind/bind.hpp>
+#include <boost/asio/deadline_timer.hpp>
 
 using boost::optional;
 using boost::system::error_code;
