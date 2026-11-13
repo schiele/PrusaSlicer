@@ -285,3 +285,5 @@ FAILED:
 [ 26%] Completed 'dep_OCCT'
 [ 26%] Built target dep_OCCT
 make: *** [Makefile:136: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-7-ga0ee8e6705
