@@ -156,3 +156,29 @@ BUILD: version_3.0.0-alpha14-4-g30002bb9db
 system: rolling
 date: Fri Nov 13 07:23:54 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+  445 | std::string to_string(JobIssue issue) {
+      |             ^~~~~~~~~
+[ 68%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Emboss/ShapeProvider.cpp.o
+[ 67%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Emboss/TextPresetManager.cpp.o
+[ 68%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Emboss/SvgShapeProvider.cpp.o
+[ 68%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Emboss/TextShapeProvider.cpp.o
+[ 67%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Emboss/TextLines.cpp.o
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Emboss/TextLines.cpp: In lambda function:
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Emboss/TextLines.cpp:73:19: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<Slic3r::Domain::Advanced::Vec<int, 2>, tbb::detail::d1::scalable_allocator<Slic3r::Domain::Advanced::Vec<int, 2> > >::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+   73 |             if (i < expoly.contour.points.size())
+      |                 ~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Emboss/TextLines.cpp:77:23: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<Slic3r::Domain::Advanced::Vec<int, 2>, tbb::detail::d1::scalable_allocator<Slic3r::Domain::Advanced::Vec<int, 2> > >::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+   77 |                 if (i < hole.points.size()) {
+      |                     ~~^~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Emboss/TextLines.cpp: In lambda function:
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Emboss/TextLines.cpp:90:21: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<Slic3r::Domain::Advanced::Vec<int, 2>, tbb::detail::d1::scalable_allocator<Slic3r::Domain::Advanced::Vec<int, 2> > >::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+   90 |                 ((i < expoly.contour.points.size()) ?
+      |                   ~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Emboss/TextLines.cpp: In member function ‘void Slic3r::Biz::Emboss::TextLinesModel::create_text_lines(unsigned int, const Slic3r::Domain::Transform3d*)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Emboss/TextLines.cpp:425:10: warning: unused variable ‘is_mirrored’ [-Wunused-variable]
+  425 |     bool is_mirrored = has_reflection(*text_tr);
+      |          ^~~~~~~~~~~
+[ 68%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Emboss/SurfaceDrag.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:2724: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
