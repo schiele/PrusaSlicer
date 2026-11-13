@@ -318,4 +318,4 @@ CMake Error at bundled_deps/slic3r-domain-types/CMakeLists.txt:1 (find_package):
 BUILD: version_3.0.0-alpha14-7-ga0ee8e6705
 system: rolling
 date: Fri Nov 13 09:21:14 AM CET 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
