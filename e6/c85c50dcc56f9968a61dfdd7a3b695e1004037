@@ -441,3 +441,29 @@ BUILD: version_3.0.0-alpha14-12-gf24333adf0
 system: rolling
 date: Fri Nov 13 12:47:45 PM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+[ 16%] Built target slic3r-biz-cgal-algorithms
+[ 16%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/TextureManager.cpp.o
+[ 16%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/GeometryBuilder.cpp.o
+[ 17%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/VertexAttribDesc.cpp.o
+[ 17%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/MathUtils.cpp.o
+[ 16%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/TextureBufferManager.cpp.o
+[ 16%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/ImageCodec.cpp.o
+[ 17%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/ImguiIconHelper.cpp.o
+[ 17%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/GL/GLTypes.cpp.o
+[ 17%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/GL/commonGL.cpp.o
+[ 16%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/CommandBuffer.cpp.o
+[ 17%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/ImguiFontHelper.cpp.o
+[ 17%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/CommandBuffer_gl.cpp.o
+[ 17%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/Framebuffer_gl.cpp.o
+[ 17%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/FramebufferManager.cpp.o
+[ 17%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/TextImageGenerator.cpp.o
+[ 17%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/ImguiRender.cpp.o
+[ 17%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/Material.cpp.o
+[ 17%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/GL/GLDeviceInternal.cpp.o
+[ 17%] Building CXX object src/slic3r-render/CMakeFiles/slic3r-render.dir/src/Slic3r/App/Render/ScopedDebugGroup.cpp.o
+[ 18%] Linking CXX static library libslic3r-render.a
+[ 18%] Built target slic3r-render
+[ 16%] Linking CXX executable slic3r-biz-algorithms-tests
+[ 18%] Built target slic3r-biz-algorithms-tests
+make: *** [Makefile:149: all] Error 2
