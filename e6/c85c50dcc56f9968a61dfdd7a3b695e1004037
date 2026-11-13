@@ -350,3 +350,29 @@ BUILD: version_3.0.0-alpha14-7-ga0ee8e6705
 system: rolling
 date: Fri Nov 13 09:59:25 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+[ 71%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Format/3mf/Relations.cpp.o
+[ 71%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Format/3mf/ResultLoad3mf.cpp.o
+[ 71%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Format/3mf.cpp.o
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Format/3mf.cpp:617:18: warning: ‘const Slic3r::format_3MF::CT_Object* {anonymous}::get_object(const Slic3r::PathId&, const Slic3r::LoadedModel&)’ defined but not used [-Wunused-function]
+  617 | const CT_Object* get_object(const PathId& path_id, const LoadedModel& loaded_model)
+      |                  ^~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Format/3mf.cpp:513:6: warning: ‘bool {anonymous}::check_pointer(const Slic3r::ModelMap&, const Slic3r::Domain::Model&)’ defined but not used [-Wunused-function]
+  513 | bool check_pointer(const ModelMap& mm, const Slic3r::Domain::Model& m)
+      |      ^~~~~~~~~~~~~
+[ 71%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Format/3mf/Model3mf.cpp.o
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Format/3mf/Model3mf.cpp: In lambda function:
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Format/3mf/Model3mf.cpp:1326:34: warning: comparison of integer expressions of different signedness: ‘const std::array<int, 3>::value_type’ {aka ‘const int’} and ‘const size_t’ {aka ‘const long unsigned int’} [-Wsign-compare]
+ 1326 |         return t[0] >= 0 && t[0] < vertices_count &&
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Format/3mf/Model3mf.cpp:1327:34: warning: comparison of integer expressions of different signedness: ‘const std::array<int, 3>::value_type’ {aka ‘const int’} and ‘const size_t’ {aka ‘const long unsigned int’} [-Wsign-compare]
+ 1327 |                t[1] >= 0 && t[1] < vertices_count &&
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Format/3mf/Model3mf.cpp:1328:34: warning: comparison of integer expressions of different signedness: ‘const std::array<int, 3>::value_type’ {aka ‘const int’} and ‘const size_t’ {aka ‘const long unsigned int’} [-Wsign-compare]
+ 1328 |                t[2] >= 0 && t[2] < vertices_count;
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Format/3mf/Model3mf.cpp: In function ‘void {anonymous}::store_geometry(ZipSink&, const indexed_triangle_set&, std::string&, bool, const Slic3r::Domain::FacetsAnnotation*)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Format/3mf/Model3mf.cpp:1379:10: warning: variable ‘is_each_vertex_used_three_times’ set but not used [-Wunused-but-set-variable=]
+ 1379 |     auto is_each_vertex_used_three_times = [&is_vertex_used]() {
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[ 71%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Format/3mf/PrusaFile.cpp.o
+[ 72%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/FileLoadingLogic.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:2724: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
