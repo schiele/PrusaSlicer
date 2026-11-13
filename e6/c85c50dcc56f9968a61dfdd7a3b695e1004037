@@ -155,4 +155,4 @@ make: *** [Makefile:146: all] Error 2
 BUILD: version_3.0.0-alpha14-4-g30002bb9db
 system: rolling
 date: Fri Nov 13 07:23:54 AM CET 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
