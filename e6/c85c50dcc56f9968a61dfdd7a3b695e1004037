@@ -319,3 +319,29 @@ BUILD: version_3.0.0-alpha14-7-ga0ee8e6705
 system: rolling
 date: Fri Nov 13 09:21:14 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+                |                            ^
+    • candidate 2: ‘template<class ValueType, typename std::enable_if<nlohmann::json_abi_v3_12_0::detail::is_basic_json<BasicJsonType>::value, int>::type <anonymous> > ValueType& nlohmann::json_abi_v3_12_0::basic_json<ObjectType, ArrayType, StringType, BooleanType, NumberIntegerType, NumberUnsignedType, NumberFloatType, AllocatorType, JSONSerializer, BinaryType, CustomBaseClass>::get_to(ValueType&) const [with typename std::enable_if<nlohmann::json_abi_v3_12_0::detail::is_basic_json<BasicJsonType>::value, int>::type <anonymous> = ValueType; ObjectType = nlohmann::json_abi_v3_12_0::ordered_map; ArrayType = std::vector; StringType = std::__cxx11::basic_string<char>; BooleanType = bool; NumberIntegerType = long int; NumberUnsignedType = long unsigned int; NumberFloatType = double; AllocatorType = std::allocator; JSONSerializer = nlohmann::json_abi_v3_12_0::adl_serializer; BinaryType = std::vector<unsigned char>; CustomBaseClass = void]’
+      /usr/include/nlohmann/json.hpp:1838:17:
+       1838 |     ValueType & get_to(ValueType& v) const
+            |                 ^~~~~~
+      • template argument deduction/substitution failed:
+        • error: no type named ‘type’ in ‘struct std::enable_if<false, int>’
+          /usr/include/nlohmann/json.hpp:1837:25:
+           1837 |                  int> = 0>
+                |                         ^
+    • candidate 3: ‘template<class T, long unsigned int N, class Array, typename std::enable_if<nlohmann::json_abi_v3_12_0::detail::has_from_json<nlohmann::json_abi_v3_12_0::basic_json<nlohmann::json_abi_v3_12_0::ordered_map>, Array, void>::value, int>::type <anonymous> > Array nlohmann::json_abi_v3_12_0::basic_json<ObjectType, ArrayType, StringType, BooleanType, NumberIntegerType, NumberUnsignedType, NumberFloatType, AllocatorType, JSONSerializer, BinaryType, CustomBaseClass>::get_to(T (&)[N]) const [with long unsigned int N = T; Array = N; typename std::enable_if<nlohmann::json_abi_v3_12_0::detail::has_from_json<nlohmann::json_abi_v3_12_0::basic_json<ObjectType, ArrayType, StringType, BooleanType, NumberIntegerType, NumberUnsignedType, NumberFloatType, AllocatorType, JSONSerializer, BinaryType, CustomBaseClass>, Array>::value, int>::type <anonymous> = Array; ObjectType = nlohmann::json_abi_v3_12_0::ordered_map; ArrayType = std::vector; StringType = std::__cxx11::basic_string<char>; BooleanType = bool; NumberIntegerType = long int; NumberUnsignedType = long unsigned int; NumberFloatType = double; AllocatorType = std::allocator; JSONSerializer = nlohmann::json_abi_v3_12_0::adl_serializer; BinaryType = std::vector<unsigned char>; CustomBaseClass = void]’
+      /usr/include/nlohmann/json.hpp:1849:11:
+       1849 |     Array get_to(T (&v)[N]) const // NOLINT(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
+            |           ^~~~~~
+      • template argument deduction/substitution failed:
+        •   mismatched types ‘T [N]’ and ‘std::optional<std::__cxx11::basic_string<char> >’
+          /home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Config/HwConfigJson.cpp:199:28:
+            199 |         j.at("type").get_to(v.type);
+                |         ~~~~~~~~~~~~~~~~~~~^~~~~~~~
+make[2]: *** [src/slic3r-shared/CMakeFiles/slic3r-shared.dir/build.make:7065: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Config/HwConfigJson.cpp.o] Error 1
+[ 71%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Config/GCodeMetadataJson.cpp.o
+[ 71%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Config/SelectedPresetJson.cpp.o
+[ 70%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Config/Legacy/3mf_legacy.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:2724: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2
