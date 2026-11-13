@@ -483,4 +483,4 @@ SUCCESS
 BUILD: version_3.0.0-alpha14-16-g455378cba9
 system: rolling
 date: Fri Nov 13 04:33:36 PM CET 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
