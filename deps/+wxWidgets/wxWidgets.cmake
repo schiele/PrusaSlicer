@@ -28,7 +28,7 @@ add_cmake_project(wxWidgets
     PATCH_COMMAND ${PATCH_CMD} ${CMAKE_CURRENT_LIST_DIR}/0001-Making-OSXStoreOpenFiles-virtual.patch ${CMAKE_CURRENT_LIST_DIR}/0002-Couple-more-fixes.patch
     CMAKE_ARGS
         "-DCMAKE_DEBUG_POSTFIX:STRING="
-        -DwxBUILD_PRECOMP=ON
+        -DwxBUILD_PRECOMP=OFF
         ${_wx_toolkit}
         -DwxUSE_MEDIACTRL=OFF
         -DwxUSE_DETECT_SM=OFF
