@@ -376,3 +376,5 @@ FAILED:
 [ 72%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/FileLoadingLogic.cpp.o
 make[1]: *** [CMakeFiles/Makefile2:2724: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/all] Error 2
 make: *** [Makefile:146: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-7-ga0ee8e6705
