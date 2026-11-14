@@ -802,4 +802,4 @@ make: *** [Makefile:149: all] Error 2
 BUILD: version_3.0.0-alpha14-14-gc4e82921e5
 system: rolling
 date: Sat Nov 14 04:41:00 PM CET 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
