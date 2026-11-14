@@ -694,3 +694,27 @@ BUILD: version_3.0.0-alpha14-17-gabc8581f0f
 system: rolling
 date: Sat Nov 14 03:08:37 PM CET 2026
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+suppress it.
+
+-- Found Boost: /usr/lib/cmake/Boost-1.92.0/BoostConfig.cmake (found suitable version "1.92.0", minimum required is "1.78")
+-- Found JPEG: /usr/lib/libjpeg.so (found version "80")
+-- Found Lua: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/liblua.a;/usr/lib/libm.so;dl (found version "5.4.8")
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR - Success
+CMake Error at src/occt_wrapper/CMakeLists.txt:22 (find_package):
+  Could not find a configuration file for package "OpenCASCADE" that is
+  compatible with requested version "7.6.1".
+
+  The following configuration files were considered but not accepted:
+
+    /usr/lib/cmake/opencascade/OpenCASCADEConfig.cmake, version: 7.9.3
+      The version found is not compatible with the version requested.
+    /lib/cmake/opencascade/OpenCASCADEConfig.cmake, version: 7.9.3
+      The version found is not compatible with the version requested.
+
+-- Configuring incomplete, errors occurred!
