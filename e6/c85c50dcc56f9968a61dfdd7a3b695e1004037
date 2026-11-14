@@ -767,3 +767,5 @@ collect2: error: ld returned 1 exit status
 make[2]: *** [src/slic3r-app-launcher/CMakeFiles/slic3r-app-launcher.dir/build.make:288: src/slic3r-app-launcher/slic3r-app-launcher] Error 1
 make[1]: *** [CMakeFiles/Makefile2:2496: src/slic3r-app-launcher/CMakeFiles/slic3r-app-launcher.dir/all] Error 2
 make: *** [Makefile:149: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-13-g6d18e6409e
