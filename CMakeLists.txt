@@ -334,7 +334,7 @@ if (SLIC3R_STATIC)
                 # Determine extra system libs (Linux needs dl/pthread, macOS usually doesn't or handles implicitly)
                 set(_sys_libs "")
                 if (UNIX AND NOT APPLE)
-                    set(_sys_libs pthread X11)
+                    set(_sys_libs pthread)
                 endif()
 
                 # A. Force Cache Variables
