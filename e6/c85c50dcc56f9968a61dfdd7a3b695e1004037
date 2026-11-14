@@ -728,4 +728,4 @@ SUCCESS
 BUILD: version_3.0.0-alpha14-19-gceee3f4216
 system: rolling
 date: Sat Nov 14 03:38:11 PM CET 2026
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
