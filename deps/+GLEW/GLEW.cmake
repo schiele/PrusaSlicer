@@ -8,5 +8,4 @@ add_cmake_project(
   CMAKE_ARGS
     -DBUILD_UTILS=OFF
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-    -DGLEW_EGL=ON
 )
