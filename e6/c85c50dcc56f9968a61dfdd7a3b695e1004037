@@ -868,3 +868,6 @@ Copying OCCTWrapper library for tests
 make: *** [Makefile:149: all] Error 2
 ======================================================================
 BUILD: version_3.0.0-alpha14-20-g55f9ba7936
+system: rolling
+date: Mon Nov 16 12:40:04 AM CET 2026
+tasks:[incomplete]
