@@ -1179,3 +1179,5 @@ CMake Error at src/slic3r-biz-lua/CMakeLists.txt:22 (find_package):
   installed.
 
 -- Configuring incomplete, errors occurred!
+======================================================================
+BUILD: version_3.0.0-alpha14-27-g6076ee2b95
