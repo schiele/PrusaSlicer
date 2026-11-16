@@ -1644,3 +1644,29 @@ BUILD: version_3.0.0-alpha14-30-g35bd3c565d
 system: rolling
 date: Mon Nov 16 11:34:16 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+ 1073 |             for (const std::string& key :
+      |                                     ^~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Config.cpp:1073:37: note: use non-reference type ‘const std::string’ {aka ‘const std::__cxx11::basic_string<char>’} to make the copy explicit or ‘const char* const&’ to prevent copying
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Config.cpp:1108:32: warning: loop variable ‘key’ of type ‘const std::string&’ {aka ‘const std::__cxx11::basic_string<char>&’} binds to a temporary constructed from type ‘const char* const’ [-Wrange-loop-construct]
+ 1108 |             const std::string& key :
+      |                                ^~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Config.cpp:1108:32: note: use non-reference type ‘const std::string’ {aka ‘const std::__cxx11::basic_string<char>’} to make the copy explicit or ‘const char* const&’ to prevent copying
+[  6%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/FullConfigFDM.cpp.o
+[  5%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/Transformation.cpp.o
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Transformation.cpp:2:10: fatal error: casser: No such file or directory
+    2 | #include <casser>
+      |          ^~~~~~~~
+compilation terminated.
+make[2]: *** [src/slic3r-domain/CMakeFiles/slic3r-domain.dir/build.make:474: src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/Transformation.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+[  6%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/ConfigDefsSLA.cpp.o
+[  6%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/ConfigBoxesSLA.cpp.o
+[  6%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/ConfigPhysical.cpp.o
+[  3%] Linking CXX executable slic3r-base-tests
+[  6%] Built target slic3r-base-tests
+[  6%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/CutConnector.cpp.o
+[  6%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/ConfigCommon.cpp.o
+[  6%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/FullConfigSLA.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:1696: src/slic3r-domain/CMakeFiles/slic3r-domain.dir/all] Error 2
+make: *** [Makefile:149: all] Error 2
