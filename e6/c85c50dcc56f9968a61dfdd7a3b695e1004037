@@ -1033,3 +1033,28 @@ BUILD: version_3.0.0-alpha14-27-g6076ee2b95
 system: rolling
 date: Mon Nov 16 07:19:35 AM CET 2026
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+  to work with policies introduced by <max> or earlier.
+This warning is for project developers.  Use -Wno-author or -Wno-deprecated
+to suppress it.
+
+-- IGL NOT found, using bundled version...
+-- Imgui include dir: /home/rschiele/git/PrusaSlicer/bundled_deps/imgui
+CMake Error at src/slic3r-base/CMakeLists.txt:82 (find_package):
+  By not providing "Findlibassert.cmake" in CMAKE_MODULE_PATH this project
+  has asked CMake to find a package configuration file provided by
+  "libassert", but CMake did not find one.
+
+  Could not find a package configuration file provided by "libassert" with
+  any of the following names:
+
+    libassert.cps
+    libassertConfig.cmake
+    libassert-config.cmake
+
+  Add the installation prefix of "libassert" to CMAKE_PREFIX_PATH or set
+  "libassert_DIR" to a directory containing one of the above files.  If
+  "libassert" provides a separate development package or SDK, be sure it has
+  been installed.
+
+-- Configuring incomplete, errors occurred!
