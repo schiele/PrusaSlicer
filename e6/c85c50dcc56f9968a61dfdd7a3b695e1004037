@@ -1639,3 +1639,5 @@ make[2]: *** Waiting for unfinished jobs....
 /home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Config.cpp:1108:32: note: use non-reference type ‘const std::string’ {aka ‘const std::__cxx11::basic_string<char>’} to make the copy explicit or ‘const char* const&’ to prevent copying
 make[1]: *** [CMakeFiles/Makefile2:1696: src/slic3r-domain/CMakeFiles/slic3r-domain.dir/all] Error 2
 make: *** [Makefile:149: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-30-g35bd3c565d
