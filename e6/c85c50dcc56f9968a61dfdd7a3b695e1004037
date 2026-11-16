@@ -1918,3 +1918,5 @@ make[2]: *** Waiting for unfinished jobs....
 [ 41%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Preview/PreviewRenderModule.cpp.o
 make[1]: *** [CMakeFiles/Makefile2:2711: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/all] Error 2
 make: *** [Makefile:149: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-32-g56330f27f2
