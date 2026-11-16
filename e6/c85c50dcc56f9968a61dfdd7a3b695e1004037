@@ -930,9 +930,9 @@ CMake Error at src/slic3r-platform-wx/CMakeLists.txt:30 (find_package):
 BUILD: version_3.0.0-alpha14-21-ge76a8f1d11
 system: rolling
 date: Mon Nov 16 12:56:48 AM CET 2026
-tasks: configure_deps build_deps configure build configure_deps[incomplete]
+tasks: configure_deps build_deps configure build configure_deps build_deps[incomplete]
 ======================================================================
 BUILD: version_3.0.0-alpha14-22-g6abdff9fb8
 system: rolling
 date: Mon Nov 16 01:01:17 AM CET 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
