@@ -1860,4 +1860,4 @@ make: *** [Makefile:149: all] Error 2
 BUILD: version_3.0.0-alpha14-32-gc616c1096f
 system: rolling
 date: Mon Nov 16 01:44:20 PM CET 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
