@@ -1418,3 +1418,5 @@ CMake Error at src/slic3r-shared/CMakeLists.txt:1537 (target_link_libraries):
 
 -- Generating done (0.4s)
 CMake Generate step failed.  Build files cannot be regenerated correctly.
+======================================================================
+BUILD: version_3.0.0-alpha14-28-gfe1cbb8dc4
