@@ -1539,3 +1539,29 @@ BUILD: version_3.0.0-alpha14-29-g61f50923ff
 system: rolling
 date: Mon Nov 16 08:33:11 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/ObjectList/ObjectItem.cpp.o
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/SHA256Linux.cpp.o
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/ObjectList/VolumeItem.cpp.o
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/AppInstance/AppInstanceMessageHandlerFactoryLinux.cpp.o
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/ObjectList/InstanceItem.cpp.o
+[ 78%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/AppInstance/SingleInstanceCheckerLock.cpp.o
+[ 78%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/RemovableDrive/RemovableDriveMonitorLinux.cpp.o
+[ 78%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/test/Slic3r/Biz/Network/MockHttpFactory.cpp.o
+In file included from /home/rschiele/git/PrusaSlicer/src/slic3r-shared/test/Slic3r/Biz/Network/MockHttpFactory.cpp:4:
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/test/Slic3r/Biz/Network/MockHttp.hpp:3:10: fatal error: catch2/trompeloeil.hpp: No such file or directory
+    3 | #include <catch2/trompeloeil.hpp>
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [src/slic3r-shared/CMakeFiles/slic3r-shared.dir/build.make:8426: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/test/Slic3r/Biz/Network/MockHttpFactory.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/AppInstance/AppInstanceMessageHandlerLinux.cpp.o
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/MatDb/MatDbInteractor.cpp.o
+[ 78%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/RemovableDrive/RemovableDriveServiceLinux.cpp.o
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Config/ToolToFeatureDialog.cpp.o
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Config/ToolToFeatureExtruderButton.cpp.o
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Config/ToolToFeatureDialogHeader.cpp.o
+[ 77%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Config/ExtruderIdButtonGroup.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:2711: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/all] Error 2
+make: *** [Makefile:149: all] Error 2
