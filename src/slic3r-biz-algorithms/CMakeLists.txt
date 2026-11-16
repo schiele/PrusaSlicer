@@ -135,7 +135,7 @@ target_link_libraries(slic3r-biz-algorithms PUBLIC
     stb_dxt
     PNG::PNG
     miniz
-    libdeflate::libdeflate_static
+    libdeflate::libdeflate_shared
 )
 
 if (SLIC3R_PCH)

@@ -1620,7 +1620,7 @@ target_link_libraries(slic3r-shared PUBLIC
         pugixml::pugixml
         range-v3::range-v3
         libcereal
-        libdeflate::libdeflate_static
+        libdeflate::libdeflate_shared
         PahoMqttCpp::paho-mqttpp3-static
         OpenSSL::Crypto
 )
