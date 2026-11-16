@@ -1763,3 +1763,5 @@ make[1]: *** Waiting for unfinished jobs....
       |     ^
 [ 11%] Built target slic3r-biz-parser-tests
 make: *** [Makefile:149: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-30-g37f722e8ae
