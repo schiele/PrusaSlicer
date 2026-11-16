@@ -1063,3 +1063,28 @@ BUILD: version_3.0.0-alpha14-27-g6076ee2b95
 system: rolling
 date: Mon Nov 16 07:21:33 AM CET 2026
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+This warning is for project developers.  Use -Wno-author or -Wno-deprecated
+to suppress it.
+
+-- IGL NOT found, using bundled version...
+-- Imgui include dir: /home/rschiele/git/PrusaSlicer/bundled_deps/imgui
+-- Found zstd: /usr/lib/libzstd.so
+-- Found Zstd: /usr/lib/libzstd.so
+-- No doxygen found, doxygen related targets wont be defined
+CMake Error at src/slic3r-biz-algorithms/CMakeLists.txt:122 (find_package):
+  Could not find a package configuration file provided by "prusa_fdm_mixer"
+  with any of the following names:
+
+    prusa_fdm_mixer.cps
+    prusa_fdm_mixerConfig.cmake
+    prusa_fdm_mixer-config.cmake
+
+  Add the installation prefix of "prusa_fdm_mixer" to CMAKE_PREFIX_PATH or
+  set "prusa_fdm_mixer_DIR" to a directory containing one of the above files.
+  If "prusa_fdm_mixer" provides a separate development package or SDK, be
+  sure it has been installed.
+
+-- Configuring incomplete, errors occurred!
