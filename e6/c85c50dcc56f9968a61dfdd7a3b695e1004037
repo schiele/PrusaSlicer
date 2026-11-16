@@ -1244,3 +1244,29 @@ BUILD: version_3.0.0-alpha14-27-g6076ee2b95
 system: rolling
 date: Mon Nov 16 07:29:43 AM CET 2026
 tasks: configure_deps build_deps[failed]
+FAILED:
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/pairs_iterator.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/variadic_results.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/utility
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/utility/is_integer.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/utility/to_string.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/stack_iterator.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/stack_proxy_base.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/table.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/config.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/reference.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/compatibility.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/usertype_storage.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/function_types_overloaded.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/detail
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/detail/build_version.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/forward_as.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/tuple.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/inheritance.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/unsafe_function_result.hpp
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/share/cmake/sol2/sol2-config.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/share/cmake/sol2/sol2-config-version.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/share/pkgconfig/sol2.pc
+[ 76%] Completed 'dep_Sol2'
+[ 76%] Built target dep_Sol2
+make: *** [Makefile:139: all] Error 2
