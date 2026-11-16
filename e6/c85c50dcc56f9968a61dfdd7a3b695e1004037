@@ -1093,3 +1093,28 @@ BUILD: version_3.0.0-alpha14-27-g6076ee2b95
 system: rolling
 date: Mon Nov 16 07:22:48 AM CET 2026
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+  src/libslic3r/CMakeLists.txt:16 (find_package)
+This warning is for project developers.  Use -Wno-author or -Wno-policy to
+suppress it.
+
+-- Found Boost: /usr/lib/cmake/Boost-1.92.0/BoostConfig.cmake (found version "1.92.0") found components: iostreams
+CMake Error at src/libslic3r/CMakeLists.txt:35 (find_package):
+  By not providing "FindLibBGCode.cmake" in CMAKE_MODULE_PATH this project
+  has asked CMake to find a package configuration file provided by
+  "LibBGCode", but CMake did not find one.
+
+  Could not find a package configuration file provided by "LibBGCode" with
+  any of the following names:
+
+    LibBGCode.cps
+    libbgcode.cps
+    LibBGCodeConfig.cmake
+    libbgcode-config.cmake
+
+  Add the installation prefix of "LibBGCode" to CMAKE_PREFIX_PATH or set
+  "LibBGCode_DIR" to a directory containing one of the above files.  If
+  "LibBGCode" provides a separate development package or SDK, be sure it has
+  been installed.
+
+-- Configuring incomplete, errors occurred!
