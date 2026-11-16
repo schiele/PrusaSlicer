@@ -1423,3 +1423,25 @@ BUILD: version_3.0.0-alpha14-28-gfe1cbb8dc4
 system: rolling
 date: Mon Nov 16 07:37:44 AM CET 2026
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+    libdeflate::libdeflate_static
+
+  but the target was not found.  Possible reasons include:
+
+    * There is a typo in the target name.
+    * A find_package call is missing for an IMPORTED target.
+    * An ALIAS target is missing.
+
+CMake Error at src/slic3r-shared/CMakeLists.txt:1537 (target_link_libraries):
+  Target "slic3r-shared" links to:
+
+    libdeflate::libdeflate_static
+
+  but the target was not found.  Possible reasons include:
+
+    * There is a typo in the target name.
+    * A find_package call is missing for an IMPORTED target.
+    * An ALIAS target is missing.
+
+-- Generating done (0.3s)
+CMake Generate step failed.  Build files cannot be regenerated correctly.
