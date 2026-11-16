@@ -1003,3 +1003,28 @@ BUILD: version_3.0.0-alpha14-27-g6076ee2b95
 system: rolling
 date: Mon Nov 16 07:17:13 AM CET 2026
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+-- Found OpenGL: /usr/lib/libGL.so
+-- GLEW found in /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/cmake/glew
+-- Found Threads: TRUE
+CMake Error at cmake/modules/GlobalDependencies.cmake:73 (find_package):
+  By not providing "FindTracy.cmake" in CMAKE_MODULE_PATH this project has
+  asked CMake to find a package configuration file provided by "Tracy", but
+  CMake did not find one.
+
+  Could not find a package configuration file provided by "Tracy" with any of
+  the following names:
+
+    Tracy.cps
+    tracy.cps
+    TracyConfig.cmake
+    tracy-config.cmake
+
+  Add the installation prefix of "Tracy" to CMAKE_PREFIX_PATH or set
+  "Tracy_DIR" to a directory containing one of the above files.  If "Tracy"
+  provides a separate development package or SDK, be sure it has been
+  installed.
+Call Stack (most recent call first):
+  CMakeLists.txt:377 (include)
+
+-- Configuring incomplete, errors occurred!
