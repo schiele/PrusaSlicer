@@ -1861,3 +1861,29 @@ BUILD: version_3.0.0-alpha14-32-gc616c1096f
 system: rolling
 date: Mon Nov 16 01:44:20 PM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/SLA/SupportIslands/SampleConfigFactory.cpp:66:5: error: ‘assert’ was not declared in this scope
+   66 |     assert(result.minimal_distance_from_outline < result.maximal_distance_from_outline);
+      |     ^~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/SLA/SupportIslands/SampleConfigFactory.cpp:66:5: note: ‘assert’ is defined in header ‘<cassert>’; this is probably fixable by adding ‘#include <cassert>’
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r.dir/build.make:1958: src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLA/SupportIslands/SampleConfigFactory.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+[ 32%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLA/ZCorrection.cpp.o
+[ 31%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLA/SupportTreeBuilder.cpp.o
+[ 14%] Linking CXX executable slic3r-biz-algorithms-tests
+[ 32%] Built target slic3r-biz-algorithms-tests
+[ 31%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLA/SupportTree.cpp.o
+[ 32%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLA/SupportTreeMesher.cpp.o
+[ 32%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLAPrint.cpp.o
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/SLAPrint.cpp:1050:14: warning: ‘Slic3r::ParserConfig Slic3r::{anonymous}::create_stats_placeholders()’ defined but not used [-Wunused-function]
+ 1050 | ParserConfig create_stats_placeholders()
+      |              ^~~~~~~~~~~~~~~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/SLAPrint.cpp:1038:14: warning: ‘Slic3r::ParserConfig Slic3r::{anonymous}::to_config(const Slic3r::Domain::SLA::PrintStatistics&)’ defined but not used [-Wunused-function]
+ 1038 | ParserConfig to_config(const Domain::SLA::PrintStatistics& stats)
+      |              ^~~~~~~~~
+[ 32%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLAPrintSteps.cpp.o
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/SLAPrintSteps.cpp:211:37: warning: ‘std::optional<indexed_triangle_set> Slic3r::{anonymous}::create_cgal_preview(const CSGContainer&)’ defined but not used [-Wunused-function]
+  211 | std::optional<indexed_triangle_set> create_cgal_preview(const CSGContainer& mesh_to_slice){
+      |                                     ^~~~~~~~~~~~~~~~~~~
+make[1]: *** [CMakeFiles/Makefile2:2153: src/libslic3r/CMakeFiles/libslic3r.dir/all] Error 2
+make: *** [Makefile:149: all] Error 2
