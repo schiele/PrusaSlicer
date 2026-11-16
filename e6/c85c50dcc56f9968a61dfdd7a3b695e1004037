@@ -1674,4 +1674,4 @@ make: *** [Makefile:149: all] Error 2
 BUILD: version_3.0.0-alpha14-30-gcf47ec2583
 system: rolling
 date: Mon Nov 16 11:47:29 AM CET 2026
-tasks: configure_deps build_deps configure[incomplete]
+tasks: configure_deps build_deps configure build[incomplete]
