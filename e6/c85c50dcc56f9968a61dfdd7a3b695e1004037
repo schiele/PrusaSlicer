@@ -1149,3 +1149,5 @@ FAILED:
 [ 94%] Completed 'dep_wxWidgets'
 [ 94%] Built target dep_wxWidgets
 make: *** [Makefile:139: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-27-g6076ee2b95
