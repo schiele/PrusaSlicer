@@ -1503,3 +1503,5 @@ make[1]: *** Waiting for unfinished jobs....
 [  3%] Linking CXX static library libslic3r-base.a
 [  3%] Built target slic3r-base
 make: *** [Makefile:149: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-29-g61f50923ff
