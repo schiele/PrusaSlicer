@@ -1092,4 +1092,4 @@ CMake Error at src/slic3r-biz-algorithms/CMakeLists.txt:122 (find_package):
 BUILD: version_3.0.0-alpha14-27-g6076ee2b95
 system: rolling
 date: Mon Nov 16 07:22:48 AM CET 2026
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
