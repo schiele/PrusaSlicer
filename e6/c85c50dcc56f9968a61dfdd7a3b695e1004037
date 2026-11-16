@@ -1002,4 +1002,4 @@ CMake Error at CMakeLists.txt:108 (message):
 BUILD: version_3.0.0-alpha14-27-g6076ee2b95
 system: rolling
 date: Mon Nov 16 07:17:13 AM CET 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
