@@ -1361,3 +1361,5 @@ CMake Error at src/slic3r-shared/CMakeLists.txt:1522 (find_package):
   been installed.
 
 -- Configuring incomplete, errors occurred!
+======================================================================
+BUILD: version_3.0.0-alpha14-28-gfe1cbb8dc4
