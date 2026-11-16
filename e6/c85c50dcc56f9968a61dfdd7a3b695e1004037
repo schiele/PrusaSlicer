@@ -1184,3 +1184,28 @@ BUILD: version_3.0.0-alpha14-27-g6076ee2b95
 system: rolling
 date: Mon Nov 16 07:26:50 AM CET 2026
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+-- Found Lua: /usr/lib/liblua5.5.so;/usr/lib/libm.so (found version "5.5.1")
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR - Success
+-- Found ZLIB: /usr/lib/libz.so (found version "1.4")
+-- No doxygen found, doxygen related targets wont be defined
+-- No doxygen found, doxygen related targets wont be defined
+CMake Error at src/slic3r-shared/CMakeLists.txt:1471 (find_package):
+  Could not find a package configuration file provided by "yoga" with any of
+  the following names:
+
+    yoga.cps
+    yogaConfig.cmake
+    yoga-config.cmake
+
+  Add the installation prefix of "yoga" to CMAKE_PREFIX_PATH or set
+  "yoga_DIR" to a directory containing one of the above files.  If "yoga"
+  provides a separate development package or SDK, be sure it has been
+  installed.
+
+-- Configuring incomplete, errors occurred!
