@@ -1060,3 +1060,6 @@ CMake Error at src/slic3r-base/CMakeLists.txt:82 (find_package):
 -- Configuring incomplete, errors occurred!
 ======================================================================
 BUILD: version_3.0.0-alpha14-27-g6076ee2b95
+system: rolling
+date: Mon Nov 16 07:21:33 AM CET 2026
+tasks:[incomplete]
