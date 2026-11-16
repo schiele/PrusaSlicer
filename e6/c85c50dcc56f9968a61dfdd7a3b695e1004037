@@ -962,3 +962,5 @@ lto1: note: destination object is likely at address zero
 Copying OCCTWrapper library for tests
 [ 98%] Built target slic3r-shared-tests
 make: *** [Makefile:149: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-26-g72a70c00eb
