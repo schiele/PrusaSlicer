@@ -2,6 +2,7 @@
 #define slic3r_GUI_ExtraRenderers_hpp_
 
 #include <functional>
+#include <memory>
 
 #include <wx/dataview.h>
 
