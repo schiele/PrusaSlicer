@@ -1856,3 +1856,5 @@ make[2]: *** Waiting for unfinished jobs....
 [ 31%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLA/SupportPointGenerator.cpp.o
 make[1]: *** [CMakeFiles/Makefile2:2153: src/libslic3r/CMakeFiles/libslic3r.dir/all] Error 2
 make: *** [Makefile:149: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-32-gc616c1096f
