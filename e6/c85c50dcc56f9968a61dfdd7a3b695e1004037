@@ -1183,4 +1183,4 @@ CMake Error at src/slic3r-biz-lua/CMakeLists.txt:22 (find_package):
 BUILD: version_3.0.0-alpha14-27-g6076ee2b95
 system: rolling
 date: Mon Nov 16 07:26:50 AM CET 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
