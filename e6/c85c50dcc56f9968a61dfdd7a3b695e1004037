@@ -1575,4 +1575,4 @@ SUCCESS
 BUILD: version_3.0.0-alpha14-28-g5cea24c260
 system: rolling
 date: Mon Nov 16 09:15:46 AM CET 2026
-tasks:[incomplete]
+tasks: configure_deps[incomplete]
