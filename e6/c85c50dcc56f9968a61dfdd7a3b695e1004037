@@ -1582,3 +1582,29 @@ BUILD: version_3.0.0-alpha14-29-gc72c6506de
 system: rolling
 date: Mon Nov 16 11:30:29 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+   25 | static bool check_model(const std::string& filename)
+      |             ^~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Bed.cpp:17:13: warning: ‘bool Slic3r::Domain::check_texture(const std::string&)’ defined but not used [-Wunused-function]
+   17 | static bool check_texture(const std::string& filename)
+      |             ^~~~~~~~~~~~~
+[  5%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/Transformation.cpp.o
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Transformation.cpp: In member function ‘void Slic3r::Domain::Transformation::set_scaling_factor(const Slic3r::Domain::Vec3d&)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Transformation.cpp:185:5: error: ‘assert’ was not declared in this scope
+  185 |     assert(scaling_factor.x() > 0.0 && scaling_factor.y() > 0.0 && scaling_factor.z() > 0.0);
+      |     ^~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Transformation.cpp:6:1: note: ‘assert’ is defined in header ‘<cassert>’; this is probably fixable by adding ‘#include <cassert>’
+    5 | #include "Slic3r/Math.hpp"
+  +++ |+#include <cassert>
+    6 |
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Transformation.cpp: In member function ‘void Slic3r::Domain::Transformation::set_scaling_factor(Slic3r::Domain::Axis, double)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Transformation.cpp:194:5: error: ‘assert’ was not declared in this scope
+  194 |     assert(scaling_factor > 0.0);
+      |     ^~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Transformation.cpp:194:5: note: ‘assert’ is defined in header ‘<cassert>’; this is probably fixable by adding ‘#include <cassert>’
+make[2]: *** [src/slic3r-domain/CMakeFiles/slic3r-domain.dir/build.make:474: src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/Transformation.cpp.o] Error 1
+[  5%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/ConfigValue.cpp.o
+[  5%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/ConfigDef.cpp.o
+[  5%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/BedInstance.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:1696: src/slic3r-domain/CMakeFiles/slic3r-domain.dir/all] Error 2
+make: *** [Makefile:149: all] Error 2
