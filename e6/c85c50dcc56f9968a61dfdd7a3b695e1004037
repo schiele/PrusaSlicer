@@ -1675,3 +1675,29 @@ BUILD: version_3.0.0-alpha14-30-gcf47ec2583
 system: rolling
 date: Mon Nov 16 11:47:29 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/include/Slic3r/Domain/ModelInstance.hpp:93:57: error: ‘assert’ was not declared in this scope
+   93 |     ModelInstance() : ObjectBase(-1), object(nullptr) { assert(this->id().invalid()); }
+      |                                                         ^~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/include/Slic3r/Domain/ModelInstance.hpp:93:57: note: ‘assert’ is a function-like macro and might be used incorrectly
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/include/Slic3r/Domain/ModelInstance.hpp: In constructor ‘Slic3r::Domain::ModelInstance::ModelInstance(Slic3r::Domain::ModelObject*)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/include/Slic3r/Domain/ModelInstance.hpp:95:121: error: ‘assert’ was not declared in this scope
+   95 |     explicit ModelInstance(ModelObject* object) : object(object), print_volume_state(Domain::ModelInstancePVS_Inside) { assert(this->id().valid()); }
+      |                                                                                                                         ^~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/include/Slic3r/Domain/ModelInstance.hpp:95:121: note: ‘assert’ is a function-like macro and might be used incorrectly
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/include/Slic3r/Domain/ModelInstance.hpp: In constructor ‘Slic3r::Domain::ModelInstance::ModelInstance(Slic3r::Domain::ModelObject*, const Slic3r::Domain::ModelInstance&)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/include/Slic3r/Domain/ModelInstance.hpp:100:9: error: ‘assert’ was not declared in this scope
+  100 |         assert(this->id().valid() && this->id() != other.id());
+      |         ^~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/include/Slic3r/Domain/ModelInstance.hpp:100:9: note: ‘assert’ is a function-like macro and might be used incorrectly
+make[2]: *** [src/slic3r-domain/CMakeFiles/slic3r-domain.dir/build.make:712: src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/ModelInstance.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+[  7%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/ConfigDefUtils.cpp.o
+[  6%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/ModelVolume.cpp.o
+[  6%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/Model.cpp.o
+[  7%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/Preset/MatDbMatchRule.cpp.o
+[  6%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/ModelObject.cpp.o
+[  7%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/Preset/SelectedPresetConfigPack.cpp.o
+[  7%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/MacroOverrides.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:1696: src/slic3r-domain/CMakeFiles/slic3r-domain.dir/all] Error 2
+make: *** [Makefile:149: all] Error 2
