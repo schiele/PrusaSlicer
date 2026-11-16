@@ -1508,3 +1508,29 @@ BUILD: version_3.0.0-alpha14-29-g61f50923ff
 system: rolling
 date: Mon Nov 16 07:50:45 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+  747 |     bool                                        operator==(const ConfigOption &rhs) const override {
+      |                                                 ^~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Config/Legacy/Config.hpp:1108:29: note:   by ‘bool Slic3rLegacy::ConfigOptionPercentsTempl<NULLABLE>::operator==(const Slic3rLegacy::ConfigOptionPercentsTempl<NULLABLE>&) const [with bool NULLABLE = false]’
+ 1108 |     bool                    operator==(const ConfigOptionPercentsTempl &rhs) const throw() { return ConfigOptionFloatsTempl<NULLABLE>::vectors_equal(this->values, rhs.values); }
+      |                             ^~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Config/Legacy/Config.hpp: In instantiation of ‘class Slic3rLegacy::ConfigOptionBoolsTempl<false>’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Config/Legacy/Config.hpp:2192:66:   required from here
+ 2192 |                     case coBools:           { auto opt = new ConfigOptionBools();                       archive(*opt); return opt; }
+      |                                                                                ^
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Config/Legacy/Config.hpp:595:10: warning: ‘bool Slic3rLegacy::ConfigOptionVector<T>::operator==(const Slic3rLegacy::ConfigOption&) const [with T = unsigned char]’ was hidden [-Woverloaded-virtual=]
+  595 |     bool operator==(const ConfigOption &rhs) const override
+      |          ^~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Config/Legacy/Config.hpp:1502:29: note:   by ‘bool Slic3rLegacy::ConfigOptionBoolsTempl<NULLABLE>::operator==(const Slic3rLegacy::ConfigOptionBoolsTempl<NULLABLE>&) const [with bool NULLABLE = false]’
+ 1502 |     bool                    operator==(const ConfigOptionBoolsTempl &rhs) const throw() { return this->values == rhs.values; }
+      |                             ^~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Config/ConfigLegacy.cpp: In function ‘std::string Slic3r::Biz::serialize_as_legacy_config(const Slic3r::Domain::ConfigPack&, const Slic3r::Domain::Preset::HwPrinterConfig&)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Config/ConfigLegacy.cpp:849:27: warning: comparison of integer expressions of different signedness: ‘int’ and ‘const size_t’ {aka ‘const long unsigned int’} [-Wsign-compare]
+  849 |         for (int i = 0; i < slot_count; ++i) {
+      |                         ~~^~~~~~~~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/src/Slic3r/Biz/Config/ConfigLegacy.cpp:853:27: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<Slic3r::Domain::FilamentSettings>::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+  853 |         for (int i = 0; i < cfg.filament.size(); ++i)
+      |                         ~~^~~~~~~~~~~~~~~~~~~~~
+[ 70%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/Biz/Config/Legacy/3mf_legacy.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:2711: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/all] Error 2
+make: *** [Makefile:149: all] Error 2
