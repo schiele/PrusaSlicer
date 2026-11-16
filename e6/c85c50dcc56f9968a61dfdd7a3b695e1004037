@@ -1154,3 +1154,28 @@ BUILD: version_3.0.0-alpha14-27-g6076ee2b95
 system: rolling
 date: Mon Nov 16 07:25:38 AM CET 2026
 tasks: configure_deps build_deps configure[failed]
+FAILED:
+This warning is for project developers.  Use -Wno-author or -Wno-policy to
+suppress it.
+
+-- Found Boost: /usr/lib/cmake/Boost-1.92.0/BoostConfig.cmake (found suitable version "1.92.0", minimum required is "1.78")
+-- Found JPEG: /usr/lib/libjpeg.so (found version "80")
+-- Found Lua: /usr/lib/liblua5.5.so;/usr/lib/libm.so (found version "5.5.1")
+CMake Error at src/slic3r-biz-lua/CMakeLists.txt:22 (find_package):
+  By not providing "Findsol2.cmake" in CMAKE_MODULE_PATH this project has
+  asked CMake to find a package configuration file provided by "sol2", but
+  CMake did not find one.
+
+  Could not find a package configuration file provided by "sol2" with any of
+  the following names:
+
+    sol2.cps
+    sol2Config.cmake
+    sol2-config.cmake
+
+  Add the installation prefix of "sol2" to CMAKE_PREFIX_PATH or set
+  "sol2_DIR" to a directory containing one of the above files.  If "sol2"
+  provides a separate development package or SDK, be sure it has been
+  installed.
+
+-- Configuring incomplete, errors occurred!
