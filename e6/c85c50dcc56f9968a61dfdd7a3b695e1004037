@@ -1830,3 +1830,29 @@ BUILD: version_3.0.0-alpha14-31-g67d3a8c11d
 system: rolling
 date: Mon Nov 16 01:16:22 PM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/SLA/SupportIslands/SampleConfigFactory.cpp:22:9: error: ‘assert’ was not declared in this scope
+   22 |         assert(c >= min);
+      |         ^~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/SLA/SupportIslands/SampleConfigFactory.cpp:22:9: note: ‘assert’ is defined in header ‘<cassert>’; this is probably fixable by adding ‘#include <cassert>’
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/SLA/SupportIslands/SampleConfigFactory.cpp: In lambda function:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/SLA/SupportIslands/SampleConfigFactory.cpp:31:9: error: ‘assert’ was not declared in this scope
+   31 |         assert(min < max);
+      |         ^~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/SLA/SupportIslands/SampleConfigFactory.cpp:31:9: note: ‘assert’ is defined in header ‘<cassert>’; this is probably fixable by adding ‘#include <cassert>’
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/SLA/SupportIslands/SampleConfigFactory.cpp: In static member function ‘static Slic3r::sla::SampleConfig Slic3r::sla::SampleConfigFactory::create(float)’:
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/SLA/SupportIslands/SampleConfigFactory.cpp:66:5: error: ‘assert’ was not declared in this scope
+   66 |     assert(result.minimal_distance_from_outline < result.maximal_distance_from_outline);
+      |     ^~~~~~
+/home/rschiele/git/PrusaSlicer/src/libslic3r/src/libslic3r/SLA/SupportIslands/SampleConfigFactory.cpp:66:5: note: ‘assert’ is defined in header ‘<cassert>’; this is probably fixable by adding ‘#include <cassert>’
+make[2]: *** [src/libslic3r/CMakeFiles/libslic3r.dir/build.make:1958: src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLA/SupportIslands/SampleConfigFactory.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+[ 30%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLA/BranchingTreeSLA.cpp.o
+[ 31%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLA/RasterToPolygons.cpp.o
+[ 31%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLA/SupportIslands/SupportIslandPoint.cpp.o
+[ 31%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLA/Hollowing.cpp.o
+[ 31%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLA/SpatIndex.cpp.o
+[ 31%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLA/SupportIslands/UniformSupportIsland.cpp.o
+[ 31%] Building CXX object src/libslic3r/CMakeFiles/libslic3r.dir/src/libslic3r/SLA/SupportPointGenerator.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:2153: src/libslic3r/CMakeFiles/libslic3r.dir/all] Error 2
+make: *** [Makefile:149: all] Error 2
