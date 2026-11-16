@@ -1732,3 +1732,5 @@ FAILED:
       |            ^
 [ 10%] Built target slic3r-domain-tests
 make: *** [Makefile:149: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-30-g449547ea7f
