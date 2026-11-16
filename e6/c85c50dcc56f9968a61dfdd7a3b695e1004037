@@ -1892,3 +1892,29 @@ BUILD: version_3.0.0-alpha14-32-g42d6348976
 system: rolling
 date: Mon Nov 16 07:54:30 PM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/include/Slic3r/App/Plater/Measure.hpp:78:9: error: ‘assert’ was not declared in this scope
+   78 |         assert(m_type != SurfaceFeatureType::Undefined);
+      |         ^~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/include/Slic3r/App/Plater/Measure.hpp:78:9: note: ‘assert’ is a function-like macro and might be used incorrectly
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/include/Slic3r/App/Plater/Measure.hpp: In function ‘Slic3r::Domain::Vec3d Slic3r::App::Plater::Measure::edge_direction(const SurfaceFeature&)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/include/Slic3r/App/Plater/Measure.hpp:233:5: error: ‘assert’ was not declared in this scope
+  233 |     assert(edge.type() == SurfaceFeatureType::Edge);
+      |     ^~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/include/Slic3r/App/Plater/Measure.hpp:233:5: note: ‘assert’ is a function-like macro and might be used incorrectly
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/include/Slic3r/App/Plater/Measure.hpp: In function ‘Slic3r::Domain::Vec3d Slic3r::App::Plater::Measure::plane_normal(const SurfaceFeature&)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/include/Slic3r/App/Plater/Measure.hpp:239:5: error: ‘assert’ was not declared in this scope
+  239 |     assert(plane.type() == SurfaceFeatureType::Plane);
+      |     ^~~~~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-shared/include/Slic3r/App/Plater/Measure.hpp:239:5: note: ‘assert’ is a function-like macro and might be used incorrectly
+make[2]: *** [src/slic3r-shared/CMakeFiles/slic3r-shared.dir/build.make:1174: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Plater/Measure.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+[ 41%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Plater/RectangleSelectionPicker.cpp.o
+[ 41%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Preview/PreviewSceneRenderCustomizer.cpp.o
+[ 40%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Plater/PlaterScenePresenterProjectContext.cpp.o
+[ 41%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Preview/SidebarAutoReslice.cpp.o
+[ 41%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Preview/PreviewScenePresenter.cpp.o
+[ 41%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Preview/PreviewRenderLayout.cpp.o
+[ 41%] Building CXX object src/slic3r-shared/CMakeFiles/slic3r-shared.dir/src/Slic3r/App/Preview/PreviewRenderModule.cpp.o
+make[1]: *** [CMakeFiles/Makefile2:2711: src/slic3r-shared/CMakeFiles/slic3r-shared.dir/all] Error 2
+make: *** [Makefile:149: all] Error 2
