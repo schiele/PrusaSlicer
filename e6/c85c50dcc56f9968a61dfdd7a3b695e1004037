@@ -1477,3 +1477,29 @@ BUILD: version_3.0.0-alpha14-29-g61f50923ff
 system: rolling
 date: Mon Nov 16 07:42:03 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+      |                 ^~~~
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/types.hpp: In function ‘bool sol::is_indeterminate_call_failure(call_status)’:
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/types.hpp:779:17: error: duplicate case value
+  779 |                 case call_status::file:
+      |                 ^~~~
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/types.hpp:777:17: note: previously used here
+  777 |                 case call_status::gc:
+      |                 ^~~~
+In file included from /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/sol.hpp:58:
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/state.hpp: In constructor ‘sol::state::state(lua_CFunction, lua_Alloc, void*)’:
+/home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/sol/state.hpp:42:43: error: too few arguments to function ‘lua_State* lua_newstate(lua_Alloc, void*, unsigned int)’
+   42 |                 : unique_base(lua_newstate(alfunc, alpointer)), state_view(unique_base::get()) {
+      |                               ~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/lua.hpp:7,
+                 from /home/rschiele/git/PrusaSlicer/src/slic3r-biz-lua/include/Slic3r/Biz/Lua/LuaEngine.hpp:6:
+/usr/include/lua.h:163:21: note: declared here
+  163 | LUA_API lua_State *(lua_newstate) (lua_Alloc f, void *ud, unsigned seed);
+      |                     ^~~~~~~~~~~~
+make[2]: *** [src/slic3r-biz-lua/CMakeFiles/slic3r-biz-lua.dir/build.make:82: src/slic3r-biz-lua/CMakeFiles/slic3r-biz-lua.dir/src/Slic3r/Biz/Lua/LuaEngine.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:2280: src/slic3r-biz-lua/CMakeFiles/slic3r-biz-lua.dir/all] Error 2
+make[1]: *** Waiting for unfinished jobs....
+[  3%] Building CXX object src/slic3r-base/CMakeFiles/slic3r-base.dir/src/Slic3r/Directories.cpp.o
+[  3%] Linking CXX static library libslic3r-base.a
+[  3%] Built target slic3r-base
+make: *** [Makefile:149: all] Error 2
