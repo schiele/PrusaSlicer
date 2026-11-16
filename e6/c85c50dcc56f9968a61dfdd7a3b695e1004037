@@ -1825,3 +1825,5 @@ make[1]: *** Waiting for unfinished jobs....
       |            ^
 [ 12%] Built target slic3r-domain-tests
 make: *** [Makefile:149: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-31-g67d3a8c11d
