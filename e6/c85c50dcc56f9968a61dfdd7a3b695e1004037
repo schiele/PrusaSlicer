@@ -1701,3 +1701,5 @@ make[2]: *** Waiting for unfinished jobs....
 [  7%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/MacroOverrides.cpp.o
 make[1]: *** [CMakeFiles/Makefile2:1696: src/slic3r-domain/CMakeFiles/slic3r-domain.dir/all] Error 2
 make: *** [Makefile:149: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-30-g649e2dabb3
