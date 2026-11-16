@@ -1123,3 +1123,29 @@ BUILD: version_3.0.0-alpha14-27-g6076ee2b95
 system: rolling
 date: Mon Nov 16 07:23:53 AM CET 2026
 tasks: configure_deps build_deps[failed]
+FAILED:
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/wx-3.3/wx/xrc/xh_unkwn.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/wx-3.3/wx/xrc/xh_vlistbox.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/wx-3.3/wx/xrc/xh_wizrd.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/wx-3.3/wx/xrc/xmlres.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/wx-3.3/wx/xrc/xh_dataview.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/wx-3.3/wx/xrc/xh_bookctrlbase.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/wx-3.3/wx/glcanvas.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/wx-3.3/wx/gtk/glcanvas.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/wx-3.3/wx/unix/glx11.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/wx-3.3/wx/unix/glegl.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/wx-3.3/wx/debugrpt.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/wx-3.3/wx/xml/xml.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/wx-3.3/wx/xtixml.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/wx/include/gtk3-unicode-static-3.3
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/wx/include/gtk3-unicode-static-3.3/wx
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/wx/include/gtk3-unicode-static-3.3/wx/setup.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/wx/config/gtk3-unicode-static-3.3
+-- Up-to-date: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/bin
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/cmake/wxWidgets/wxWidgetsTargets.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/cmake/wxWidgets/wxWidgetsTargets-release.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/cmake/wxWidgets/wxWidgetsConfig.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/cmake/wxWidgets/wxWidgetsConfigVersion.cmake
+[ 94%] Completed 'dep_wxWidgets'
+[ 94%] Built target dep_wxWidgets
+make: *** [Makefile:139: all] Error 2
