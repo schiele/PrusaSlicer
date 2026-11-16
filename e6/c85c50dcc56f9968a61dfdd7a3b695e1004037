@@ -1706,3 +1706,29 @@ BUILD: version_3.0.0-alpha14-30-g649e2dabb3
 system: rolling
 date: Mon Nov 16 11:54:02 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+[ 10%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain-tests.dir/test/Slic3r/Domain/Preset/MatDbMatchRuleTests.cpp.o
+[ 10%] Building CXX object src/libpgcode/CMakeFiles/libpgcode.dir/src/Slic3r/Biz/libpgcode/ProcessorConfig.cpp.o
+[ 10%] Building CXX object src/libpgcode/CMakeFiles/libpgcode.dir/src/Slic3r/Biz/libpgcode/TimeBlock.cpp.o
+[ 10%] Building CXX object src/libpgcode/CMakeFiles/libpgcode.dir/src/Slic3r/Biz/libpgcode/ProcessorResult.cpp.o
+[ 10%] Building CXX object src/libpgcode/CMakeFiles/libpgcode.dir/src/Slic3r/Biz/libpgcode/TimeProcessor.cpp.o
+[ 10%] Building CXX object src/libpgcode/CMakeFiles/libpgcode.dir/src/Slic3r/Biz/libpgcode/ProcessorImpl.cpp.o
+[ 10%] Building CXX object src/libpgcode/CMakeFiles/libpgcode.dir/src/Slic3r/Biz/libpgcode/Types.cpp.o
+[ 10%] Building CXX object src/libpgcode/CMakeFiles/libpgcode.dir/src/Slic3r/Biz/libpgcode/TimeMachine.cpp.o
+[ 10%] Building CXX object src/libpgcode/CMakeFiles/libpgcode.dir/src/Slic3r/Biz/libpgcode/Utils.cpp.o
+[ 10%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain-tests.dir/test/Slic3r/Domain/Preset/SelectedPresetTests.cpp.o
+[ 10%] Building CXX object src/libpgcode/CMakeFiles/libpgcode.dir/src/Slic3r/Biz/libpgcode/UsedFilaments.cpp.o
+[ 10%] Linking CXX static library libpgcode.a
+[ 10%] Built target libpgcode
+[  8%] Building CXX object src/slic3r-biz-parser/CMakeFiles/slic3r-biz-parser.dir/src/Slic3r/Biz/Parser/PlaceholderParser.cpp.o
+[ 10%] Linking CXX static library libslic3r-biz-parser.a
+[ 10%] Built target slic3r-biz-parser
+[ 10%] Linking CXX executable slic3r-domain-tests
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/test/Slic3r/Domain/ConfigValueTests.cpp:15:12: warning: type ‘TestEnum’ violates the C++ One Definition Rule [-Wodr]
+   15 | enum class TestEnum {
+      |            ^
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/test/Slic3r/Domain/ConfigTests.cpp:30:12: note: an enum with different number of values is defined in another translation unit
+   30 | enum class TestEnum {
+      |            ^
+[ 10%] Built target slic3r-domain-tests
+make: *** [Makefile:149: all] Error 2
