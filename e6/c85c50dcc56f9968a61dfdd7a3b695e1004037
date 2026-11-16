@@ -1613,3 +1613,29 @@ BUILD: version_3.0.0-alpha14-30-g8b3d117c87
 system: rolling
 date: Mon Nov 16 11:33:13 AM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+make[2]: *** [src/slic3r-domain/CMakeFiles/slic3r-domain.dir/build.make:474: src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/Transformation.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+[  6%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/ConfigBoxesFDM.cpp.o
+[  6%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/ConfigDefsSLA.cpp.o
+[  6%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/ConfigBoxesSLA.cpp.o
+[  5%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/TriangleMesh.cpp.o
+[  6%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/FullConfigFDM.cpp.o
+[  6%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/ConfigDefsFDM.cpp.o
+[  5%] Building CXX object src/slic3r-domain/CMakeFiles/slic3r-domain.dir/src/Slic3r/Domain/Config.cpp.o
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Config.cpp: In function ‘void Slic3r::Domain::clamp_extruders_to_single_slot(SquashResult&)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Config.cpp:1052:29: warning: loop variable ‘key’ of type ‘const std::string&’ {aka ‘const std::__cxx11::basic_string<char>&’} binds to a temporary constructed from type ‘const char* const’ [-Wrange-loop-construct]
+ 1052 |     for (const std::string& key :
+      |                             ^~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Config.cpp:1052:29: note: use non-reference type ‘const std::string’ {aka ‘const std::__cxx11::basic_string<char>’} to make the copy explicit or ‘const char* const&’ to prevent copying
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Config.cpp: In function ‘void Slic3r::Domain::expand_parameters(SquashResult&, std::size_t)’:
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Config.cpp:1073:37: warning: loop variable ‘key’ of type ‘const std::string&’ {aka ‘const std::__cxx11::basic_string<char>&’} binds to a temporary constructed from type ‘const char* const’ [-Wrange-loop-construct]
+ 1073 |             for (const std::string& key :
+      |                                     ^~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Config.cpp:1073:37: note: use non-reference type ‘const std::string’ {aka ‘const std::__cxx11::basic_string<char>’} to make the copy explicit or ‘const char* const&’ to prevent copying
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Config.cpp:1108:32: warning: loop variable ‘key’ of type ‘const std::string&’ {aka ‘const std::__cxx11::basic_string<char>&’} binds to a temporary constructed from type ‘const char* const’ [-Wrange-loop-construct]
+ 1108 |             const std::string& key :
+      |                                ^~~
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/src/Slic3r/Domain/Config.cpp:1108:32: note: use non-reference type ‘const std::string’ {aka ‘const std::__cxx11::basic_string<char>’} to make the copy explicit or ‘const char* const&’ to prevent copying
+make[1]: *** [CMakeFiles/Makefile2:1696: src/slic3r-domain/CMakeFiles/slic3r-domain.dir/all] Error 2
+make: *** [Makefile:149: all] Error 2
