@@ -1965,4 +1965,4 @@ SUCCESS
 BUILD: version_3.0.0-alpha14-31-ge389578e72
 system: rolling
 date: Wed Nov 18 10:46:04 PM CET 2026
-tasks: configure_deps build_deps configure build[incomplete]
+tasks: configure_deps build_deps configure build[failed]
