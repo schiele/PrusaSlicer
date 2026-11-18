@@ -1966,3 +1966,29 @@ BUILD: version_3.0.0-alpha14-31-ge389578e72
 system: rolling
 date: Wed Nov 18 10:46:04 PM CET 2026
 tasks: configure_deps build_deps configure build[failed]
+FAILED:
+[ 12%] Linking CXX executable slic3r-biz-parser-tests
+/home/rschiele/git/PrusaSlicer/src/slic3r-biz-parser/test/Slic3r/Biz/Parser/IOTests.cpp:56:12: warning: type ‘TestEnum’ violates the C++ One Definition Rule [-Wodr]
+   56 | enum class TestEnum {
+      |            ^
+/home/rschiele/git/PrusaSlicer/src/slic3r-biz-parser/test/Slic3r/Biz/Parser/ParserTests.cpp:15:12: note: an enum with different value name is defined in another translation unit
+   15 | enum class TestEnum {
+      |            ^
+/home/rschiele/git/PrusaSlicer/src/slic3r-biz-parser/test/Slic3r/Biz/Parser/IOTests.cpp:57:5: note: name ‘none’ differs from name ‘marlin’ defined in another translation unit
+   57 |     none,
+      |     ^
+/home/rschiele/git/PrusaSlicer/src/slic3r-biz-parser/test/Slic3r/Biz/Parser/ParserTests.cpp:16:5: note: mismatching definition
+   16 |     marlin
+      |     ^
+[ 20%] Built target slic3r-biz-parser-tests
+[ 10%] Linking CXX executable slic3r-domain-tests
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/test/Slic3r/Domain/ConfigValueTests.cpp:15:12: warning: type ‘TestEnum’ violates the C++ One Definition Rule [-Wodr]
+   15 | enum class TestEnum {
+      |            ^
+/home/rschiele/git/PrusaSlicer/src/slic3r-domain/test/Slic3r/Domain/ConfigTests.cpp:30:12: note: an enum with different number of values is defined in another translation unit
+   30 | enum class TestEnum {
+      |            ^
+[ 20%] Built target slic3r-domain-tests
+[ 15%] Linking CXX executable slic3r-biz-algorithms-tests
+[ 20%] Built target slic3r-biz-algorithms-tests
+make: *** [Makefile:149: all] Error 2
