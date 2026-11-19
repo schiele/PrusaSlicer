@@ -2058,4 +2058,4 @@ make: *** [Makefile:139: all] Error 2
 BUILD: version_3.0.0-alpha14-34-ge40835eb15
 system: rolling
 date: Thu Nov 19 08:09:37 AM CET 2026
-tasks: configure_deps build_deps configure build[incomplete]
+tasks: configure_deps build_deps configure build install[incomplete]
