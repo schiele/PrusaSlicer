@@ -2028,3 +2028,29 @@ BUILD: version_3.0.0-alpha14-33-g45fb8f4047
 system: rolling
 date: Thu Nov 19 08:02:58 AM CET 2026
 tasks: configure_deps build_deps[failed]
+FAILED:
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/share/doc/Eclipse Paho C/MQTTClient_publish.c
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/share/doc/Eclipse Paho C/MQTTClient_publish_async.c
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/share/doc/Eclipse Paho C/MQTTClient_subscribe.c
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/share/doc/Eclipse Paho C/paho_c_pub.c
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/share/doc/Eclipse Paho C/paho_c_sub.c
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/share/doc/Eclipse Paho C/paho_cs_pub.c
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/share/doc/Eclipse Paho C/paho_cs_sub.c
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/share/doc/Eclipse Paho C/pubsub_opts.c
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libpaho-mqtt3c.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libpaho-mqtt3a.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/MQTTAsync.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/MQTTClient.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/MQTTClientPersistence.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/MQTTProperties.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/MQTTReasonCodes.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/MQTTSubscribeOpts.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/include/MQTTExportDeclarations.h
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libpaho-mqtt3cs.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/libpaho-mqtt3as.a
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/cmake/eclipse-paho-mqtt-c/eclipse-paho-mqtt-cConfig.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/cmake/eclipse-paho-mqtt-c/eclipse-paho-mqtt-cConfig-release.cmake
+-- Installing: /home/rschiele/git/PrusaSlicer/build/deps/destdir/usr/lib/cmake/eclipse-paho-mqtt-c/eclipse-paho-mqtt-cConfigVersion.cmake
+[ 56%] Completed 'dep_Paho'
+[ 56%] Built target dep_Paho
+make: *** [Makefile:139: all] Error 2
