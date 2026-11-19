@@ -1992,3 +1992,5 @@ FAILED:
 [ 15%] Linking CXX executable slic3r-biz-algorithms-tests
 [ 20%] Built target slic3r-biz-algorithms-tests
 make: *** [Makefile:149: all] Error 2
+======================================================================
+BUILD: version_3.0.0-alpha14-32-g6d0d767d8a
