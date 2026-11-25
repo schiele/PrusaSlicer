@@ -1,4 +1,4 @@
 BUILD: version_3.0.0-alpha15-31-g99a6cd7e19
 system: rolling
 date: Wed Nov 25 09:09:27 AM CET 2026
-tasks: configure_deps[incomplete]
+tasks: configure_deps build_deps[incomplete]
