@@ -50,4 +50,4 @@ SUCCESS
 BUILD: version_3.0.0-alpha15-36-g7b3540653f
 system: rolling
 date: Thu Nov 26 11:10:34 AM CET 2026
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
