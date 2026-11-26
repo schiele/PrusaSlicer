@@ -7,4 +7,4 @@ SUCCESS
 BUILD: version_3.0.0-alpha15-32-g662caac367
 system: rolling
 date: Thu Nov 26 10:02:47 AM CET 2026
-tasks: configure_deps build_deps[incomplete]
+tasks: configure_deps build_deps configure[incomplete]
